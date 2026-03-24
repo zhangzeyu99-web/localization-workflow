@@ -1,0 +1,516 @@
+你是一个游戏本地化质检专家。请审查以下中英对照翻译，检查：
+1. 错译 / 英文不自然
+2. 漏译 / 语义偏差
+3. 代码、标签（如 {icon1}、[color=xxx][/color]）、占位符格式错误
+4. 术语一致性 — 必须使用标准术语表中的译法
+5. 术语语法 — 检查术语的大小写（句首/句中）、单复数、冠词搭配
+
+规则：
+- 只列出需要修改的行
+- 格式严格为：ID | 修正版译文
+- 没有问题的行不要列出
+- 如果全部没问题，回复"无需修改"
+
+---以下是待审查内容（第1批，共4批）---
+
+ID | 原文 | 译文
+1 | 充值积分达到{icon1}[color =#dc6c00]{num1}[/color] | Top-up Points reaching {icon1}[color =#dc6c00]{num1}[/color] in total
+2 | 立刻获取[color =#dc6c00]机甲战士[/color] | Get [color =#dc6c00] Mech Warrior [/color] now
+3 | 立刻获取[color =#dc6c00]限定头像框[/color] | Get [color =#dc6c00] limited avatar frame [/color] now
+4 | 立刻获取[color =#dc6c00]限定聊天气泡[/color] | Get [color =#dc6c00] limited chat bubble[/color] now
+5 | 立刻获取[color =#dc6c00]传说英雄装备[/color] | Get Legendary Heros Gear [color =#dc6c00]now[/color]
+6 | 立刻获取[color =#dc6c00]末世主宰[/color] | Get [color =#dc6c00]Apocalypse Overlord[/color] now
+7 | 奖励价值[color =#dc6c00]5000[/color]钻石的道具 | A reward item worth [color =#dc6c00]5000[/color] Gems
+8 | 奖励价值[color =#dc6c00]10000[/color]钻石的道具 | An item worth [color =#dc6c00]10000[/color] Gems in rewards
+9 | 奖励价值[color =#dc6c00]15000[/color]钻石的道具 | An item worth [color =#dc6c00]15000[/color] Gems
+10 | 奖励价值[color =#dc6c00]20000[/color]钻石的道具 | An item worth[color =#dc6c00]20,000[/color]Gems
+11 | 奖励价值[color =#dc6c00]25000[/color]钻石的道具 | Items worth [color =#dc6c00]25000[/color] Gems as rewards
+12 | 还需充值积分：{icon1}[color =#dc6c00]{num1}[/color] | Points still needed to top up:{icon1}[color =#dc6c00]{num1}[/color]
+13 | 据点争夺中，无法宣战，请等待争夺结束后再进行宣战 | You can’t declare war during a Stronghold Battle. Please wait until the battle is over before declaring war
+14 | 属性加成(拥有即激活) | Stat bonus(Activated when owned)
+15 | 聊天气泡装扮 | Chat Bubble Skin
+16 | 发电厂装扮 | Power Station Decor
+17 | 建筑产出 | Building Output
+18 | 可领取资源: {num} | Claimable Resources: {num}
+19 | 请等待产出资源 | Please wait for resources to be produced
+20 | 钻机工坊 | Drill Workshop
+21 | 研究升级钻地机 | Research upgrading the drill
+22 | 钻地机专属战备工坊，提供全方位的机械改良与装甲升级服务，确保战斗中保持压倒性优势。 | A dedicated war-preparedness workshop for the Drill Machine, offering comprehensive mechanical modifications and armor upgrades to ensure overwhelming superiority in combat.
+23 | 不断探索地下世界 | Keep exploring the underground world
+24 | 地下世界潜藏着诸多挑战与奖励，和强大的英雄同行，探索地下世界。 | The underworld is filled with hidden challenges and rewards. Team up with powerful Heros and explore its depths.
+25 | [color =#34790f]{playername1}[/color]攻击了[color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color]，大获全胜！ | [color =#34790f]{playername1}[/color]attacked [color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color], and won a great victory!
+26 | [color =#34790f]{playername1}[/color]攻击了[color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color]，遗憾落败！ | [color =#34790f]{playername1}[/color]attacked [color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color], but unfortunately was defeated!
+27 | [color =#34790f]{playername1}[/color]遭到了[color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color]的攻击，大获全胜！ | [color =#34790f]{playername1}[/color] suffered an Attack from [color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color] and won a great victory!
+28 | [color =#34790f]{playername1}[/color]遭到了[color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color]的攻击，遗憾落败！ | [color =#34790f]{playername1}[/color] was attacked by [color =#b02912]{playername2} [url =1,[urlparm]]{pos}[/url] [/color] and was unfortunately defeated!
+29 | 欢迎[color =#34790f]{playername}[/color]加入联盟！ | Welcome [color =#34790f]{playername}[/color] to the Alliance!
+30 | [color =#b02912]{playername}[/color]离开了联盟！ | [color =#b02912]{playername}[/color] has left the Alliance!
+31 | {playername1}将[color =#b02912]{playername2}[/color]踢出了联盟！ | {playername1} kicked [color =#b02912]{playername2}[/color] out of the Alliance!
+32 | [color =#34790f]{playername}[/color]从{level1}提升到了[color =#34790f]{level2}[/color]！ | [color =#34790f]{playername}[/color]has increased from {level1} to [color =#34790f]{level2}[/color]!
+33 | [color =#b02912]{playername}[/color]从{level1}降至[color =#b02912]{level2}[/color]！ | [color =#b02912]{playername}[/color]dropped from {level1} to [color =#b02912]{level2}[/color]!
+34 | {playername1}将盟主转让给了[color =#34790f]{playername2}[/color]！ | {playername1} has transferred leadership to [color =#34790f]{playername2}[/color]!
+35 | {playername1}将[color =#34790f]{playername2}[/color]任命为了[color =#34790f]{officername}[/color]！ | {playername1} has appointed [color =#34790f]{playername2}[/color] as [color =#34790f]{officername}[/color]!
+36 | 由于长时间未登录，[color =#b02912]{playername}[/color]被自动踢出了联盟！ | Due to being inactive for a long time, [color =#b02912]{playername}[/color] was automatically removed from the Alliance!
+37 | 由于原盟主长时间未登录，盟主职位将转让给[color =#b02912]{playername}[/color]！ | Since the former leader has been inactive for a long time, the leader position will be transferred to [color =#b02912]{playername}[/color]！
+38 | 在大家的共同努力下，联盟已经升到了[color =#34790f]{num}级[/color]！ | Thanks to everyone’s efforts, the Alliance has reached level [color =#34790f]{num}级[/color]!
+39 | 在大家的共同努力下，[color =#34790f]{sciencename}[/color]已经升到了[color =#34790f]{num}级[/color]！ | Thanks to everyone’s efforts, [color =#34790f]{sciencename}[/color] has already reached [color =#34790f]{num} level[/color]!
+40 | {playername}将[color =#34790f]{sciencename}[/color]标记为了联盟推荐科技！ | {playername} marked [color =#34790f]{sciencename}[/color] as recommended Alliance tech!
+41 | {playername}向领地[color =#b02912]{cityname} [url =1,[urlparm]]{pos}[/url] [/color]发起了宣战，战役时间为{time}！ | {playername} has declared war on territory [color =#b02912]{cityname} [url =1,[urlparm]]{pos}[/url] [/color]! The battle duration is {time}!
+42 | 联盟占领了[color =#b02912]{cityname} [url =1,[urlparm]]{pos}[/url] [/color]！ | The Alliance has occupied [color =#b02912]{cityname} [url =1,[urlparm]]{pos}[/url] [/color]!
+43 | {playername}放弃了领地[color =#b02912]{cityname} [url =1,[urlparm]]{pos}[/url] [/color]！ | {playername} has abandoned territory [color =#b02912]{cityname} [url =1,[urlparm]]{pos}[/url] [/color]!
+44 | 钻地机攻击 | Drilling Machine Attack
+45 | 钻地机防御 | Drill Machine Defense
+46 | 钻地机生命 | Drill Machine Health
+47 | 钻地机加成 | Drilling Machine Bonus
+48 | 钻地机战力 | Drill Machine Power
+49 | 通过以下方式可减少建造时间 | You can reduce construction time in the following ways
+50 | 通过以下方式可减少科研时间 | You can reduce research time in the following ways
+51 | 通过以下方式可减少训练时间 | You can reduce training time in the following ways
+52 | 通过以下方式可减少治疗时间 | You can reduce treatment time in the following ways
+53 | 钻地机 | Drill
+54 | 钻地机及所有钻地机组件战力之和 | Total Power of the Drill and all its components
+55 | 军火库调整资源返还 | Armory Resource Refund Adjustment
+56 | 亲爱的土拨鼠领袖，由于军火库系统功能调整，为您返还资源消耗，请查收！ | Dear Marmot Leader, due to adjustments to the Armory system, we have refunded the resources you spent. Please check!
+57 | 别怕！有我在，它们别想进来！丧尸我跟你们拼了！ | Don’t be scared! With me here, there’s no way they’re getting in! Zombies, I’ll take you all on!
+58 | 呜呜呜…门一旦被破，我们就要变成丧尸的食物了，不想<font color =#0b9303>被丧尸吃掉</font>啊！ | *Sob sob*... Once that door is breached, we’ll become food for the zombies. I don’t want<font color =#0b9303>to be eaten by zombies</font>!
+59 | 嘿，别慌，听我说！这门暂时能顶住，我们先<font color =#0b9303>四周探探路</font>。 | Hey, don’t panic, listen to me! This door can hold for now, let’s<font color =#0b9303> scout around</font> first.
+60 | 看，这有个梯子，我想我们可以<font color =#0b9303>先下去看看</font>，也许能找到<font color =#0b9303>对付丧尸的办法</font>。 | Look, there’s a ladder here. I think we can<font color =#0b9303> go down and take a look first</font>, maybe we can find<font color =#0b9303> a way to deal with the zombies</font>.
+61 | 一个巨大的能源机器，这我在其他避难所见过！只要<font color =#0b9303>激活核心</font>，就可以利用核心能源<font color =#0b9303>发电</font>，维持地下避难所的运转！ | A massive power generator—I’ve seen one of these in other vaults! As long as you <font color =#0b9303>activate the core</font>, you can use the core’s energy<font color =#0b9303> to generate electricity</font> and keep the underground vault running!
+62 | 但是它现在看起来没有在运作。 | But it doesn’t seem to be working right now.
+63 | 这有个滚轮，应该是<font color =#0b9303>跑步发电</font>，让我来试试！ | There’s a running wheel here—looks like you can <font color =#0b9303>run on it to generate power</font>. Let me give it a try!
+64 | 奇怪，怎么核心没有反应？ | Weird, why is the core not responding?
+65 | 那有台<font color =#0b9303>电脑</font>，也许能控制核心，我们去看看！ | There’s a <font color =#0b9303>computer</font> over there—maybe we can use it to control the core. Let’s check it out!
+66 | 看起来是个<font color =#0b9303>电路管理系统</font>。 | Looks like a <font color =#0b9303>circuit management system</font>.
+67 | 这我可不擅长，要不拿锤子哐哐两下试试。 | This really isn’t my strong suit—how about I just whack it a couple of times with a hammer and see what happens.
+68 | 别冲动，砸坏了我们就完蛋了。（哎，还得是我来啊...） | Easy, don’t lose your head—if we break it, we’re screwed.（Sigh, guess it’s on me again...）
+69 | 哟吼！成功激活核心！现在我们是不是安全啦？ | Woohoo! Core successfully activated! So are we safe now?
+70 | 当然不是，我们可不能<font color =#0b9303>坐以待毙</font>，是时候想想怎么击退这些丧尸了。 | Of course not. We can’t just<font color =#0b9303> sit here and wait to die</font>—it’s time we figured out how to drive these zombies back.
+71 | 我这就出去跟他们拼了。 | I’m going out there to take them on.
+72 | 嘿！嘿！快回来！我们<font color =#0b9303>手无寸铁</font>，可不能直接出去和丧尸拼命。 | Hey! Hey! Get back here! We’re<font color =#0b9303> completely unarmed</font>, we can’t just run out there and go head‑to‑head with the zombies.
+73 | 我们把旁边的房间开辟出来，让铁匠在这里给我们打造一些武器，拿上武器再去击退丧尸。 | We’ve cleared out the room next door so the blacksmith can forge some weapons for us here. Once we’re armed, we’ll head out and drive back the zombies.
+74 | 轻松搞定！挖地也算是咱们土拨鼠的老本行了！ | Easy peasy! Digging is what we groundhogs do best, after all!
+75 | 哈哈！我们天然适应在地下生活，这也是我们能在末日中活下来的重要原因。好了，别说废话了，赶紧建造一个<font color =#0b9303>武器工坊</font>吧！ | Haha! We’re naturally suited to living underground—that’s a big part of why we survived the apocalypse. All right, enough chatter, hurry up and build an <font color =#0b9303>Armory</font>!
+76 | 丧尸掉落了一些<font color =#0b9303>金币</font>，可以用来<font color =#0b9303>升级</font>一下我们的武器锻造台。 | The zombie dropped some<font color =#0b9303>Gold</font>, which we can use to<font color =#0b9303>upgrade</font>our weapon forging station.
+77 | 工作台更好用了！ | The workbench is easier to use!
+78 | 感觉我的盾更结实了！ | Feels like my shield just got tougher!
+79 | 下一波丧尸已经来了，快给我武器，我要去支援浩克！ | The next wave of zombies is here—hurry up and give me a weapon, I’m going to back up Hulk!
+80 | 嘤嘤嘤...一定是我造的武器不好用...让你受伤了... | *sob, sob*... It must be because the weapon I made is no good... that you got hurt...
+81 | 别自责，战斗过程中受伤在所难免，好在伤势不重，我们可以先建造一个<font color =#0b9303>医院</font>，让受伤的勇士可以得到治疗。 | Don’t blame yourself. Getting hurt in battle is inevitable. Luckily the wounds aren’t serious. We can start by building an <font color =#0b9303>Infirmary</font> so our injured warriors can receive treatment.
+82 | 可是，现在我们已经没有空间建造医院了... | But now, we don’t have any space left to build an Infirmary...
+83 | 嘿伙计！我们可是土拨鼠，再继续往下挖个洞不就好了！ | Hey buddy! We’re groundhogs—why don’t we just dig another tunnel down?
+84 | 完工！可是，从这么高跳下去，没受伤的勇士也会骨折吧... | All done! But if you jump from this high up, even a warrior who walks away in one piece is gonna end up with broken bones...
+85 | 是的，我们必须做好避难所的空间规划，首先我们需要搭建一个<font color =#0b9303>楼梯间</font>，方便上下。 | Yes, we need to make proper plans for the shelter’s space. First, we need to build a<font color =#0b9303>stairwell</font> so it’s easy to go up and down.
+86 | 完工！继续开拓地块地块，建造医院吧！ | All done! Keep expanding plots and build an Infirmary!
+87 | 满血复活，马上给我打造一套新的武器，我还要上战场！ | Back to full health! Forge me a new set of weapons, I’m heading straight back to the battlefield!
+88 | 就是这样，土拨鼠勇士们持续战斗，就能守卫好避难所！ | And that’s how it is—if the marmot warriors keep fighting, they’ll be able to protect the shelter!
+89 | 趁现在丧尸不多，我们需要尽快<font color =#0b9303>升级发电厂</font>，只有电力充足我们才可以继续扩张避难所！ | While there aren’t many zombies right now, we need to quickly <font color =#0b9303>Upgrade the Power Station</font>. Only with sufficient Power can we keep expanding the shelter!
+90 | 噢！来了个大块头！看我怎么收拾他！ | Oh! A big guy just showed up! Watch how I take him down!
+91 | 嘿嘿！别冲动浩克，丧尸BOSS力量强大，我们还是回到城门处整队，再一起出去挑战他！ | Heh heh! Easy there, Hulk—this zombie boss is crazy strong. Let’s fall back to the Gate, get everyone together, and then head out to take him on!
+92 | 土拨鼠勇士拿上武器后，可以前往地面击退丧尸！ | Once the Marmot Warrior arms itself, it can head to the surface to repel the zombies!
+93 | 土拨鼠受伤后可以在医院进行治疗 | After a groundhog is injured, it can be treated at the Infirmary
+94 | 治愈后的土拨鼠勇士可以继续拿上武器去战斗！ | Once healed, the marmot warrior can take up arms and fight again!
+95 | 既然安定下来了，我们必须要好好规划下避难所的发展。 | Now that things have settled down, we need to carefully plan the shelter’s Growth.
+96 | 谢...谢谢你们让我们进来，我愿意做任何事情报答你们！ | Th-thank you for letting us in, I’ll do anything to repay you!
+97 | 不用客气，我们现在是一条绳上的“土拨鼠”了。赶紧拿上武器，一起击退丧尸吧！ | No need to thank me. We’re in this together now. Grab a weapon and let’s push those zombies back together!
+98 | 遵命！拿起武器，保卫我们的家园！ | Yes, sir! Take up arms and defend our homeland!
+99 | 装备工坊的运作，需要一个像我一样的铁匠伙伴！ | Running the Equipment Workshop requires a blacksmith partner like me!
+100 | 勇士们现在可以自行<font color =#0b9303>领取装备和武器</font>，上战场了。 | Warriors can now <font color =#0b9303> claim their gear and weapons</font> and head to the battlefield.
+101 | 击退BOSS会掉落一些宝箱，让我们看看里面都有啥好东西！ | Defeating the boss will cause some treasure chests to drop, let’s see what goodies are inside!
+102 | 越深入地下，土块似乎越来越难挖掘了。 | The deeper we go underground, the harder the soil seems to be to dig through.
+103 | 对的，我们必须先借助核心的能量，将坚硬的岩石震碎，再分成<font color =#0b9303>小块</font>挖掘。 | Right, we first have to draw on the core’s energy to shatter the hard rock, then break it into small<font color =#0b9303> pieces</font>for extraction.
+104 | 别心急，挖掘地块的过程也许会有些<font color =#0b9303>惊喜</font>呢？一块块来吧伙计。 | Easy there. You might find a few <font color =#0b9303>surprises</font> while you’re digging this plot. One patch at a time, partner.
+105 | 噢我挖出了一堆<font color =#0b9303>金币</font>！ | Oh, I dug up a pile of <font color =#0b9303> Gold</font>!
+106 | 果然是，开地有惊喜~ | Sure enough, Expand More Zone comes with surprises~
+107 | 我准备在这建造一个宿舍，招收更多居民入住，毕竟避难所的发展需要不少人手。 | I’m planning to build a dormitory here and bring in more residents, since the shelter’s growth is going to need a lot of hands.
+108 | 真好！我们的避难所终于有些生活气息了！ | Fantastic! Our shelter is finally starting to feel alive!
+109 | 宿舍建好了！我将消息向废土广播，马上就有幸存者来投靠了，快去避难所门口接受新的居民吧！ | The Dormitory is finished! I broadcast the news across the wasteland, and survivors are already coming to seek shelter. Hurry to the shelter entrance and welcome your new residents!
+110 | <font color =#0b9303>建筑功率</font>是衡量避难所发展程度的重要指标，地下建筑越多，建筑等级越高，建筑功率就会越大。 | <font color =#0b9303>Power Cost</font>is an important indicator of your shelter’s Growth; the more underground facilities you build and the higher their levels, the greater the Power Cost will be.
+111 | 目前我们的建筑功率已经达标，可以继续升级避难所手册了。 | Our Power Cost now meets the requirement, so we can continue to Upgrade the Shelter Manual.
+112 | 我们的避难所现在已初具规模！ | Our shelter is really starting to take shape now!
+113 | 太好了！现在我们是不是不用担心丧尸会攻破我们避难所了！？ | Awesome! Does this mean we don’t have to worry about the zombies breaking into our shelter anymore!?
+114 | 不是的，丧尸不断攻击，再坚固的城门也会有被冲破的危险。想要维持地下堡垒的平稳运转，我们必须<font color =#0b9303>不断击退丧尸</font>！ | No, with the zombies constantly launching attacks, even the sturdiest gate can still be in danger of being breached. If we want to keep the underground fortress running smoothly, we have to<font color =#0b9303> keep repelling the zombies</font>!
+115 | 好耶，我们战胜了强大的丧尸BOSS！不过，在下一个丧尸BOSS来之前，我们必须抓紧完善避难所，变得更强！ | Nice, we took down that powerful zombie boss! But before the next zombie boss shows up, we need to hurry and upgrade our shelter so we can get even stronger!
+116 | 你说得对！我打算在两个工坊旁边加上<font color =#0b9303>楼梯间</font>，这样可以大大缩短勇士们的移动距离。 | You’re absolutely right! I’m planning to add a <font color =#0b9303>stairwell</font> next to the two workshops so it can greatly shorten the distance our warriors have to travel.
+117 | 好主意！我马上去开辟地块！建造楼梯间！ | Great idea! I’ll go open up a plot right away! And build the stairwell!
+118 | 完工！再在武器工坊旁建造1个楼梯间，就可以完成“勇士快线”了。 | All done! Build 1 more stairwell next to the Armory and you’ll complete the “Warrior Express.”
+119 | 太好啦！是核心能源！我要赶紧拿给发明家老头，修复发电厂。 | Awesome! It’s the core energy source! I’ve gotta hurry and bring it to that old inventor so we can fix the Power Station.
+120 | 发电厂升级后，加装了一个滚轮，现在我们可以安排两只土拨鼠上去跑步发电了！ | After the Power Station Upgrade, we added a running wheel, so now we can have two groundhogs running on it to generate power!
+121 | 快...快...我自己跑...不能偷懒，累死了鼠！ | H-Hurry... I’ll run on my own... No slacking, I’m dead tired, squeak, I’m beat!
+122 | 我们之前储存的干粮快要见底了，我担心我们很快就要饿肚子了... | We’re running low on the rations we stored before, and I’m worried we’ll be going hungry soon...
+123 | 怪我，一直忙着抵抗丧尸，忘记了避难所的开拓建设也同样重要。 | It’s on me—I’ve been so busy fighting off zombies that I forgot how important it is to keep expanding and building up the shelter.
+124 | 我们挖一个空房间出来建造餐厅，再安排个居民当厨师，负责稳定地提供餐食，这样大家饿的时候可以自行前往餐厅。 | Let’s clear out an empty room to build a Canteen, then assign a resident as the cook to provide meals steadily, so everyone can head there on their own whenever they’re hungry.
+125 | 嘿，铁匠，我们的勇士正在变多，因此我在考虑增加一些<font color =#0b9303>弓箭手</font>，远近配合，这会使我们的战斗实力变得更强！ | Hey, Blacksmith, our warriors are growing in number, so I’m thinking of adding some<font color =#0b9303>Archers</font>. With melee and ranged working together, our combat strength will be even greater!
+126 | 以我现在的手艺难以制作你需要的武器，继续锤炼下我们已有的锻造台，<font color =#0b9303>获得更多星星，解锁弓箭锻造工艺</font>吧！ | With my current skills, it’s hard to craft the weapon you need. Keep upgrading our existing forge,<font color =#0b9303> earn more Stars, and unlock the Bow Forging technique</font>!
+127 | 杰瑞，我已经学会了弓箭锻造，现在马上在武器工坊开辟一个<font color =#0b9303>弓箭锻造台</font>，打造你需要的远程武器！ | Jerry, I’ve just learned bow and arrow forging, and I’ll immediately set up a <font color =#0b9303>Bow and Arrow Forging Station</font> in the Armory to craft the ranged weapons you need!
+128 | 以你们现在的势力，想对付这个大家伙恐怕还是有些困难，还是让我来助你们一臂之力吧！ | With the strength you’ve got right now, taking on this big guy is going to be tough. Let me lend you a hand!
+129 | 小心，这次的丧尸BOSS看起来更强大了，不知道我们能不能坚持住... | Careful, this zombie boss looks even stronger this time, I don’t know if we can hold out...
+130 | 我会战斗至最后一刻！ | I will fight to my last breath!
+131 | 你刚才暴揍丧尸大块头那一招真实太帅了！你可以叫我浩克！真希望之后可以继续跟你一起作战！ | That move you just used to beat the crap out of that hulking zombie was insanely cool! You can call me Hulk! I really hope I get to keep fighting by your side!
+132 | 我们现在正在搭建避难所，可以邀请你加入吗，我们现在缺少的就是你这样有着丰富战斗经验的英雄领队。 | We’re setting up a shelter right now. Can we invite you to join us? A seasoned Heros leader like you is exactly who we’re missing.
+133 | 当然，比起在外面流浪的日子，还是有伴好多了。 | Of course, having someone by your side is still way better than those days wandering around alone.
+134 | 正所谓巧鼠难为无米之炊，我想我们避难所需要个稳定的食物来源。 | As the saying goes, even the cleverest cook can’t make a meal without rice. I think our shelter needs a stable source of Food.
+135 | 我这正好有些南瓜种子，如果能开辟一个种植园出来就好了。 | I happen to have some pumpkin seeds on me. If we could set up a Plantation, that would be great.
+136 | 这不难，继续开辟地块就行！ | That’s easy, just keep opening up new plots of land!
+137 | 种上我们最爱的南瓜！这下不用担心饿肚子啦~ | Plant our favorite pumpkins! Now we don’t have to worry about going hungry~
+138 | 丧尸太多了，我们快要支撑不住了！ | There are too many zombies—we can’t hold out much longer!
+139 | 该我出手咯！砰砰砰！我最喜欢轰炸丧尸群了！ | My turn to jump in! Bang, bang, bang! Blasting zombie hordes is my favorite thing!
+140 | 还好有你及时出手相助，不得不说，对付丧尸群，还是炸弹好用！ | Good thing you jumped in when you did. I’ve gotta say, when it comes to dealing with a horde of zombies, bombs really are the way to go!
+141 | 我也是偶然路过，我准备一边环游世界一边轰炸丧尸！ | I just happened to be passing by too. I’m planning to travel the world while blasting zombies!
+142 | 这里有源源不断的丧尸，不知道你是否愿意留下来，跟我们一起击退入侵堡垒的丧尸群呢？ | There’s an endless horde of zombies here. Would you be willing to stay and help us push back the zombies invading the fortress?
+143 | 我想我还是更喜欢环游世界，等到有一天我想找个避难所住下来，我也许会回来的！ | I think I still prefer traveling the world. Maybe one day, when I feel like finding a place to settle down, I’ll come back!
+144 | 据我观察，每次避难所核心升级，爆发出来的能量扩散，都会使得地下的岩块发生松动，我们可以沿着这些裂开的岩石扩建地下避难所。 | From what I’ve observed, every time the shelter core gets an Upgrade, the burst of released energy loosens the rock underground, and we can extend the underground shelter along those newly opened cracks.
+145 | 不过，当务之急还是先加强勇士实力，只有勇士们稳稳守住城门，我们才能腾出手来开辟地下区域。 | Still, our top priority is to strengthen the warriors first. Only when they can hold the Gate without fail can we free up our hands to open up the underground area.
+146 | 没问题！我这就<font color =#0b9303>升级成长之路</font>，获取头盔制作工艺，帮助勇士增强实力！ | No problem! I’ll <font color =#0b9303>Upgrade the Path of Growth</font> right away, learn the helmet crafting technique, and help the warrior grow stronger!
+147 | 我们现在学会了打造更多不同类型的装备，勇士们可以根据自己的需要挑选合适的装备。 | We’ve now learned how to forge a wider variety of gear, so warriors can choose the equipment that best suits their needs.
+148 | 太好了，我的铠甲还可以接着用，请给我打造一件新的头盔！ | Awesome, my armor’s still good to go. Please forge me a new helmet!
+149 | 救...救救我！这里有丧尸，要出鼠命啦！ | H-Help... somebody help me! There are zombies here, I’m gonna die like a rat!
+150 | 冷静点，你跑的这么快，丧尸可追不上你。我说啥来着，这也是一种惊喜，对吧！ | Easy, take a breath. If you can run that fast, no zombie’s catching you. See? I told you, now that’s a nice little surprise, huh!
+151 | 别紧张，地下的小丧尸通常行动缓慢，只会呆在原地，等我们英雄来收拾掉他们就行。 | Relax, the little zombies down below usually move slowly and just stay put, waiting for us Heros to come finish them off.
+152 | 轻松解决！继续开地吧，现在没有丧尸了。 | All taken care of! Keep expanding the Expand More Zone, there are no zombies now.
+153 | 呼~希望下块地开出来是宝箱不是丧尸。 | Phew~ Here’s hoping the next tile I flip is a treasure chest, not a zombie.
+154 | 我们在不断的战斗中积攒了一些经验，是时候进行升级了！ | We’ve gained some experience from our constant battles—it’s time for an Upgrade!
+155 | 我感受到我的力量变得更强了！ | I can feel my power growing stronger!
+156 | 是招募号角！我们可以用号角向废土发出新号，招募更多英雄加入我们。 | It’s the Recruitment Horn! We can use the horn to send out a new call across the Wasteland and recruit more Heros to join us.
+157 | 确实避难所的发展离不开英雄的帮助，事不宜迟，我们马上前去招募英雄！ | The shelter’s Growth really can’t happen without the help of Heros, so let’s go recruit some Heros without delay!
+158 | 哈哈我从未见过如此坚固的堡垒，看来我这次来对地方了！ | Haha, I’ve never seen such a solid fortress before. Looks like I’ve come to the right place this time!
+159 | 是你，喜欢研发的怪老头，好久不见，现在我们又能一起并肩作战了！ | It’s you, that eccentric old guy who loves developing things. Long time no see, we can fight side by side again now!
+160 | 还有我们呢！我们一起守卫我们的堡垒！ | And don’t forget us! We’ll defend our fortress together!
+161 | 自从有了健身房，大家工作之余都会到健身房练练，不仅变得健康强壮了，脸上的笑容也多了。 | Ever since the Gym was built, everyone has been dropping by to work out after work. Not only have they become healthier and stronger, but there are also a lot more smiles on their faces.
+162 | 是的，尽管前线战事繁忙，但也不要忘了关注地下鼠民们的状态，有了大家的支持，我们才能更好地建设避难所。 | Yes. Even with the fighting raging on the front lines, we can’t afford to ignore how the ratfolk living underground are doing. With everyone’s support, we’ll be able to build a better shelter for all of us.
+163 | 啊啊啊！怎么又是丧尸！ | Aaahhh! Zombies again?!
+164 | 小心！这是丧尸BOSS，力量强大，会威胁避难所的安全，还是让我来清理掉他吧！ | Watch out! That’s a zombie BOSS, it’s incredibly strong and could threaten the safety of the shelter, so let me take it down!
+165 | 我能感受到丧尸越来越强大，战斗变得更加艰难了！ | I can feel the zombies growing stronger and the fights getting tougher!
+166 | 为了保护能源核心，我们必须不断提升自己，招募可以获得<font color =#0b9303>英雄碎片</font>，使用碎片升星可以大幅提升我们的实力。 | To protect the Energy Core, we must keep growing stronger. Recruit to obtain <font color =#0b9303> Heros Shards</font>, and use these shards to rank up stars for a huge boost to our power.
+167 | 神奇的感觉，我确实能感到我的实力变强了！ | What an amazing feeling, I can really tell I’ve gotten stronger!
+168 | 结实的装备！这可以让我应对更强的丧尸！ | Sturdy gear! This will let me take on stronger zombies!
+169 | 着火啦！帮帮忙！救救我的厨房啊—— | Fire! Somebody help! Save my kitchen—
+170 | 别慌，我们这就去灭火！ | Stay calm, we’ll put out the fire right now!
+171 | 要是没有及时发现，我们的避难所可就要被烧没啦！ | If we hadn’t caught it in time, our shelter would’ve burned to the ground!
+172 | 对不起，我也不知道这怎么就着火了... | Sorry, I have no idea how it suddenly caught fire...
+173 | 在地下生活，用电用火少不了，有些安全隐患也是正常的。只要时常留意下，<font color =#0b9303>及时处理</font>就好了。 | Living underground, you can’t avoid using electricity and fire, so some safety risks are normal. Just keep an eye on things and<font color =#0b9303> deal with them in time</font> and that’ll be fine.
+174 | 没错就是这里！这个地方有大量石矿，用来开采石料最合适不过了。 | Yep, this is the place! There’s a huge amount of stone ore here—perfect for quarrying building stone.
+175 | 石料是重要的建设资源，我们马上建设一个石矿场！ | Stone is a vital construction resource, so let’s build a stone quarry right away!
+176 | 采石场顺利完工！马上派遣1名石矿工，开场石料吧！ | The Quarry is complete! Dispatch 1 Stone Miner right away to start gathering stone!
+177 | 看来图纸画的没错，在餐厅下面我们发现了大量的铁矿原石！ | Looks like the blueprints were right—we’ve discovered a huge amount of raw Iron ore beneath the Canteen!
+178 | 马上建造一个铁矿场，有了这些资源，我们避难所的发展一定能更上一层楼。（不对，避难所是不是应该说“更下一层楼”呢？） | Let’s build an Iron Mine right away. With these resources, the Growth of our shelter will definitely reach the next level.（Or wait, for a shelter, should we say it’s going “down” a level instead?）
+179 | 在充满危机的环境里生存，拥有一个强大的联盟非常重要！大人，建造一座联盟大厅，用来联络盟友吧！ | In a world full of danger, having a strong Alliance is crucial! My Lord, build an Embassy to stay in touch with your allies!
+180 | 现在就按照您的心意，<font color =#0b9303>创建或加入联盟</font>吧。 | Create or <font color =#0b9303>join an Alliance</font> now.
+181 | 升级时间较长，试试向盟友求助吧！ | The Upgrade will take a while—try asking your allies for help!
+182 | 就是这样！继续升级联盟大厅可以提升帮助效果，当然大人也别忘了在盟友需要的时候给予盟友帮助。 | That’s it! Keep upgrading the Embassy to improve the help effect, and of course, don’t forget to lend a hand to your allies when they need it.
+183 | 我们的勇士已经对目前的战斗运作体系十分熟悉了，接下来就可以<font color =#0b9303>自动挑战BOSS</font>了。 | Our warriors are already very familiar with the current combat system, so now they can <font color =#0b9303>auto-challenge the Boss</font>.
+184 | 嗯嗯！看我直接暴揍丧尸BOSS。 | Yeah! Watch me beat the crap out of that zombie boss.
+185 | 汉堡，我的射箭技术总是练不好，我想要一个武器，能让我在一个<font color =#0b9303>不远不近</font>的距离攻击怪物。 | Hamburg, my archery is never any good. I want a weapon that lets me Attack monsters at a<font color =#0b9303>medium</font>distance.
+186 | 那我想<font color =#0b9303>长矛</font>正好适合你！ | Then I think this <font color =#0b9303>spear</font> is just right for you!
+187 | 嘀嘀嘀—— | Beep beep beep—
+188 | 雷达刚装好，立即就收到了第一条情报信息，我们这就去看看！ | The radar’s just been set up, and we’ve already received our first Intel Detail, so let’s go check it out!
+189 | 我们曾经在兵营受训，可以前往废土世界中进行战斗，我们随时做好出征的准备。 | We once trained in the barracks so we could fight in the Wasteland, and we’re always ready to march out.
+190 | 确实，避难所的发展不仅需要有能守卫的勇士，还需要有能出征的士兵，欢迎你们的加入。 | You’re right—the Growth of our shelter depends not only on brave warriors who can defend it, but also on soldiers who can march out to fight. We’re glad to have you with us.
+191 | 情报站显示这里附近有游荡的丧尸，我们立即出兵出征剿灭他们。 | The Intel Hub shows there are wandering zombies nearby, so we’ll deploy our troops at once to wipe them out.
+192 | 有了雷达后，我们与外面的世界联系多了起来，发现避难所周围有<font color =#0b9303>许多丧尸</font>。 | Once we had the radar, we started connecting with the outside world much more and discovered there are <font color =#0b9303> a lot of zombies </font> around the shelter.
+193 | 我们现在士兵严重不足，很难对付外面的大片丧尸，赶紧<font color =#0b9303>建造盾兵营</font>，训练一些士兵。 | We’re critically low on soldiers right now, so it’s hard to deal with the massive horde of zombies outside. Hurry up and <font color =#0b9303>build an Infantry Camp</font> to train some soldiers.
+194 | 终于建成了，盾兵可以守卫我们的避难所，也可以外出作战获取资源。 | It’s finally complete. Our Infantry can now defend the shelter and head out to fight for resources.
+195 | 事不宜迟，让我们立即训练第一批盾兵吧。 | No time to waste, let’s start training our first batch of Infantry right away.
+196 | 想要加快地下避难所的发展，离不开科技的支持。 | If you want to speed up the underground shelter’s Growth, you can’t do it without technological support.
+197 | 好提议！我这就建造一个研究院，进行科技研究。 | Great idea! I’ll build a Research Institute right away and start doing technology research.
+198 | 研究院顺利完工！快来启动科技研究吧！ | The Research Institute is complete! Start your tech research now!
+199 | 在上次出征攻打丧尸的过程中，我们不少士兵都受伤了。 | During our last expedition against the zombies, many of our soldiers were wounded.
+200 | 我们应该在避难所中专门建造一个治疗受伤士兵的军医所。 | We should build a dedicated Infirmary in the shelter to treat our wounded soldiers.
+201 | 首先我们需要新开辟一些空房间，交给我吧，很快完成！ | First we’ll need to clear out some new rooms. Leave it to me, I’ll have it done in no time!
+202 | 事不宜迟，我们立即对受伤的士兵进行治疗！ | No time to lose, let’s treat the wounded soldiers at once!
+203 | 根据核心能量流动探测到的信息，这个地方有金矿。 | According to the core energy flow readings, there’s a Gold Mine here.
+204 | 是金子，快快开辟出来，我们就可以不用只靠丧尸爆金币啦！ | If that’s real Gold, hurry up and mine it out, then we won’t have to rely on zombies dropping Gold anymore!
+205 | 太好了，一座取之不尽的金矿，我可以升级我的工作台咯。 | Awesome, an endless Gold Mine—I can upgrade my workbench now.
+206 | 哈哈，可不能只有你用，所有建筑都需要金币来升级。 | Haha, you’re not the only one who gets to use it—every building needs Gold to Upgrade.
+207 | 我们避难所的规模真是越来越大了，现在我在避难所里闲逛都偶尔会迷路呢。 | Our shelter just keeps getting bigger and bigger—these days I even lose my way sometimes when I’m wandering around inside.
+208 | 哈哈！我们的开发计划还没停下来呢，我还计划着建个商店、建个展览馆、建个.... | Haha! Our dev plans haven’t slowed down yet. I’m still planning to build a Shop, an exhibition hall, and a...
+209 | 看来我还得继续挖呀挖呀，挖好多好多洞... | Looks like I still have to keep digging and digging, and dig a whole lot more holes...
+210 | 我们可以把锻造台<font color =#0b9303>拓宽</font>，多加1名铁匠一起进行装备打造，这样可以大大<font color =#0b9303>缩短勇士排队等待的时间</font>。 | We can expand the forge<font color =#0b9303></font> and bring in one more blacksmith to craft gear at the same time, which will greatly<font color =#0b9303> reduce the warriors’ queueing</font>.
+211 | 废土上最近正在流行擂台比武，大家在擂台上友好切磋，可以增进战斗实力，更好地对付丧尸。 | Duel matches in the Ring have become popular out in the wasteland lately. Friendly sparring in the Ring helps everyone sharpen their combat skills and deal with the zombies more effectively.
+212 | 我们的搭配简直是天作之合，相信我们能在擂台中取胜。迫不及待了！赶紧开地建造一个擂台吧！ | Our synergy is absolutely perfect—I’m sure we can win in the Ring. I can’t wait! Hurry up and Expand More Zone to build a Ring!
+213 | 我们的避难所建设的真好！ | We’ve built our shelter really well!
+214 | 好好好，伙计们，继续开挖吧，避难所的建设还要继续！ | Alright, alright, alright, folks, keep digging, we still need to keep building the shelter!
+215 | 我们的战斗实力越来越强，现在正适合建造一个擂台，与其他避难所的英雄们切磋一下。 | Our combat power keeps growing, so this is the perfect time to build a Ring and spar with Heros from other shelters.
+216 | 我喜欢这个提议！ | I like this idea!
+217 | 令人激动的擂台！让我看看是谁敢来挑战我们！ | An electrifying Ring! Let me see who’s got the guts to challenge us!
+218 | 哈哈浩克先等一下，我们首先需要设置好防守阵容，以便随时迎接挑战。 | Hang on a sec, Hulk—first we need to get our defense lineup in place so we’re ready for any challenge.
+219 | 一切准备就绪！现在就让我们主动出击，去<font color =#0b9303>挑战</font>别人吧！ | Everything’s ready! Let’s take the initiative and attack <font color =#0b9303> others and challenge </font>!
+220 | 我们出征世界地图，击败丧尸时搜刮到了一些战利品。战利品统一存放起来了，请定时领取。 | When we set out on the World Map and Slay Zombies, we picked up some loot. All loot has been stored together, so remember to Claim it regularly.
+221 | 避难所的规模逐渐扩大，适时颁布一些<font color =#0b9303>政令</font>，对避难所的发展至关重要。 | As the shelter gradually expands in scale, issuing certain <font color =#0b9303>decrees</font> at the right time is crucial to its development.
+222 | 每天可以在储藏室<font color =#0b9303>领取体力</font>到外面探索，不用担心没有体力无法完成情报任务了。 | You can claim Stamina</font> from the Storehouse<font color =#0b9303> every day to explore outside, so you no longer need to worry about running out of Stamina and being unable to complete Intel missions.
+223 | 大地图出征也需要讲究兵种配合，只有盾兵士兵可不行。继续开辟地块吧，我还需要建造一个矛兵营。 | You also need to coordinate your troop types when marching on the world map—relying on only Infantry won’t cut it. Keep expanding our territory; I still need to build a Lancer Camp.
+224 | 没问题！开地就交给我吧！ | No problem! Leave the Expand More Zone to me!
+225 | 哈哈！我们的堡垒已逐步完善，接下来我打算建造一些娱乐相关的房间，这可关系到鼠民们的福祉。 | Ha ha! Our fortress is coming together nicely, and next I’m planning to build a few entertainment rooms—this has everything to do with the well-being of our mousefolk.
+226 | 没问题！我们继续往下开挖！ | No problem! Let’s keep digging!
+227 | 我最近研究出了一种全新的药剂，听着，我们可以从丧尸身上提取出一些神奇的药剂，用来治疗濒死的土拨鼠。 | I’ve recently researched a brand-new potion. Listen, we can extract a remarkable elixir from zombies and use it to treat groundhogs on the verge of death.
+228 | 不愧是你，科学怪老头！噢不，我是说，您真是一位出色的科学家！我这就继续挖个房间出来，准备建造一个<font color =#0b9303>生化医院</font>！ | That’s so you, you mad scientist geezer! Oh no, I mean, you truly are an outstanding scientist! I’ll go dig out another room right away and get ready to build a <font color =#0b9303>Biohazard Hospital</font>!
+229 | 噢！这看起来是个机甲——没错吧？不是什么破铜烂铁的...... | Oh! That looks like a mech—right? Not just some pile of scrap...
+230 | 这坚硬的材质，和独特的造型，是机甲没错，不过只是一部分的机甲。 | That hard material and unique shape are definitely from a mech, but it’s only a part of one.
+231 | 是机甲就好！我要把这个拿给亚力斯特，他一定会开心的。 | As long as it’s a mech, I’m in! I’m taking this to Alistair—he’s going to love it.
+232 | 我们在开地的过程中找到了这个，亚力斯特。 | We found this while we were expanding the Expand More Zone, Alistair.
+233 | 没错，这是我的机甲！让我检查下，机甲的手臂、腿...这些都没了！不过能找回这个也不错了，谢啦！ | Yeah, that’s my mech, all right! Lemme check... the arms, the legs... all gone! Still, getting even this much back isn’t bad. Thanks!
+234 | 别着急，我还会继续开地帮你寻找机甲的！ | Don’t worry, I’ll keep Expand More Zone to help you look for that mech!
+235 | 看看这炮口，曾经我用它轰炸过无数的丧尸！虽然现在只有一只手臂，我想应该也是能打的。 | Look at this barrel—I’ve used it to blast apart more zombies than I can count! Even with just one arm now, I’d say I can still handle it.
+236 | 等我给你找回全部的机甲！可一定要用它狠狠轰炸丧尸！守护我们的堡垒！ | I’ll get all your mechs back for you! But you’ve got to use them to blast those zombies to pieces! Protect our fortress!
+237 | 看，亚力斯特，我们找回了另外一只手臂。 | Look, Alistair, we’ve recovered another arm.
+238 | 哈哈！火力值达标！现在是时候想想办法让机甲动起来了。 | Haha! Power level’s on point! Now it’s time to figure out how to get this mech moving.
+239 | 左腿组装完毕！ | Left leg assembly complete!
+240 | 看起来机甲已经找回大半了，相信很快就能看到你驾驶机甲的样子了。 | Looks like we’ve recovered most of the mech already. I’m sure it won’t be long before we see you piloting it.
+241 | 右腿也找回来了，现在是不是可以启动机甲啦？ | We’ve got the right leg back too—does that mean we can boot up the mech now?
+242 | 不行，现在还差最后也是最重要的一个部件——操控杆。有了操控杆，才能在驾驶室控制机甲进行移动和和攻击。 | No, we’re still missing the last and most important component—the control stick. With the control stick installed, you can operate the mech from the cockpit to move and attack.
+243 | 好的！继续挖吧伙计们！掘地三尺也要把这个操控杆找出来！ | Alright! Keep digging, folks! I don’t care if you have to dig three feet down, we’re gonna find that control lever!
+244 | 机甲的操纵杆也组装好了，没想到你居然真的可以驾驶这么酷的机甲，快去试试吧！ | The mech’s control stick is assembled too. I didn’t expect you’d actually get to pilot such a cool machine—go give it a try!
+245 | 哈！机甲启动！机甲战士登场！让我们开始轰炸丧尸吧！ | Ha! Mech online! Mecha warrior on the field! Let’s start bombing those zombies!
+246 | 来者何人？ | Who goes there?
+247 | 我们是一群流浪的土拨鼠，刚才远远看到这里爆发了蓝色的光芒，推测这里有避难所，所以前来投靠。 | We’re a band of wandering marmots. We saw a burst of blue light from afar just now and figured there must be a shelter here, so we came hoping to take refuge.
+248 | 蓝色的光芒？可能是主控室升级后，核心释放出来的能量吸引了他们。 | Blue light? It might be that after the main control room Upgrade, the energy released from the core started drawing them in.
+249 | 守卫避难所和发展避难所都需要帮手，招收一些幸存鼠也是好的。 | We’ll need some extra paws to both defend the shelter and drive its Growth, so recruiting a few survivor mice isn’t a bad idea.
+250 | 不过避难所可不收闲鼠，让我看看你们都有什么特长。 | But this shelter doesn’t take in idle rats. Let me see what you’re actually good at.
+251 | 终于完工了！我们有家了~ | It’s finally finished! We have a home now~
+252 | 最近铁匠一直忙着开地、建造房间，还要打造武器，一定累坏了，好好睡一觉休息下吧。 | The blacksmith’s been busy Expanding More Zone, building rooms, and forging weapons lately. He must be exhausted—let him get a good night’s sleep and some rest.
+253 | 嘿嘿~等我养足精神，一定给你们打造更好的武器。 | Hehe~ Once I’m fully recharged, I’ll definitely forge even better weapons for you.
+254 | 浩克你也休息下吧，抵御丧尸是持久战，我们需要轮流休息。别担心，我会守住门口不让丧尸进来的。 | Hulk, you should get some rest too. Fighting off zombies is a long haul, and we need to take turns resting. Don’t worry, I’ll hold the doorway and keep them from getting in.
+255 | 噢小铁匠，你一整晚都在翻来覆去，床吱吱呀呀的响，我总是被你吵醒！ | Oh, little blacksmith, you’ve been tossing and turning all night, the bed’s been creaking away and you keep waking me up!
+256 | 床的质量是不太好，不过这只是暂时的，我这就升级宿舍，保证你下次回来睡得舒舒服服！ | The bed isn’t exactly great, but it’s only temporary. I’ll upgrade the Dormitory right away so next time you come back you can sleep in total comfort!
+257 | 我已经迫不及待要吃上热腾腾的饭菜了！ | I can’t wait to dig into a hot meal!
+258 | 要吃饱了才有力气跟丧尸干架！ | Gotta fill up first if I want the strength to take on those zombies!
+259 | 哈哈，别着急，我有一些拿手好菜，不知道你们更想吃哪种呢？ | Haha, don’t rush me. I’ve got a few signature dishes—what are you in the mood for?
+260 | 收到！马上为您烹饪！保证新鲜出炉！ | Got it! I’ll cook it up for you right away! Fresh out of the oven, guaranteed!
+261 | 吃饱了！我现在的状态可以马上打100个丧尸！ | I’m stuffed! I feel like I could take on 100 zombies right now!
+262 | 那我去给你打造100件武器！ | Then I’ll forge 100 weapons for you!
+263 | 吃饱就好，你们开心我也开心~ | As long as you’re full, that’s what matters. If you’re happy, I’m happy too~
+264 | 不好，由于我们新建了不少房间，接入电路后，电路过载导致核心直接停止运转了。 | This is bad. We’ve added so many new rooms that once we hooked them into the circuit, it overloaded and caused the core to shut down completely.
+265 | 我倒是有办法可以重新启动核心，只是需要一样东西——核心能源，它相当于一个后备电池，可以用于修补核心。 | I do have a way to restart the core, but I’ll need one thing—the core energy. It acts like a backup battery that can be used to patch up the core.
+266 | 一般避难所都会备上这么一个后备能源，也许用电脑就可以定位到。 | Most shelters keep a backup power source like this on hand—maybe it can be located with a computer.
+267 | （搜索中...）有了！核心能源就在地下！我们继续开地！ | （Searching...）Got it! The core energy source is underground! Let’s keep expanding the Expand More Zone!
+268 | 根据电脑分析，虽然目前电力短缺问题解决了，但还是存在<font color =#0b9303>供电波动</font>，偶尔还是会有一些房间停电。 | According to the computer analysis, although the current Power shortage has been resolved, there are still <font color =#0b9303>supply fluctuations</font>, and some rooms still lose power from time to time.
+269 | 什么！？呜呜呜，我怕黑，有没有不停电的办法... | What!? *sniff* I’m scared of the dark. Isn’t there some way to keep the power from going out...
+270 | 不要慌，核心有个后备功能，就是可以通过消耗金币<font color =#0b9303>大幅提升发电功率</font>，只要把这个打开，就可以<font color =#0b9303>解决电力短缺</font>的情况。 | Don’t panic, the core has a backup function: by spending Gold<font color =#0b9303> you can greatly boost the Power Supply</font>. As long as you switch this on, you can<font color =#0b9303> solve the Power shortage</font>.
+271 | 丧...丧尸打进来了吗，刚才好像地震了，我好像还听到了奇怪的<font color =#0b9303>吼叫声</font>！ | Zom... have the zombies broken in? It felt like an earthquake just now, and I think I even heard some weird <font color =#0b9303>roaring</font>!
+272 | 别慌，可能只是刚才工人们在地下开辟铁矿带来的震动，而且核心升级后，宿舍下面的土块有些松动也是正常的。 | Relax, it’s probably just the workers mining for Iron underground that caused the tremor, and with the core Upgrade, it’s perfectly normal for the soil under the Dormitory to have loosened up a bit.
+273 | 别担心！等我挖开宿舍下面的土块，再加固一下就好了！ | Don’t worry! Once I dig out the dirt under the Dormitory and reinforce it a bit, it’ll be fine!
+274 | 刚才突然<font color =#0b9303>断电</font>，我在锻造武器的时候差点打到了自己的手！ | The power suddenly went out<font color =#0b9303> just now</font>, and I almost hit my own hand while I was forging a weapon!
+275 | 别急，我正在排查停电原因！核心能量正常运转，供电设备正常，电路负载... | Hold on, I’m checking the cause of the outage! Core energy is running normally, power supply equipment is fine, circuit Load...
+276 | 原来如此，我们扩展了避难所，需要供电的房间增加了，以目前的核心等级，无法承受目前的电力需求了。 | I see. We’ve expanded the shelter, so there are more rooms that need power. With the core at its current level, it just can’t handle the power demand anymore.
+277 | 那我们赶紧<font color =#0b9303>升级发电厂</font>吧！ | Then let’s quickly <font color =#0b9303>upgrade the Power Station</font>!
+278 | 奇怪，按照杰瑞从电脑里得到的数据，这里附近应该有着<font color =#0b9303>丰富的矿藏资源</font>... | Weird. According to the data Jerry pulled from the computer, there should be<font color =#0b9303>rich mineral deposits</font>around here...
+279 | 可是，我们在建造餐厅的时候好像并没有发现，难道是当时遗漏了？ | But we didn’t seem to notice it when we were building the Canteen—did we somehow overlook it back then?
+280 | 嘿，我说你们俩，拿着图纸在这嘀嘀咕咕这么久，不会是想拆掉我的餐厅吧！？ | Hey, you two—standing there whispering over those blueprints for so long, you’re not planning to tear down my Canteen, are you!?
+281 | 不不，我们只是在找适合挖矿的地方。虽说矿石对于城建很重要，但是吃饭对我来说最重要，嘻嘻~ | No, no, we’re just looking for a good spot to mine. Ore is important for building up the city and all, but eating is what matters most to me, hehe~
+282 | 也许是在<font color =#0b9303>饭堂的下方</font>，我们继续建造楼梯间，向下找找看吧~ | Maybe it’s somewhere below <font color =#0b9303> Canteen</font>, let’s keep building the stairwell downward and take a look~
+283 | 紧急求助！我的一群伙伴被困在了废土之中，请求避难所收留！ | Emergency! I need help—my whole crew is trapped out in the wasteland and we’re begging the Shelter to take us in!
+284 | （嗯，不错，一看就是训练有素的士兵） | （Not bad, you look like a well-trained soldier.）
+285 | 杰瑞，我想，救援这群士兵加入我们是个好选择。有了士兵，我可以带领他们出征废土 | Jerry, I think rescuing these soldiers and having them join us is a good call. With them on our side, I can lead them into battle in the wasteland
+286 | 你说的对，我们不难只顾着避难所内部分发展，外面有更大的世界等待探索。 | You’re right, we can’t just focus on Growth inside the shelter—there’s a much bigger world out there waiting to be explored.
+287 | 好，我们会接收你们。请问你的伙伴们在哪里？ | All right, we’ll take you in. Where are your companions?
+288 | 这...我也是走了很远才找到这里，废土茫茫，不知道还能不能找到... | I... I had to travel a long way just to find this place. The wasteland stretches on forever—I don’t know if I’ll ever find any more...
+289 | 别慌，我可以在避难所建个<font color =#0b9303>广播室</font>，这样就能搜寻到你伙伴们的信号了！ | Don’t panic, I can set up a <font color =#0b9303>radio room</font> in the shelter—that way we’ll be able to pick up your friends’ signals!
+290 | Hey，man！你怎么回事！啊，好痛... | Hey, man! What’s your problem! Ah, that hurts...
+291 | 我也不想的，跑着跑着轮子就自己滚下来了，可能是我跑的太快了，跑步机承受不了我的速度了！ | It wasn’t on purpose—one of the wheels just flew off while I was running. I guess I was going too fast and the treadmill couldn’t handle my speed!
+292 | 可别自恋了，我可不像你只会跑，拳头练好了才是硬道理！ | Oh, don’t flatter yourself. I’m not like you, only good at running away — the real deal is having the fists to back it up!
+293 | 好了，没必要吵架。依我看，健身房的设备是时候需要升级一下了。 | All right, no need to argue. If you ask me, it’s about time the Gym equipment was upgraded.
+294 | 确实，我每次跑步都会咯吱咯吱响。。。 | Yeah, every time I run I just creak and rattle...
+295 | 打得好！想必平日里也认真训练了。 | Nice hit! You must have been training hard.
+296 | 剑士大人一直是我的偶像！希望有机会可以跟随您出征，征服废土！ | You’ve always been my idol, Sir Swordsman! I hope I’ll get the chance to follow you into battle someday and conquer the wasteland!
+297 | 正所谓养兵千日，用兵一时。好，有机会我一定带你们出去，去击溃丧尸！ | You train troops for years just to use them in a single crucial moment. All right, if we get the chance, I’ll definitely lead you out there to crush those zombies!
+298 | 怎么样，杰瑞，你看起来心事重重，是避难所遇到什么问题了吗？ | What’s up, Jerry? You look really preoccupied—did something happen at the shelter?
+299 | 不，没有什么问题，我们避难所发展的非常好。 | No, nothing’s wrong. Our shelter’s Growth is very good.
+300 | 只是看到避难所现在发展得这么好，不禁有些感慨，当初我们来到这里得时候，避难所还什么都没有。 | Seeing how well the shelter has grown now, I can’t help feeling a bit sentimental. Back when we first came here, the shelter had nothing at all.
+301 | 那我们现在可躺平啦？ | So does that mean we can just kick back now?
+302 | 小铁匠你就天天想着躺平！在废土里，我们可不能安于现状，只有不断发展状大自己，才能维持避难所的运转，保证大家伙的生活。 | You little blacksmith, all you ever think about is slacking off! Out here in the wasteland, we can’t just get comfortable with how things are—only by constant Growth and growth in our own strength can we keep the shelter running and make sure everyone can live on.
+303 | 没错！我会奋战到丧尸消失那一天！ | That's right! I'll keep fighting until the day the zombies are gone!
+304 | 噢，一只烂醉如泥的小土拨鼠，未成年不能喝酒噢！...不过末日里也没人查土拨鼠的身份证。 | Oh, a little groundhog drunk out of its mind. Minors aren’t allowed to drink, you know! ...But in the apocalypse, nobody’s checking a groundhog’s ID.
+305 | 我成年了！你可管不着我！ | I’m an adult now! You can’t tell me what to do!
+306 | 别这样杰瑞，也许他需要我们的帮助呢。这位朋友，你遇到什么困难了吗。 | Don’t be like that, Jerry, maybe he needs our help. Hey there, friend, are you having some kind of trouble?
+307 | 我原本是一名机甲战士，在一次与丧尸BOSS的交战中，我的机甲被撕成了碎片。没有了机甲，我就失去了战斗能力，我是一只废鼠... | I used to be a mech warrior. In a battle against a zombie boss, my mech was torn to pieces. Without my mech, I lost my ability to fight. I’m just a useless rat...
+308 | 没关系，我们可以帮你修复机甲，只要可以找回的你机甲部件。 | It’s all right, we can help you repair your mech, as long as we can recover your mech’s parts.
+309 | 真的！？你真是只好鼠！只不过丧尸BOSS一直在地下游走，我的部件恐怕散落在了各处。 | Really!? You’re such a good little mouse! It’s just that the zombie boss keeps roaming around underground, so I’m afraid my parts have been scattered all over the place.
+310 | 这好办，开地可是我的强项！ | That’s easy, Expand More Zone is my specialty!
+311 | 嘿！发明家老头，热气球终于研制成功啦！？ | Hey! Old inventor, the hot-air balloon is finally finished!?
+312 | 没错！热气球升空后，就可以再避难所上空侦察附近的情报了！ | That’s right! Once the hot-air balloon takes off, we can scout the area above the shelter again for nearby Intel!
+313 | 现在，我们需要在避难所下面建造个情报站，用于远程操控热气球以及接收情报。继续开地吧！ | Now we need to build an Intel Hub beneath the shelter to remotely control the hot air balloon and receive Intel. Keep expanding more zones!
+314 | 我提议，将丧尸的掉落放在避难所门口累计起来，这样就可以累计挂机奖励了！ | I suggest we pile up all the zombie drops at the shelter gate, so we can rack up idle rewards!
+315 | 好主意！ | Great idea!
+316 | 这是避难所发展手册，跟随他的指引，我们便能解锁更多武器和装备。 | This is the Shelter Growth Manual. By following its guidance, we can unlock more weapons and gear.
+317 | 天啊，丧尸太强了，看样子我们得先休整一下，去寻找增强自身实力的途径！ | Damn, these zombies are way too strong. Looks like we’d better fall back for now and figure out how to power ourselves up!
+318 | 伙计们，我收到消息，世界地图上开启了商队贸易，派遣货车运输货物到各个领地城中，就可以得到报酬。 | Guys, I’ve just heard that caravan trading has opened up on the world map. If we send wagons to deliver goods to cities in different territories, we can earn rewards.
+319 | 这可是避难所赚取物资的重要途径，我们也赶紧加入贸易队伍吧！ | This is a key way for the Shelter to earn supplies—let’s hurry up and join the trading caravan!
+320 | 军火库功能已经开启，升级各类武器装备，将大大提升我们的实力！ | The Armory feature is now available. Upgrade all kinds of weapons and gear to greatly boost our strength!
+321 | 土拨鼠领袖，我们蒙受了巨大的损失，附近的盟友知晓后特地为我们送来了<font color =#0b9303>物资增援</font>！ | Groundhog Leader, we’ve suffered heavy losses, and our nearby allies, upon hearing the news, have sent us <font color =#0b9303> supplies as reinforcements</font>!
+322 | 土拨鼠领袖，我们蒙受了巨大的损失，周边的岛主们知晓后特地为我们送来了<font color =#0b9303>物资增援</font>！ | Chief Groundhog, we’ve suffered heavy losses, and when the nearby island lords heard about it, they sent us <font color =#0b9303>supplies</font> as reinforcements!
+323 | 避难所远处传来一阵异响...... | A strange noise echoes from somewhere far off outside the shelter......
+324 | 该死的，居然遇到变异的丧尸首领，变异种会吸引召唤附近的丧尸，必须赶紧消灭他 | Damn it, we’ve run into a mutant zombie boss! Mutants will attract and summon nearby zombies—we have to take him out, fast
+325 | 丧尸炮手可以源源不断召唤丧尸，我们必须进行1次斩首行动，不然迟早会被他召唤的丧尸群拖跨的 | That zombie gunner can keep summoning zombies without end. We have to launch a one-time decapitation strike, or sooner or later his zombie horde will wear us down
+326 | 终于消灭了...不过我们的避难所已经被变异丧尸标记，日后必定还会有其他变异丧尸来袭的，必须加强英雄训练，早做准备！ | We finally wiped them out... but our shelter has already been marked by the mutant zombies. More of them are bound to attack us sooner or later, so we have to step up Heros' training and get ready now!
+327 | 领袖大人，食物快吃光了，怎么办？ | Leader, we’re running out of Food—what should we do?
+328 | 种植园的产出不够，我会派勇士到外面找找。 | The Plantation isn’t producing enough. I’ll send some warriors out to look around.
+329 | 太好了！不用担心饿肚子了。 | Awesome! No more worrying about going hungry.
+330 | 是不是你吃的太多了，请节省物资！ | Are you eating too much? Please conserve our supplies!
+331 | 我...我明白，在末日下生存并不容易。 | I... I understand, surviving the apocalypse isn’t easy.
+332 | 领袖大人，我想编一双彩色的草鞋给妈妈，您知道哪里有各种颜色的草吗？ | My lord, I want to weave a pair of colorful straw sandals for my mother. Do you know where I can find grass in different colors?
+333 | 丧尸身上会掉落一些种子，你拿草种去种，很快就能长成。 | Zombies will drop some seeds. Plant those grass seeds and they’ll grow in no time.
+334 | 谢谢大人！我可以给妈妈编出最好看的鞋子了！ | Thank you, sir! Now I can weave the most beautiful shoes for my mom!
+335 | 普通草鞋也能穿，别浪费时间在无关紧要的事上。 | Regular straw sandals are fine—don’t waste time on trivial stuff.
+336 | 妈妈开心很重要，我会继续找的，不麻烦您了。 | As long as Mom’s happy, that’s what matters. I’ll keep looking, so I won’t trouble you anymore.
+337 | 领袖大人，睡我上铺的兄弟打呼声音太大了，我根本没法睡觉！ | Chief, the guy in the bunk above me snores so loud I can’t sleep at all!
+338 | 你需要适应一下避难所的生活 | You’ll need to get used to life in the shelter
+339 | 是吗……睡不好还要继续干活，太辛苦了 | Yeah...? Having to keep working when you can’t even sleep properly—that’s rough
+340 | 你可以和他错开休息时间，我们避难所是轮流工作制的 | You can stagger your rest hours with his. Our shelter runs on a shift rotation system
+341 | 太好了，这下可以好好休息了。 | Perfect, now I can finally get some proper rest.
+342 | 领袖大人，餐厅柜子里面存放的食物不见了，您能派人去查查吗？ | Leader, the Food stored in the Canteen cupboard is missing. Could you send someone to check?
+343 | 我立刻派人去餐厅调查，现场一定留下了痕迹。 | I’ll have someone head to the Canteen right away to investigate; there must be traces left at the scene.
+344 | 领袖大人威武！您肯定能揪出偷吃食物的混蛋。 | Mighty leader, sir! You’re sure to root out the bastard who’s been stealing our Food.
+345 | 现在抽不出人手，这些小事不用在意。 | We’re short-handed right now, so don’t worry about these minor things.
+346 | 末日里没食物吃了也是小事吗…… | Not having any Food in the apocalypse is just a small thing...?
+347 | 每天挖洞太压抑了…好无聊啊 | Digging holes every day is so depressing... I’m so bored
+348 | 生存要紧，坚持住。 | Just stay alive. Hang in there.
+349 | 我知道，可是这样活着又有啥意思呢？ | I know, but what’s the point of living like this?
+350 | 今晚开个音乐会！ | Let’s put on a concert tonight!
+351 | 哇！大家会开心的！ | Wow! Everyone’s going to be so happy!
+352 | 领袖大人，我想用夜光石装饰宿舍，您下次出去探险时，能顺便带回来一些吗？ | Leader, I’d like to decorate the Dormitory with glowstones. Next time you go out exploring, could you bring some back for me?
+353 | 当然可以，其他居民看到心情也会更好，我一定给你带回夜光石。 | Of course. The other residents will feel better when they see it, too. I’ll definitely bring you back a Nightglow Stone.
+354 | 哈哈，太好了，我一定会把民居装饰的很漂亮！ | Haha, awesome, I’ll make sure to decorate the houses really beautifully!
+355 | 任务紧张，没有多余时间，没办法给你带。 | The mission’s tight and we’re out of time, so I can’t bring you along.
+356 | 这样，我，我明白了，居民们应该也会十分失望吧…… | I see… I understand now. The residents must be terribly disappointed too…
+357 | 领袖大人，我发现有人打探餐厅的存粮情况，肯定想打食物的主意，我能直接把他抓到你这来吗？ | Leader, I found someone snooping around about the Canteen’s Food stores. They’re definitely after our Food—can I just bring them straight to you?
+358 | 大概是你多想了，没人敢打食物的主意。 | You’re probably overthinking it—no one would dare go after the Food.
+359 | 大人不相信我吗？希望是我多想了吧…… | You don’t trust me, my lord? I really hope I’m just overthinking this…
+360 | 我会先查清楚，如果真有人敢打食物的主意，我不会放过他。 | I’ll look into it first. If someone really has their eye on our Food, I won’t let them get away with it.
+361 | 领袖大人英明！ | Wise and brilliant, my Leader!
+362 | 领袖大人，我的妹妹很容易生病，您有什么办法让她增强体质吗？ | My liege, my younger sister falls ill very easily. Do you know any way to help strengthen her constitution?
+363 | 应该是因为缺少运动，我会派人带她锻炼身体，其他居民也一起参加，之后还可以举办运动会。 | It’s probably because she isn’t getting enough exercise. I’ll have someone take her to work out, and the other residents can join in as well. After that, we can even hold a sports meet.
+364 | 谢谢领袖大人！有您的安排，妹妹和其他居民一定会越来越健康！ | Thank you, my Leader! With your arrangements, my sister and the other residents are sure to grow healthier and healthier!
+365 | 每个人体质不同，她天生体弱多病，我也没什么办法。 | Everyone’s built differently. She was born frail and sickly, and there’s really nothing I can do about it.
+366 | 我们都以为领袖无所不能，连您都没办法，妹妹只能这样活下去吗…… | We all thought the Leader could do anything. If even you can’t help, does that mean my sister has to go on living like this…
+367 | 领袖大人，我们挖矿用的矿镐全锈断了！ | My Lord, all our mining pickaxes have rusted through and snapped!
+368 | 地下环境潮湿，我会安排定期更换一批新的工具！ | The underground’s so damp, I’ll arrange to swap in a fresh set of tools on a regular basis!
+369 | 谢谢领袖大人！我们会更努力工作的！ | Thank you, my Leader! We’ll work even harder!
+370 | 末日下能用工具用就不错了，你要自己克服下困难。 | In the apocalypse, you’re lucky the tools still work; you’ll have to push through the difficulties yourself.
+371 | 好，我明白了，领袖大人。 | All right, I understand, my Leader.
+372 | 领袖大人，避难所里流传着关于您的离谱谣言，有说您会抛弃我们的，请您惩治那些传谣言的人。 | My Leader, there are outrageous rumors about you spreading through the shelter—some say you’re going to abandon us. Please punish those who are spreading these lies.
+373 | 随他去吧，谣言止于智者。 | Let him talk. Rumors stop with the wise.
+374 | 开始大家也都不信，但现在谣言越传越厉害，真的不用管吗…… | At first no one believed it either, but now the rumors are getting worse and worse. Are we really just going to ignore them..
+375 | 谣言继续传下去，恐怕假的也会传成真的，我会找出谣言源头。 | If these rumors keep spreading, I’m afraid the lies will start sounding like the truth. I’ll track down where they started.
+376 | 领袖英明！传出这些谣言的人一定居心叵测。 | Our leader is wise! Whoever started these rumors must have ulterior motives.
+377 | 领袖大人，墙渗水了！被褥长蘑菇了啊啊啊！ | My Leader, the walls are leaking! There are mushrooms growing in the bedding, aahhh!
+378 | 刚好，你今晚不用吃饭了，吃蘑菇就好了。 | Perfect, you don’t need dinner tonight—you can just eat mushrooms.
+379 | 红伞伞，白杆杆，吃完一起躺板板... | Red cap, white stem, once you eat it, you’ll all end up lying stiff as a board...
+380 | 我会派铁匠修补下墙壁。 | I’ll have the blacksmith patch up the wall.
+381 | 领袖大人考虑的太周全了，谢谢领袖大人！ | You’ve thought of absolutely everything, my Leader. Thank you, my Leader!
+382 | 领袖大人，有军火贩子趁您出海时，兜售自制火枪，那些火枪很容易走火伤人，真担心有人已经买了…… | My Lord, while you were out at sea, some arms dealers started peddling homemade muskets. Those things misfire easily and can seriously hurt people. I’m really worried someone might have already bought one..
+383 | 居然敢在我的岛上兜售军火，真是活腻了，我会解决这件事。 | They’ve got the nerve to peddle weapons on my island? They must have a death wish. I’ll take care of this myself.
+384 | 好！他们不敢上岛，只敢在岸边兜售火枪，一看就是一群懦夫。 | Hah! They don’t even dare set foot on the island—they just skulk along the shore hawking muskets. You can tell they’re a bunch of cowards at a glance.
+385 | 随他去吧，居民们都不会用武器，不会有人买。 | Let him be. The residents don’t know how to use weapons, so no one’s going to buy any.
+386 | 可是领袖大人，年幼的孩童容易被蛊惑，万一枪支走火…… | But, my Leader, children are so easily swayed—if a gun were to go off by accident..
+387 | 领袖大人，岛屿上出现了不少自称航海家的人，总想让人上他们的船，真担心有人被骗。 | My Lord, a bunch of people calling themselves navigators have shown up on the island, all trying to get others onto their ships. I’m really worried someone might get scammed.
+388 | 很可能是贩奴团伙，居然敢潜入我的岛屿，我会让他们有来无回。 | They’re most likely a slave-trading gang. To dare sneak onto my island—none of them are getting out alive.
+389 | 领袖大人霸气！ | Our leader is so badass!
+390 | 岛上最近没有收到失踪人口的报告，你应该是有什么误会。 | There haven’t been any missing-person reports on the island lately—you must be mistaken.
+391 | 可能真的是我多想了，希望不会有人出事吧。 | Maybe I really am just overthinking it. I just hope nothing happens to anyone.
+392 | 领袖大人，最近老是打雷下雨，有时候睡着了也被惊雷劈醒，真担心哪天被雷劈中…… | My liege, there’s been thunder and rain nonstop lately. Sometimes I even get jolted awake by a thunderclap, and I’m really worried that one of these days I’ll get struck by lightning…
+393 | 确实得防止天雷伤人， 我会尽快让人安装避雷针，不会让大家出事。 | We really do need to make sure no one gets hit by lightning, so I’ll have lightning rods installed as soon as possible. I won’t let anything happen to anyone.
+394 | 太好了！不用担心被雷劈了，谢谢领袖大人！ | Awesome! No need to worry about getting struck by lightning anymore, thank you, my liege!
+395 | 有点杞人忧天了，放心，人被雷劈中的概率非常低。 | You’re overthinking it. Relax, the odds of someone getting struck by lightning are really low.
+396 | 概率很低，但不是完全没可能，只能祈祷不要有意外了…… | The odds are tiny, but it’s not completely impossible. All we can do is pray nothing goes wrong..
+397 | 领袖大人，我很喜欢晚上看书，不知道怎么回事，我眼睛越来越看不清楚了，刚才差点没认出您。 | My Lord Leader, I really like reading at night, but somehow my eyesight is getting worse and worse. I almost didn’t recognize you just now.
+398 | 应该是眼睛近视了，我会给你配眼镜，戴上就能看清，以后别在昏暗光线下看书了，让眼睛多休息。 | Looks like you’re nearsighted. I’ll get you a pair of glasses—once you put them on, you’ll be able to see clearly. From now on, don’t read in dim light, and let your eyes rest more.
+399 | 就是戴在眼睛前的玻璃圆片吗？谢谢领袖，我终于能重新看清楚了！ | You mean those little glass disks you wear in front of your eyes? Thank you, Leader, I can finally see clearly again!
+400 | 以后别看书了，休息一段时间视力也许会恢复。 | Stop reading for now. If you give your eyes a break for a while, your vision might recover.
+401 | 会恢复吗？我昨天看不清差点掉洞里了。 | Will it get better? I could barely see yesterday and almost fell into a hole.
+402 | 领袖大人，有不少人嫌找厕所麻烦，在岛上随地大小便，我真的忍受不了。 | Commander, a lot of people think going to the restroom is too much trouble and just relieve themselves anywhere on the island. I really can’t stand it.
+403 | 他们可能实在太着急了，大家以后都穿上厚底鞋出门就行。 | They were probably just in too much of a rush. From now on, everyone should just go out wearing platform shoes.
+404 | 可是——这样好像没什么用，居民们都快忍不了了…… | But—this doesn’t really seem to help, and the residents are about to lose their patience..
+405 | 我会在各个建筑装修带抽水马桶的厕所，尽快解决这个问题。 | I’ll install restrooms with flush toilets in every building and get this fixed as soon as possible.
+406 | 真的吗！不愧是人人尊崇的领袖大人，我立刻去告诉其他居民。 | Really?! As expected of our revered leader, I’ll go tell the other residents right away.
+407 | 领袖大人，居民们都觉得纯色墙壁单调，我们可以画一些壁画，装饰宿舍吗？ | Leader, the residents all feel the plain-colored walls are too dull. Can we paint some murals to decorate the Dormitory?
+408 | 当然可以，居民们居然会画壁画，哈哈，看来咱们避难所真的是卧虎藏龙啊。 | Of course! Who would've thought our residents could paint murals, haha. Looks like our shelter is really full of hidden talents.
+409 | 谢谢领袖大人，只是有几个人会画简单壁画，不过我们一定会好好画。 | Thank you, my Leader. Only a few of us can paint simple murals, but we’ll make sure to do our very best.
+410 | 居住环境简单干净就好，不要浪费时间干没用的事。 | A simple, clean place to live is enough—don’t waste time on pointless stuff.
+411 | 是……领袖大人，我明白了，我会转告其他居民。 | Y-yes… Leader, I understand. I’ll let the other residents know.
+412 | 领袖大人，听说有岛屿天花病毒蔓延，死了很多人，真担心我们也—— | My Lord, I heard that a smallpox outbreak has hit one of the islands and many people have died. I’m really worried we’ll—
+413 | 不会的，我会安排所有人接种天花疫苗，绝不会让病毒在岛上传播。 | No, I’ll make sure everyone gets the smallpox vaccine. I will not allow the virus to spread on this island.
+414 | 领袖大人威武！有领袖大人庇护，我们的岛屿一定会越来越强！ | Glory to our Leader! With our Leader watching over us, our island is sure to grow stronger and stronger!
+415 | 我们的岛屿和他们隔着茫茫大海，病毒不会传到这里的。 | Our island is separated from them by a vast ocean; the virus won’t reach us here.
+416 | 可是部队经常需要出海探索 ……希望不会有意外吧。 | But the troops often have to head out to sea on expeditions… Let’s hope nothing goes wrong.
+417 | 领袖大人，有了您给的飞梭后，我们织布快了很多，但是现在棉纱总不够用，您有什么办法吗？ | My Lord, ever since you gave us the flying shuttle, our weaving has gotten much faster, but now we’re always short on cotton yarn. Do you have any ideas?
+418 | 是我的问题，居然忘了让人送珍妮机过去，用珍妮机纺纱就能解决。 | This is on me—I actually forgot to have someone deliver the Jenny Machine over. Once we use the Jenny Machine to spin the yarn, the problem’s solved.
+419 | 太好了，我们会更努力纺织，让岛上所有人都有穿不完的新衣服！ | Fantastic, we’ll work even harder at the loom so everyone on the island has an endless supply of brand-new clothes to wear!
+420 | 少睡少偷懒，加班加点纺纱不就行了。 | Sleep less, stop slacking off, and just put in some overtime at the spinning wheel.
+421 | 我们已经几乎不休息了，真担心这样下去，会有人累倒。 | We’ve barely had any rest. I’m really worried that if this keeps up, someone’s going to collapse.
+422 | 领袖大人，今天的饮用水有股奇怪的味道，我怀疑是水源有问题，可能有人偷偷把污水排放到河里！ | My Lord, the drinking water tastes strange today. I suspect there’s something wrong with the source—someone might be secretly dumping sewage into the river!
+423 | 没有人敢这么做，估计是你的味觉出了问题，找时间去医院看看。 | No one else would dare do that. My guess is your sense of taste is off—find some time and go to the Infirmary for a checkup.
+424 | 我吃其他东西的时候，没有觉得味道奇怪……领袖，我去医院看看。 | When I eat other things, they don’t taste strange… Leader, I’ll go to the Infirmary.
+425 | 刚才确实有人跟我报告，有人偷排污水，我正准备处理这件事。 | Someone did just report to me that someone was secretly dumping wastewater, and I was just about to deal with it.
+426 | 果然是这样！领袖大人，揪出罪魁祸首后千万不要轻饶他。 | I knew it! Leader, once you’ve dragged out the real culprit, don’t you dare let him off easy.
+427 | 领袖大人，我摔了一跤后，手臂没有伤口但一直很痛，您知道是怎么回事吗？ | My liege, I took a fall and now my arm really hurts even though there’s no wound. Do you know what might be going on?
+428 | 很有可能骨折了，你尽量不要动手臂，我安排医生给你拍X光片看看。 | It’s very likely you’ve fractured it. Try not to move your arm, and I’ll arrange for the doctor to take an X-ray.
+429 | 用那个能透过皮肤拍照的机器？！谢谢领袖大人，我终于能知道我的手有什么问题了。 | With that machine that can take photos through skin?! Thank you, my leader, I can finally find out what’s wrong with my hand.
+430 | 不用管，摔一跤应该没什么事，过几天就好了。 | Don’t worry about it, it’s just a fall. You’ll be fine in a few days.
+431 | 真的吗？领袖，很多天了，我的手臂越来越痛……不像会好转。 | Really? Leader, it’s been days—my arm just keeps hurting more and more... it doesn’t feel like it’s going to get better.
+432 | 领袖大人，岛上有些地方晚上太暗了，走夜路真不方便，可以请您加装一些路灯吗? | My Lord, some parts of the island get really dark at night, and it’s hard to walk around. Could you please install some more streetlights?
+433 | 别走夜路就行，岛上没有多余的资源去解决这事。 | Just stay off the roads at night. The island doesn’t have the spare resources to deal with that.
+434 | ……晚上不能出门吗，看来除了这样，没别的办法了。 | …So I can’t go out at night? Looks like there’s no other way, then.
+435 | 确实是我考虑不周，我会尽快派人去安装路灯。 | You’re right, I didn’t think this through. I’ll send someone to install the streetlights as soon as possible.
+436 | 领袖大人威武！居民们都会非常感谢您！ | You're amazing, my Leader! The residents will all be truly grateful to you!
+437 | 领袖大人，最近有人在路上横冲直撞飙车，请您治治这些飙车党吧。 | Leader, someone’s been street racing and driving like maniacs lately. Please crack down on these speed freaks.
+438 | 居然有这种事，我会尽快制定交通规则，也会惩戒飙车党。 | I can’t believe this is happening. I’ll draw up traffic regulations as soon as possible and crack down on these speed freaks.
+439 | 太好了，有您的惩戒，他们肯定不敢开车乱撞了。 | Fantastic. With your punishment hanging over them, they’ll definitely think twice before driving around like maniacs.
+440 | 以后走路小心点就行，注意给开车的人让路。 | Just watch where you’re walking from now on, and make sure to give way to drivers.
+441 | 领袖，大家已经很小心了，希望不要有大的交通事故。 | Leader, everyone’s already being very careful, we just hope there won’t be any serious traffic accidents.
+442 | 领袖大人，隔壁邻居总在半夜装修，我要被电钻声折磨的精神衰弱了，请领袖大人帮帮我吧。 | My Leader, the neighbor next door keeps doing renovation work in the middle of the night. The sound of the power drill is driving me to a nervous breakdown—please, My Leader, you have to help me.
+443 | 影响别人睡觉确实过分，我会让他注意装修时间。 | It is really out of line to disturb other people’s sleep. I’ll tell him to stick to proper renovation hours.
+444 | 谢谢领袖大人，我以后应该能睡好觉了！ | Thank you, my Leader. I should finally be able to sleep well from now on!
+445 | 这种小事你自己能解决，直接找上门跟他理论吧。 | You can handle something this minor on your own—just go straight to him and argue it out face-to-face.
+446 | 我独自一人不敢上门，这样下去，我只怕真的会发疯。 | I don’t dare go over there alone. If this keeps up, I really am going to lose my mind.
+447 | 领袖大人，海边风大浪大，太潮湿了，门窗也被腐蚀生锈了，您有什么办法吗？ | My Leader, the wind and waves are fierce by the sea and it’s so damp that the doors and windows have started to corrode and rust. Do you have any solution?
+448 | 早晚多开窗通风就好，风会吹走湿气。 | Just make sure to open the windows more often in the morning and at night; the breeze will carry the dampness away.
+449 | 可是领袖，早晚开窗的话，湿气就会进入室内了…… | But Leader, if we open the windows in the early morning and evening, all that damp air will get inside…
+450 | 最近确实太潮湿，别担心，我立刻安排人在各个建筑放干燥剂，再让人用除湿机好好除湿气。 | It really has been too damp lately. Don’t worry, I’ll immediately have people put desiccant in every building and run dehumidifiers to pull the moisture out properly.
+451 | 多谢领袖大人！我们也会早晚关窗，不让湿气进入室内！ | Thank you so much, my Leader! We’ll make sure to close the windows in the mornings and evenings so the damp air doesn’t get inside!
+452 | 领袖大人，谢谢您收留我们，这是我们的一点心意，请您收下！ | My Lord Leader, thank you for taking us in. This is a small token of our gratitude—please accept it!
+453 | 我会珍视你们的心意，也希望你们在避难所过的开心！ | I’ll treasure the kindness you’ve shown me, and I hope you have a great time here in the shelter!
+454 | 领袖大人，谢谢您让我们有了容身之处，请您一定收下这些<font color =#0b9303>物资</font>，不然我们无法心安理得住在这里…… | My lord, thank you for giving us a place to stay. Please, you must accept these <font color =#0b9303>supplies</font>, or we won’t feel right about living here..
+455 | 也好，我会好好利用这些物资提升实力，更好的庇护大家。 | All right. I’ll make good use of these supplies to grow stronger, so I can better protect everyone.
+456 | 谢谢领袖大人！有您的庇护，我们不用再担惊受怕了。 | Thank you, my lord Leader! With your protection, we no longer have to live in fear.
+457 | 领袖大人，是您一直辛苦经营，才让我们有这么干净舒适的居所，请您一定要收下这些<font color =#0b9303>谢礼</font>。 | My Lord Leader, it’s only thanks to your tireless efforts that we have such a clean and comfortable place to live, so please, you must accept these <font color =#0b9303>tokens of our gratitude</font>.
+458 | 简直是雪中送炭！谢谢你们，我会继续好好经营，让大家的生活越来越好。 | This is a real lifesaver! Thank you all—I’ll keep running things well so everyone’s life just keeps getting better.
+459 | 能帮到您真是太好了，是您给了我们幸福无忧的生活，我们会继续给您收集物资。 | I’m so glad I could help you. It’s thanks to you that we can live such a carefree, happy life, and we’ll keep gathering supplies for you.
+460 | 领袖大人，丧尸一直攻击我们避难所，希望这些<font color =#0b9303>物资</font>能助力避难所发展下去，让我们能够一直住在这里。 | Leader, the zombies keep launching Attack on our shelter. I hope these<font color =#0b9303>supplies</font>can help our shelter keep growing so we can keep living here.
+461 | 谢谢大家支持，我会物尽其用，壮大避难所，铲除威胁，不会让大家流离失所的。 | Thank you all for your support. I’ll make the most of every resource, grow our shelter, wipe out every threat, and I won’t let any of you be driven from your home.
+462 | 领袖大人威武！能成为您的子民，我们无比荣幸。 | Mighty leader! It is our greatest honor to become your subjects.
+463 | 领袖大人，我们用下海采的珍珠和贝壳，去市集换了不少<font color =#0b9303>物资</font>，都在这里，领袖一定要收下。 | My liege, we traded the pearls and shells we gathered from the sea at the market for quite a lot of <font color =#0b9303>supplies</font>. They’re all here—please, you must accept them.
+464 | 大家总是给我惊喜，真心谢谢你们。 | You all keep surprising me—thank you, truly.
+465 | 领袖大人，我们都不想当只会闲逛的人，建设岛屿，人人有责！ | My Lord, none of us want to just wander around doing nothing—everyone has a part to play in building up this island!
+466 | 领袖大人您终于来了！我今天下矿时捡到一个布袋，里面居然装满了<font color =#0b9303>钻石</font>，终于可以交给您了。 | My Leader, you’re finally here! When I went mining today, I found a cloth sack, and it was actually filled with <font color =#0b9303>Gems</font>. I can finally hand them over to you.
+467 | 钻石？！你太厉害了，我们有再多钻石都不嫌多。 | Gems?! You’re amazing—no matter how many Gems we have, it’s never enough.
+468 | 哈哈，领袖喜欢就好，我工作时多留意下，说不定还能捡到。 | Haha, as long as the Leader likes it. I’ll keep an eye out while I’m on the job—who knows, I might even pick one up.
+469 | 领袖大人，我今天闲逛时在地铁站里发现一袋<font color =#0b9303>钻石</font>，我赶紧跑来找您，您一定用得上。 | My Leader, I was wandering around today and found a bag of <font color =#0b9303>Gems</font> at the subway station, so I rushed over to bring them to you—you can definitely put them to good use.
+470 | 当然用得上！而且是越多越好！ | Of course we can use them—and the more, the better!
+471 | 明白！领袖大人，我会转告其他居民，发现钻石就给您送来。 | Understood! Leader, I’ll let the other residents know to bring you any Gems they find.
+472 | 领袖大人，民居被子太薄，我们经常冷醒，这样下去可能会有人生病。 | My Lord, the blankets in the houses are too thin. We keep waking up from the cold, and if this goes on someone might get sick.
+473 | 地下确实阴冷，我立刻给大家安排厚被子。 | It really is damp and chilly down here, I immediately got everyone some thick quilts.
+474 | 谢谢领袖大人，哈哈，我们会有温暖舒适的床了。 | Thank you, my Leader, haha, we’ll finally have warm, comfy beds.
+475 | 有就不错了，末日资源匮乏，大家先凑合睡吧。 | Hey, at least we’ve got something. Resources are scarce at the end of the world, so just make do and get some sleep for now.
+476 | 看来只能靠发抖取暖了，估计很快就会有人病倒…… | Looks like all we can do is shiver to keep warm. At this rate, someone’s bound to fall ill before long…
+477 | 领袖大人，宿舍设施实在简陋了些，能麻烦您做一些提升吗？ | My Leader, the Dormitory is really a bit too basic right now—could I trouble you to upgrade it a little?
+478 | 有个地方睡觉就不错了，不管怎样，也比大家在外面被丧尸追着跑好。 | Having a place to sleep at all is already something. Anyway, it’s still better than everyone getting chased around by zombies outside.
+479 | 领袖，住在这样的地方，其实跟在外面的时候差不多…… | Leader, living in a place like this actually isn’t that different from being outside..
+480 | 我立刻提升民居舒适度，希望大家能住的舒服开心。 | I’ll immediately improve the comfort of the housing so everyone can live comfortably and happily.
+481 | 领袖大人，您对我们太好了……我们会更努力工作来报答您！ | My lord, you’re far too kind to us… We’ll work even harder to repay you!
+482 | 书架上的书都太好看了，我全都看完了，领袖大人，您可以再补充一些新书吗？ | All the books on the shelf looked so good that I’ve finished every single one. Leader, could you add some new ones for me?
+483 | 当然可以，我尽快补充一些新书，大家喜欢我挑的书就好。 | Of course. I’ll add some new books as soon as I can—if you’re enjoying the ones I pick out, that’s all that matters.
+484 | 谢谢领袖大人，新书源源不断的日子，真的太幸福了！ | Thank you, my liege. Having new books coming in nonstop—this is pure bliss!
+485 | 新书难找，把那些旧书再多看几遍吧。 | New releases are hard to come by—just reread those old books a few more times.
+486 | 可是书架上的书我们已经看了很多遍，书都快被翻烂了…… | But we’ve already read the books on the shelf so many times that they’re practically falling apart..
+487 | 民居的灯太暗了，很影响生活起居，领袖大人能让灯变亮些吗？ | The lights in the houses are way too dim, it really affects our daily life. Could you brighten them a bit, Leader?
+488 | 我觉得民居灯够亮了，多在外面干活，少回民居休息。 | I think the houses are bright enough. Spend more time working outside and less time resting indoors.
+489 | 领袖觉得我们偷懒了吗，我们干活一直很努力…… | Does the leader think we’ve been slacking off? We’ve been working really hard..
+490 | 当然可以，灯光太暗不仅影响生活，还会损伤视力，之前是我疏忽了。 | Of course. Dim lighting doesn’t just affect your daily life, it can also damage your eyesight—that was my oversight before.
+491 | 终于不用担心撞到东西了，果然是总为我们着想的领袖大人！ | Now we finally don’t have to worry about bumping into things anymore. Our leader really is always thinking of us!
+492 | 厨房的厨具和火候都不够，做出来的东西味道很怪，居民们胃口变差了好多。 | The kitchen’s tools and heat control just aren’t up to par, so the food comes out tasting weird, and the residents’ appetites have really dropped.
+493 | 是我的疏忽，我尽快升级厨房，大家吃饱吃好才能专心工作。 | That was my oversight. I’ll Upgrade the kitchen as soon as I can so everyone can eat well and stay focused on their work.
+494 | 领袖大人对我们太好了，居民们吃饱了干活肯定会更有劲。 | Our Leader treats us so well. When the residents are well fed, they’ll definitely work even harder.
+495 | 这个我知道，最避难所事务繁多，厨房的事下次再说吧。 | I know, I know. The Refuge has a lot going on—let’s talk about the kitchen next time.
+496 | 我明白了，不知道还要继续忍受多久的黑暗料理…… | Got it. I just don’t know how much longer I’ll have to endure this nightmare cooking..
+497 | 领袖大人，餐桌摇摇晃晃的，今天差点整个翻了，大家吃饭都吃的不安心。 | My Lord Leader, the dining table’s been wobbling so much it nearly tipped over today, and no one can eat with any peace of mind.
+498 | 在餐桌上吃饭时注意点就行，不要小题大作。 | Just mind your manners at the table, no need to make a big deal out of it.
+499 | 可是餐桌真的随时会散架…… | But the dining table really could fall apart at any moment..
+500 | 我尽快安排换新的，绝对不能影响大家吃饭。 | I’ll get a replacement sorted as soon as I can—we can’t let anything get in the way of everyone eating.

@@ -1,0 +1,48 @@
+---
+description: Superpowers - AI 编程工作流纪律系统，自动在任务开始前检查并调用合适的技能
+alwaysApply: true
+---
+
+# Superpowers 工作流
+
+你已安装 Superpowers v5.0.5 技能框架。在执行**任何**任务前，必须先检查是否有适用的技能。
+
+## 技能目录
+
+所有技能位于 `D:\project\openclaw\.cursor\plugins\superpowers\skills\` 下，每个子目录包含 `SKILL.md`：
+
+| 技能 | 何时使用 |
+|------|---------|
+| `brainstorming` | 任何创造性工作之前：新功能、新组件、修改行为 |
+| `writing-plans` | 有设计/需求后，动手写代码之前 |
+| `executing-plans` | 有实现计划需要执行时 |
+| `subagent-driven-development` | 执行计划（推荐，用子代理逐任务执行+两阶段审查） |
+| `test-driven-development` | 实现任何功能或修复 bug 时，写实现代码之前 |
+| `systematic-debugging` | 遇到 bug、测试失败、异常行为时，提出修复方案之前 |
+| `verification-before-completion` | 声称工作完成之前，必须运行验证命令确认 |
+| `requesting-code-review` | 完成主要步骤后请求代码审查 |
+| `receiving-code-review` | 收到审查反馈时 |
+| `using-git-worktrees` | 设计批准后创建隔离工作区 |
+| `finishing-a-development-branch` | 所有任务完成后处理分支 |
+| `dispatching-parallel-agents` | 需要并行执行独立任务时 |
+| `writing-skills` | 创建新技能时 |
+
+## 强制规则
+
+1. **先检查技能再行动** — 收到用户消息后，先判断是否有技能适用（哪怕只有 1% 的可能）
+2. **先设计再编码** — "做一个 X 功能" 必须先走 brainstorming，不能直接写代码
+3. **先测试再实现** — 遵循 TDD：写失败测试 → 确认失败 → 写最小实现 → 确认通过 → 提交
+4. **先验证再宣称完成** — 运行测试/命令，用输出证明工作完成
+5. **遇 bug 先分析** — 走 systematic-debugging 四阶段流程，不猜测性修复
+
+## 使用方式
+
+调用技能时，读取对应的 `SKILL.md` 文件并严格遵循其流程：
+
+```
+读取: D:\project\openclaw\.cursor\plugins\superpowers\skills\<技能名>\SKILL.md
+```
+
+## 用户指令优先
+
+用户的明确指示 > Superpowers 技能 > 默认行为。如果用户说"直接写代码不需要设计"，遵从用户。

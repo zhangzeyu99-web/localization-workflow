@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE
+.cursor/plugins/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output (may contain large generated files)
+# output/
