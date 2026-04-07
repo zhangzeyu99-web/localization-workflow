@@ -6,15 +6,13 @@ Detects:
 - Unclosed/mismatched BBCode tags
 - Tag order/nesting issues
 """
-import re
+from collections import Counter
 from dataclasses import dataclass, field
 
-# Patterns
-VAR_PATTERN = re.compile(r'\{[^}]+\}')
-BBCODE_OPEN = re.compile(r'\[color\s*=[^\]]*\]', re.IGNORECASE)
-BBCODE_CLOSE = re.compile(r'\[/color\]', re.IGNORECASE)
-BBCODE_ANY = re.compile(r'\[/?color[^\]]*\]', re.IGNORECASE)
-NEWLINE_TAG = re.compile(r'\\n')
+from utils.text_normalize import (
+    normalize_escapes, extract_vars, extract_bbcode_opens,
+    extract_bbcode_closes, count_newlines, BBCODE_OPEN,
+)
 
 
 @dataclass
@@ -26,7 +24,7 @@ class CheckResult:
     message: str
     original: str = ''
     translation: str = ''
-    auto_fix: str = ''  # suggested fix, empty if unfixable
+    auto_fix: str = ''
     confidence: float = 1.0
 
 
@@ -34,44 +32,51 @@ def check_variables(row_id: int, original: str, translation: str) -> list[CheckR
     """Check that all variables in original appear in translation and vice versa."""
     results = []
 
-    orig_vars = VAR_PATTERN.findall(original)
-    trans_vars = VAR_PATTERN.findall(translation)
+    orig_vars = extract_vars(original)
+    trans_vars = extract_vars(translation)
 
-    orig_set = set(orig_vars)
-    trans_set = set(trans_vars)
+    orig_counts = Counter(orig_vars)
+    trans_counts = Counter(trans_vars)
 
-    missing = orig_set - trans_set
-    extra = trans_set - orig_set
+    missing_vars = []
+    for var, need in orig_counts.items():
+        have = trans_counts.get(var, 0)
+        if have < need:
+            missing_vars.extend([var] * (need - have))
 
-    if missing:
-        fixed = translation
-        for var in missing:
-            if var not in fixed:
-                fixed = fixed.rstrip() + ' ' + var
+    extra_vars = []
+    for var, have in trans_counts.items():
+        need = orig_counts.get(var, 0)
+        if have > need:
+            extra_vars.extend([var] * (have - need))
+
+    if missing_vars:
+        fixed = normalize_escapes(translation)
+        for var in missing_vars:
+            fixed = fixed.rstrip() + ' ' + var
 
         results.append(CheckResult(
             row_id=row_id,
             check_type='variable_missing',
             severity='error',
-            message=f"Missing variables in translation: {', '.join(sorted(missing))}",
+            message=f"Missing variables in translation: {', '.join(sorted(set(missing_vars)))}",
             original=original,
             translation=translation,
             auto_fix=fixed,
             confidence=0.9,
         ))
 
-    if extra:
+    if extra_vars:
         results.append(CheckResult(
             row_id=row_id,
             check_type='variable_extra',
             severity='warning',
-            message=f"Extra variables in translation: {', '.join(sorted(extra))}",
+            message=f"Extra variables in translation: {', '.join(sorted(set(extra_vars)))}",
             original=original,
             translation=translation,
         ))
 
-    # Check variable order consistency (same count, different order may be intentional)
-    if not missing and not extra and len(orig_vars) > 1:
+    if not missing_vars and not extra_vars and len(orig_vars) > 1:
         if orig_vars != trans_vars:
             results.append(CheckResult(
                 row_id=row_id,
@@ -90,12 +95,11 @@ def check_bbcode_tags(row_id: int, original: str, translation: str) -> list[Chec
     """Check BBCode tag completeness and consistency."""
     results = []
 
-    orig_opens = BBCODE_OPEN.findall(original)
-    orig_closes = BBCODE_CLOSE.findall(original)
-    trans_opens = BBCODE_OPEN.findall(translation)
-    trans_closes = BBCODE_CLOSE.findall(translation)
+    orig_opens = extract_bbcode_opens(original)
+    orig_closes = extract_bbcode_closes(original)
+    trans_opens = extract_bbcode_opens(translation)
+    trans_closes = extract_bbcode_closes(translation)
 
-    # Tag count mismatch
     if len(orig_opens) != len(trans_opens):
         results.append(CheckResult(
             row_id=row_id,
@@ -122,7 +126,6 @@ def check_bbcode_tags(row_id: int, original: str, translation: str) -> list[Chec
             translation=translation,
         ))
 
-    # Unclosed tags in translation
     if len(trans_opens) != len(trans_closes):
         results.append(CheckResult(
             row_id=row_id,
@@ -136,9 +139,8 @@ def check_bbcode_tags(row_id: int, original: str, translation: str) -> list[Chec
             translation=translation,
         ))
 
-    # Color code consistency
-    orig_colors = sorted(BBCODE_OPEN.findall(original))
-    trans_colors = sorted(BBCODE_OPEN.findall(translation))
+    orig_colors = sorted(extract_bbcode_opens(original))
+    trans_colors = sorted(extract_bbcode_opens(translation))
     if orig_colors and trans_colors and orig_colors != trans_colors:
         results.append(CheckResult(
             row_id=row_id,
@@ -156,13 +158,13 @@ def check_bbcode_tags(row_id: int, original: str, translation: str) -> list[Chec
 
 def _fix_color_codes(original: str, translation: str) -> str:
     """Try to fix color code mismatches by using original's color codes."""
-    orig_colors = BBCODE_OPEN.findall(original)
-    trans_colors = BBCODE_OPEN.findall(translation)
+    orig_colors = extract_bbcode_opens(original)
+    trans_colors = extract_bbcode_opens(translation)
 
     if len(orig_colors) != len(trans_colors):
         return ''
 
-    result = translation
+    result = normalize_escapes(translation)
     for orig_c, trans_c in zip(orig_colors, trans_colors):
         if orig_c != trans_c:
             result = result.replace(trans_c, orig_c, 1)
@@ -172,8 +174,8 @@ def _fix_color_codes(original: str, translation: str) -> str:
 def check_newlines(row_id: int, original: str, translation: str) -> list[CheckResult]:
     """Check that \\n counts match."""
     results = []
-    orig_count = len(NEWLINE_TAG.findall(original))
-    trans_count = len(NEWLINE_TAG.findall(translation))
+    orig_count = count_newlines(original)
+    trans_count = count_newlines(translation)
 
     if orig_count != trans_count:
         results.append(CheckResult(

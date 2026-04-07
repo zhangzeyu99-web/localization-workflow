@@ -12,8 +12,13 @@ import pandas as pd
 
 # Common column name patterns (Chinese / English)
 _ID_PATTERNS = re.compile(r'^[Ii][Dd]$|^序号$|^编号$|ID$')
-_ORIG_PATTERNS = re.compile(r'^(原文|中文|中文原文|source|original)$', re.IGNORECASE)
-_TRANS_PATTERNS = re.compile(r'^(译文|翻译|translation|target)$', re.IGNORECASE)
+_ORIG_PATTERNS = re.compile(r'^(原文|中文定义|中文对照|中文原文|中文|source|original)$', re.IGNORECASE)
+_TRANS_PATTERNS = re.compile(
+    r'^(译文|翻译|translation|target'
+    r'|英语|英文|印尼语|法语|德语|土耳其语|西班牙语|葡萄牙语|俄语|日语|韩语'
+    r'|English|Indonesian|French|German|Turkish|Spanish|Portuguese|Russian|Japanese|Korean)$',
+    re.IGNORECASE,
+)
 _NOTE_PATTERNS = re.compile(r'^(备注|note|notes|comment)$', re.IGNORECASE)
 
 

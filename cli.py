@@ -24,7 +24,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from process_language import (
     run_machine_review, write_outputs, prepare_ai_review, _load_term_base,
 )
-from utils.ai_checker import parse_ai_response, apply_corrections
+from utils.ai_checker import (
+    apply_corrections,
+    merge_review_batches,
+    parse_ai_response,
+    prepare_recheck_batches,
+    write_response_templates,
+    write_review_files,
+)
 
 CHATGPT_URL = "https://chatgpt.com/"
 
@@ -84,6 +91,7 @@ def phase1(args):
         args.term_base,
         args.auto_fix,
         args.lang_index,
+        args.lang,
     )
 
     total = len(states)
@@ -224,34 +232,121 @@ def phase2(states, term_lookup, batch_size, lang='en'):
 
 # ─── Main ─────────────────────────────────────────────────
 
+def _collect_recheck_rows(states, batches):
+    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
+    recheck_rows = []
+    ai_batch_ids = set()
+    for batch in batches:
+        ai_batch_ids.update(batch.row_ids)
+
+    for state in states.values():
+        if state.row_id not in ai_batch_ids:
+            continue
+        has_term_issue = any(getattr(issue, 'check_type', '') in term_error_types for issue in state.issues)
+        if not has_term_issue:
+            continue
+        issue_desc = '; '.join(sorted(set(
+            getattr(issue, 'check_type', '')
+            for issue in state.issues
+            if getattr(issue, 'check_type', '') in term_error_types
+        )))
+        recheck_rows.append(
+            {
+                'id': state.row_id,
+                'original': state.original,
+                'translation': state.fixed_translation,
+                'term_issue': issue_desc,
+            }
+        )
+    return recheck_rows
+
+
+def _reset_review_dir(review_dir: Path):
+    review_dir.mkdir(parents=True, exist_ok=True)
+    for pattern in (
+        'batch_*.txt',
+        'batch_*.json',
+        'batch_*_response.txt',
+        'batch_recheck_*.txt',
+        'batch_recheck_*.json',
+        'batch_recheck_*_response.txt',
+        'review_run_manifest.json',
+        'review_recheck_manifest.json',
+    ):
+        for path in review_dir.glob(pattern):
+            path.unlink()
+
+
 def agent_prepare(args):
     """Non-interactive: machine review + write AI prompt files to disk."""
     _header("Agent 模式: prepare")
 
     df, col_map, states, groups = phase1(args)
 
-    term_lookup = _load_term_base(args.term_base)
-    batches = prepare_ai_review(states, batch_size=args.batch_size, term_lookup=term_lookup, lang=args.lang)
+    term_lookup = _load_term_base(args.term_base, lang=args.lang)
+    batches = prepare_ai_review(
+        states,
+        batch_size=args.batch_size,
+        term_lookup=term_lookup,
+        lang=args.lang,
+        scope=args.ai_scope,
+        include_term_priority=True,
+    )
 
     review_dir = Path(args.output_dir) / 'ai_review'
-    review_dir.mkdir(parents=True, exist_ok=True)
-
-    for batch in batches:
-        prompt_file = review_dir / f'batch_{batch.batch_num}.txt'
-        prompt_file.write_text(batch.prompt_text, encoding='utf-8')
+    _reset_review_dir(review_dir)
+    write_review_files(
+        review_dir=review_dir,
+        batches=batches,
+        states=states,
+        batch_type='main',
+        lang=args.lang,
+        input_path=args.input,
+        ai_scope=args.ai_scope,
+    )
+    seeded_main = write_response_templates(review_dir, batch_type='main', overwrite=False)
 
     _header("生成机审输出")
     summary = write_outputs(
         df, col_map, states, groups,
         args.input, args.lang, args.output_dir, args.lang_index,
+        term_lookup=term_lookup,
+        term_only_view=args.term_only_view,
     )
+
+    recheck_rows = _collect_recheck_rows(states, batches)
+    if recheck_rows:
+        recheck_batches = prepare_recheck_batches(
+            recheck_rows, batch_size=args.batch_size,
+            term_lookup=term_lookup, lang=args.lang,
+        )
+        write_review_files(
+            review_dir=review_dir,
+            batches=recheck_batches,
+            states=states,
+            batch_type='recheck',
+            lang=args.lang,
+            input_path=args.input,
+            ai_scope='recheck_term_issues',
+        )
+        seeded_recheck = write_response_templates(review_dir, batch_type='recheck', overwrite=False)
+        print(f"  术语漏网行:   {len(recheck_rows)} 行 → {len(recheck_batches)} 个二次审查提示词")
+    else:
+        seeded_recheck = 0
 
     _section("prepare 完成")
     print(f"  机审结果:     {summary['result_path']}")
     print(f"  质检报告:     {summary['report_path']}")
+    scope_text = {"all": "全量", "issues_only": "仅机审问题行", "term_hit": "仅术语命中行"}.get(args.ai_scope, "全量")
+    print(f"  AI审查范围:   {scope_text}")
     print(f"  AI提示词:     {review_dir}/ ({len(batches)} 个文件)")
+    print(f"  响应模板:     主批次 {seeded_main} 个, 二次批次 {seeded_recheck} 个")
+    if recheck_rows:
+        print(f"  二次审查提示词: {len(recheck_rows)} 行术语漏网")
     print()
     print(f"  下一步: 读取 batch_N.txt → 发给 LLM → 保存回复为 batch_N_response.txt")
+    if recheck_rows:
+        print(f"  二次审查: 读取 batch_recheck_N.txt → 发给 LLM → 保存为 batch_recheck_N_response.txt")
     print(f"  然后运行: python cli.py --input {args.input} --auto-fix --agent merge")
     _hr('═')
     print()
@@ -269,25 +364,57 @@ def agent_merge(args):
         print(f"  请先运行: python cli.py --input {args.input} --auto-fix --agent prepare")
         sys.exit(1)
 
-    response_files = sorted(review_dir.glob('batch_*_response.txt'))
-    if not response_files:
-        print(f"  警告: 未找到 response 文件，跳过 AI 合并")
-    else:
+    ai_reviewed_ids: set[int] = set()
+    ai_corrected_ids: set[int] = set()
+    main_reviewed, main_corrected, main_summaries = merge_review_batches(
+        review_dir,
+        states,
+        batch_type='main',
+        strict=args.strict_review,
+    )
+    ai_reviewed_ids.update(main_reviewed)
+    ai_corrected_ids.update(main_corrected)
+    if main_summaries:
         total_corrections = 0
-        for rf in response_files:
-            response_text = rf.read_text(encoding='utf-8')
-            corrections = parse_ai_response(response_text)
-            modified = apply_corrections(corrections, states)
-            total_corrections += modified
-            batch_name = rf.stem.replace('_response', '')
-            print(f"  {batch_name}: {len(corrections)} 条修正, 应用 {modified} 处")
-
+        for summary_item in main_summaries:
+            total_corrections += summary_item['modified']
+            print(
+                f"  {summary_item['batch_name']}: "
+                f"{summary_item['corrections']} 条修正, 应用 {summary_item['modified']} 处"
+            )
         print(f"\n  AI审查合计: {total_corrections} 处修正")
+    else:
+        print("  警告: 未找到主审查 manifest，跳过 AI 合并")
+
+    recheck_reviewed, recheck_corrected, recheck_summaries = merge_review_batches(
+        review_dir,
+        states,
+        batch_type='recheck',
+        strict=args.strict_review,
+        ignore_fingerprint_for=main_corrected,
+    )
+    if recheck_summaries:
+        _section("二次审查合并")
+        total_recheck = 0
+        for summary_item in recheck_summaries:
+            total_recheck += summary_item['modified']
+            print(
+                f"  {summary_item['batch_name']}: "
+                f"{summary_item['corrections']} 条修正, 应用 {summary_item['modified']} 处"
+            )
+        print(f"\n  二次审查合计: {total_recheck} 处修正")
+    ai_reviewed_ids.update(recheck_reviewed)
+    ai_corrected_ids.update(recheck_corrected)
 
     _header("生成最终输出")
+    term_lookup = _load_term_base(args.term_base, lang=args.lang)
     summary = write_outputs(
         df, col_map, states, groups,
         args.input, args.lang, args.output_dir, args.lang_index,
+        term_lookup=term_lookup,
+        term_only_view=args.term_only_view,
+        ai_reviewed_ids=ai_reviewed_ids,
+        ai_corrected_ids=ai_corrected_ids,
     )
 
     _section("merge 完成")
@@ -324,11 +451,16 @@ def main():
     parser.add_argument('--output-dir', default='./output', help='输出目录（默认 ./output/）')
     parser.add_argument('--auto-fix', action='store_true', help='自动修复可修复项')
     parser.add_argument('--lang-index', type=int, default=0, help='多语言文件列索引')
-    parser.add_argument('--batch-size', type=int, default=500, choices=[200, 500, 1000],
-                        help='AI审查每批行数（默认 500）')
+    parser.add_argument('--batch-size', type=int, default=100,
+                        help='AI审查每批行数（默认 100，首跑建议小批量）')
     parser.add_argument('--skip-ai', action='store_true', help='跳过AI审查，仅运行机审')
     parser.add_argument('--agent', choices=['prepare', 'merge'], default=None,
                         help='Agent 非交互模式: prepare=机审+生成提示词, merge=合并AI结果')
+    parser.add_argument('--term-only-view', action='store_true', help='在结果文件新增“术语行筛选”sheet')
+    parser.add_argument('--ai-scope', default='issues_only', choices=['all', 'issues_only', 'term_hit'],
+                        help='AI审查范围: all=全量, issues_only=仅机审问题行, term_hit=仅术语命中行')
+    parser.add_argument('--strict-review', action='store_true',
+                        help='启用严格 AI 回复校验：必须逐条覆盖批次 ID，且输入指纹必须一致')
 
     args = parser.parse_args()
 
@@ -350,15 +482,18 @@ def main():
 
     ai_corrections = 0
     if not args.skip_ai:
-        term_lookup = _load_term_base(args.term_base)
+        term_lookup = _load_term_base(args.term_base, lang=args.lang)
         ai_corrections = phase2(states, term_lookup, args.batch_size, args.lang)
     else:
         print("\n  (已跳过AI审查)")
 
     _header("生成输出文件")
+    term_lookup = _load_term_base(args.term_base, lang=args.lang)
     summary = write_outputs(
         df, col_map, states, groups,
         args.input, args.lang, args.output_dir, args.lang_index,
+        term_lookup=term_lookup,
+        term_only_view=args.term_only_view,
     )
 
     _section("最终汇总")

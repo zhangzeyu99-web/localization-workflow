@@ -1,3 +1,0 @@
-8 | An item worth [color =#dc6c00]10000[/color] Gems as a reward
-9 | An item worth [color =#dc6c00]15000[/color] Gems as a reward
-10 | An item worth [color =#dc6c00]20,000[/color] Gems as a reward

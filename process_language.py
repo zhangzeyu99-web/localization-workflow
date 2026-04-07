@@ -10,6 +10,7 @@ Usage:
 """
 import argparse
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -18,6 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 from utils.excel_reader import read_language_file, get_text_pairs
+from utils.language_detection import inspect_language_file
 from utils.variable_checker import check_all as check_variables
 from utils.term_checker import check_term_hit, check_chinese_residue
 from utils.pattern_detector import detect_patterns
@@ -56,7 +58,72 @@ class RowState:
 # Check phases
 # ─────────────────────────────────────────────────────────────
 
-def _load_term_base(path: str | None) -> dict[str, str]:
+def _normalize_term_lookup(data: dict) -> dict[str, dict]:
+    normalized: dict[str, dict] = {}
+    for cn_term, value in data.items():
+        cn = str(cn_term).strip()
+        if not cn:
+            continue
+
+        primary = ''
+        variants: list[str] = []
+        enforce_case = False
+
+        if isinstance(value, str):
+            primary = value.strip()
+        elif isinstance(value, list):
+            items = [str(x).strip() for x in value if str(x).strip()]
+            if items:
+                primary = items[0]
+                variants = items[1:]
+        elif isinstance(value, dict):
+            primary = str(value.get('primary', '')).strip()
+            raw_vars = value.get('variants', [])
+            if isinstance(raw_vars, str):
+                raw_vars = [raw_vars]
+            variants = [str(x).strip() for x in raw_vars if str(x).strip()]
+            enforce_case = bool(value.get('enforce_case', False))
+
+        seen = set()
+        dedup_variants = []
+        for v in variants:
+            k = v.lower()
+            if k == primary.lower() or k in seen:
+                continue
+            seen.add(k)
+            dedup_variants.append(v)
+
+        if primary or dedup_variants:
+            if not primary:
+                primary = dedup_variants[0]
+                dedup_variants = dedup_variants[1:]
+            constraint = ''
+            if isinstance(value, dict):
+                constraint = str(value.get('constraint', '')).strip()
+                if constraint.lower() == 'nan':
+                    constraint = ''
+            normalized[cn] = {
+                'primary': primary,
+                'variants': dedup_variants,
+                'enforce_case': enforce_case,
+                'constraint': constraint,
+            }
+    return normalized
+
+
+LANG_TERM_PATTERNS = {
+    'en': {
+        'primary': [r'英文', r'英语', r'主译法', r'名词译法', r'english'],
+        'variant': [r'英语2', r'英文2', r'补充形式', r'另一词性', r'动词译法'],
+    },
+    'idn': {
+        'primary': [r'印尼语', r'印度尼西亚语', r'indonesian', r'bahasa indonesia'],
+        'variant': [r'印尼语2', r'印度尼西亚语2', r'补充形式', r'另一词性', r'动词译法'],
+    },
+}
+
+
+def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
     """Load term base from Excel (.xlsx) or JSON (.json).
 
     Excel format: same as language table — ID / 原文 / 译文.
@@ -67,35 +134,111 @@ def _load_term_base(path: str | None) -> dict[str, str]:
 
     ext = Path(path).suffix.lower()
     if ext in ('.xlsx', '.xls'):
+        df = pd.read_excel(path)
+        cols = [str(c).strip() for c in df.columns]
+        col_map = {str(c).strip(): c for c in df.columns}
+
+        def _pick(patterns: list[str]) -> str | None:
+            for c in cols:
+                lc = c.lower()
+                for p in patterns:
+                    if re.search(p, lc):
+                        return col_map[c]
+            return None
+
+        cn_col = _pick([r'中文术语', r'原文', r'中文', r'source', r'original'])
+        lang_patterns = LANG_TERM_PATTERNS.get(lang, LANG_TERM_PATTERNS['en'])
+        target_col = _pick(lang_patterns['primary']) or _pick([r'译文', r'翻译', r'translation', r'target'])
+        alt_col = _pick(lang_patterns['variant']) or _pick([r'variant', r'variants', r'alternate'])
+        constraint_col = _pick([r'约束', r'constraint'])
+
+        from utils.text_normalize import strip_tags_and_vars
+        split_variants = re.compile(r'[;,|/、]+')
+        lookup: dict[str, dict] = {}
+
+        if cn_col and target_col:
+            for _, row in df.iterrows():
+                src = strip_tags_and_vars(str(row.get(cn_col, '')))
+                primary = strip_tags_and_vars(str(row.get(target_col, '')))
+                alt_raw = str(row.get(alt_col, '')).strip() if alt_col else ''
+                constraint_raw = str(row.get(constraint_col, '')).strip() if constraint_col else ''
+                if constraint_raw.lower() == 'nan':
+                    constraint_raw = ''
+                variants = []
+                if alt_raw and alt_raw.lower() != 'nan':
+                    variants = [
+                        strip_tags_and_vars(x)
+                        for x in split_variants.split(alt_raw)
+                        if strip_tags_and_vars(x)
+                    ]
+
+                if not src:
+                    continue
+
+                entry = lookup.setdefault(src, {'primary': '', 'variants': [], 'enforce_case': False, 'constraint': ''})
+                if primary and not entry['primary']:
+                    entry['primary'] = primary
+                for v in variants:
+                    if v.lower() == entry['primary'].lower():
+                        continue
+                    if all(v.lower() != ex.lower() for ex in entry['variants']):
+                        entry['variants'].append(v)
+                if constraint_raw and not entry.get('constraint'):
+                    entry['constraint'] = constraint_raw
+
+            return _normalize_term_lookup(lookup)
+
+        # Fallback: old format parsing
         from utils.excel_reader import read_language_file, get_text_pairs
-        import re
-        df, col_map = read_language_file(path)
-        pairs = get_text_pairs(df, col_map)
-        lookup = {}
-        strip_tags = re.compile(r'\[/?color[^\]]*\]|\{[^}]+\}')
+        df2, cm = read_language_file(path)
+        pairs = get_text_pairs(df2, cm)
+        raw_lookup = {}
         for _, row in pairs.iterrows():
-            src = strip_tags.sub('', str(row['original'])).strip()
-            tgt = strip_tags.sub('', str(row['translation'])).strip()
+            src = strip_tags_and_vars(str(row['original']))
+            tgt = strip_tags_and_vars(str(row['translation']))
             if src and tgt:
-                lookup[src] = tgt
-        return lookup
+                raw_lookup[src] = tgt
+        return _normalize_term_lookup(raw_lookup)
 
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    return data.get('lookup', data) if isinstance(data, dict) else {}
+    raw = data.get('lookup', data) if isinstance(data, dict) else {}
+    return _normalize_term_lookup(raw if isinstance(raw, dict) else {})
+
+
+def _safe_apply_fix(state, new_translation: str, note: str):
+    """Apply a fix only if it doesn't introduce Chinese residue or extra variables."""
+    from utils.text_normalize import normalize_escapes, extract_vars
+    from collections import Counter
+    import re
+    cn_pat = re.compile(r'[\u4e00-\u9fa5]')
+
+    old_norm = normalize_escapes(state.fixed_translation)
+    new_norm = normalize_escapes(new_translation)
+
+    if cn_pat.search(new_norm) and not cn_pat.search(old_norm):
+        return False
+
+    orig_var_counts = Counter(extract_vars(state.original))
+    new_var_counts = Counter(extract_vars(new_translation))
+    if any(new_var_counts.get(v, 0) > orig_var_counts.get(v, 0) for v in new_var_counts):
+        return False
+
+    state.fixed_translation = new_translation
+    state.notes.append(note)
+    return True
 
 
 def _run_variable_checks(states: dict[int, RowState], auto_fix: bool):
     for state in states.values():
-        for r in check_variables(state.row_id, state.original, state.translation):
+        for r in check_variables(state.row_id, state.original, state.fixed_translation):
             state.issues.append(r)
             if auto_fix and r.auto_fix and r.severity == 'error':
-                state.fixed_translation = r.auto_fix
-                state.notes.append(f"自动修复({r.check_type}): {r.message}")
+                _safe_apply_fix(state, r.auto_fix, f"自动修复({r.check_type}): {r.message}")
             elif r.severity == 'error':
                 state.needs_human_review = True
                 state.human_review_reason = r.message
-                state.ai_suggestion = r.auto_fix or state.translation
+                state.ai_suggestion = r.auto_fix or state.fixed_translation
                 state.review_confidence = r.confidence
 
 
@@ -106,8 +249,7 @@ def _run_term_checks(states: dict[int, RowState], term_lookup: dict, auto_fix: b
         for r in check_term_hit(state.row_id, state.original, state.fixed_translation, term_lookup):
             state.issues.append(r)
             if auto_fix and r.auto_fix and r.confidence >= 0.8:
-                state.fixed_translation = r.auto_fix
-                state.notes.append(f"术语修复: {r.message}")
+                _safe_apply_fix(state, r.auto_fix, f"术语修复: {r.message}")
             elif r.severity == 'error':
                 state.needs_human_review = True
                 state.human_review_reason = r.message
@@ -139,8 +281,7 @@ def _run_pattern_checks(states: dict[int, RowState], auto_fix: bool):
         state.issues.append(issue)
 
         if auto_fix and issue.auto_fix and issue.confidence >= 0.7:
-            state.fixed_translation = issue.auto_fix
-            state.notes.append(f"句式统一: {issue.best_pattern[:50]}")
+            _safe_apply_fix(state, issue.auto_fix, f"句式统一: {issue.best_pattern[:50]}")
         elif issue.confidence >= 0.6:
             state.needs_human_review = True
             state.human_review_reason = issue.message
@@ -167,14 +308,68 @@ def _run_ui_detection(states: dict[int, RowState]):
 def prepare_ai_review(
     states: dict[int, RowState],
     batch_size: int = 200,
-    term_lookup: dict[str, str] | None = None,
+    term_lookup: dict | None = None,
     lang: str = 'en',
+    scope: str = 'all',
+    include_term_priority: bool = False,
 ):
-    """Prepare AI review batches from current states (after machine review)."""
-    rows = [
-        {'id': s.row_id, 'original': s.original, 'translation': s.fixed_translation}
-        for s in states.values()
-    ]
+    """Prepare AI review batches from current states (after machine review).
+
+    scope:
+      - 'all': all rows
+      - 'issues_only': only rows with any issue
+      - 'term_hit': only rows whose original hits any term in term_lookup
+    """
+    _LOW_VALUE_ONLY = {'newline_mismatch'}
+    _LOW_CONFIDENCE_THRESHOLD = 0.5
+
+    def _is_low_value(s):
+        """Skip rows that only have low-value issues AI can't fix well."""
+        if not s.issues:
+            return True
+        issue_types = {getattr(i, 'check_type', '') for i in s.issues}
+        if issue_types <= _LOW_VALUE_ONLY:
+            return True
+        if issue_types == {'pattern_inconsistency'}:
+            max_conf = max((getattr(i, 'confidence', 1.0) for i in s.issues), default=1.0)
+            if max_conf < _LOW_CONFIDENCE_THRESHOLD:
+                return True
+        return False
+
+    if scope == 'issues_only':
+        selected_states = [s for s in states.values() if s.issues and not _is_low_value(s)]
+    elif scope == 'term_hit':
+        if term_lookup:
+            selected_states = [
+                s for s in states.values()
+                if any(cn in str(s.original) for cn in term_lookup if len(cn) >= 2)
+            ]
+        else:
+            selected_states = list(states.values())
+    else:
+        selected_states = list(states.values())
+
+    rows = []
+    for s in selected_states:
+        item = {
+            'id': s.row_id,
+            'original': s.original,
+            'translation': s.fixed_translation,
+        }
+        if include_term_priority:
+            item['is_ui'] = s.is_ui
+            item['term_status'] = (
+                'TERM_ERROR' if any(
+                    getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization'}
+                    for i in s.issues
+                ) else 'TERM_OK'
+            )
+            item['term_issue_types'] = '; '.join(sorted(set(
+                getattr(i, 'check_type', '')
+                for i in s.issues
+                if getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization'}
+            )))
+        rows.append(item)
     return prepare_all_batches(rows, batch_size=batch_size, term_lookup=term_lookup, lang=lang)
 
 
@@ -210,12 +405,34 @@ def _build_result_full(
     return result
 
 
-def _build_result_review(states: dict[int, RowState]) -> pd.DataFrame:
+def _build_result_review(
+    states: dict[int, RowState],
+    ai_reviewed_ids: set[int] | None = None,
+    ai_corrected_ids: set[int] | None = None,
+) -> pd.DataFrame:
     """Sheet '需确认': subset of rows needing human review."""
+    reviewed = ai_reviewed_ids or set()
+    corrected = ai_corrected_ids or set()
     rows = []
     for state in states.values():
         if not state.needs_human_review:
             continue
+
+        term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
+        has_term_issue = any(
+            getattr(i, 'check_type', '') in term_error_types for i in state.issues
+        )
+
+        if state.row_id in corrected:
+            ai_status = 'AI已修正'
+        elif state.row_id in reviewed:
+            if has_term_issue:
+                ai_status = 'AI未修正(术语有误)'
+            else:
+                ai_status = 'AI确认无误'
+        else:
+            ai_status = 'AI未审查'
+
         rows.append({
             'ID': state.row_id,
             '原文': state.original,
@@ -224,9 +441,93 @@ def _build_result_review(states: dict[int, RowState]) -> pd.DataFrame:
             '原因': state.human_review_reason,
             '置信度': f"{state.review_confidence:.0%}",
             '是否UI': '是' if state.is_ui else '否',
+            'AI处理状态': ai_status,
         })
     if not rows:
-        return pd.DataFrame(columns=['ID', '原文', '当前译文', 'AI建议', '原因', '置信度', '是否UI'])
+        return pd.DataFrame(columns=['ID', '原文', '当前译文', 'AI建议', '原因', '置信度', '是否UI', 'AI处理状态'])
+    return pd.DataFrame(rows)
+
+
+def _build_term_only_view(
+    states: dict[int, RowState],
+    term_lookup: dict[str, dict] | None,
+) -> pd.DataFrame:
+    """Sheet '术语行筛选': rows whose source contains term-base CN entries."""
+    cols = [
+        'ID', '原文', '当前译文', '命中术语中文', '标准译法', '术语命中数',
+        '术语判定', '术语问题类型', '是否已机审改写'
+    ]
+    if not term_lookup:
+        return pd.DataFrame(columns=cols)
+
+    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
+
+    # Prebuild term candidates (skip too-short CN terms to reduce noisy hits)
+    term_items: list[tuple[str, str]] = []
+    for cn_term, term_item in term_lookup.items():
+        cn = str(cn_term).strip()
+        if len(cn) < 2:
+            continue
+        primary = str(term_item.get('primary', '')) if isinstance(term_item, dict) else str(term_item)
+        variants = term_item.get('variants', []) if isinstance(term_item, dict) else []
+        all_tgt = [primary] + [str(v) for v in variants if str(v).strip()]
+        tgt_text = ' / '.join([x for x in all_tgt if x])
+        term_items.append((cn, tgt_text))
+
+    # Long terms first so short generic terms don't flood results
+    term_items.sort(key=lambda x: len(x[0]), reverse=True)
+
+    rows = []
+    for state in states.values():
+        hits: list[tuple[str, str]] = []
+        src = str(state.original)
+        for cn_term, tgt_text in term_items:
+            if cn_term and cn_term in src:
+                # If this shorter term is fully covered by an already selected longer term, skip it.
+                if any(cn_term in sel_cn for sel_cn, _ in hits):
+                    continue
+                hits.append((cn_term, tgt_text))
+                if len(hits) >= 8:
+                    break
+        if not hits:
+            continue
+
+        uniq = []
+        seen = set()
+        for cn, tgt in hits:
+            key = (cn, tgt)
+            if key in seen:
+                continue
+            seen.add(key)
+            uniq.append((cn, tgt))
+
+        hit_issue_types = []
+        for issue in state.issues:
+            ctype = getattr(issue, 'check_type', '')
+            if ctype in term_error_types:
+                hit_issue_types.append(ctype)
+
+        if hit_issue_types:
+            term_status = '术语有误'
+            issue_text = '; '.join(sorted(set(hit_issue_types)))
+        else:
+            term_status = '命中术语无误'
+            issue_text = ''
+
+        rows.append({
+            'ID': state.row_id,
+            '原文': state.original,
+            '当前译文': state.fixed_translation,
+            '命中术语中文': '; '.join(cn for cn, _ in uniq),
+            '标准译法': '; '.join(tgt for _, tgt in uniq),
+            '术语命中数': len(uniq),
+            '术语判定': term_status,
+            '术语问题类型': issue_text,
+            '是否已机审改写': '是' if state.fixed_translation != state.translation else '否',
+        })
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
     return pd.DataFrame(rows)
 
 
@@ -338,6 +639,7 @@ def run_machine_review(
     term_base_path: str | None = None,
     auto_fix: bool = True,
     lang_index: int = 0,
+    lang: str = 'en',
 ) -> tuple:
     """Phase 1: Run all rule-based checks.
 
@@ -347,27 +649,46 @@ def run_machine_review(
     df, col_map = read_language_file(input_path)
     pairs = get_text_pairs(df, col_map, lang_index=lang_index)
     print(f"       {len(pairs)} 行已加载")
+    profile = inspect_language_file(input_path, lang_index=lang_index)
+    print(f"       检测语言: source={profile['source_lang']} target={profile['target_lang']}")
+    if profile['target_lang'] not in ('unknown', lang):
+        print(f"       [预警] 目标语言检测为 {profile['target_lang']}，与请求的 {lang} 不一致")
+    if profile['source_lang'] != 'zh':
+        print(f"       [预警] 源语言检测为 {profile['source_lang']}，术语和句式检查可能降级")
 
     states: dict[int, RowState] = {}
+    skipped = 0
     for _, row in pairs.iterrows():
-        rid = int(row['id'])
-        states[rid] = RowState(rid, row['original'], row['translation'])
+        raw_id = row['id']
+        if pd.isna(raw_id):
+            skipped += 1
+            continue
+        try:
+            rid = int(raw_id)
+        except (ValueError, TypeError):
+            skipped += 1
+            continue
+        states[rid] = RowState(rid, str(row['original']), str(row['translation']))
+    if skipped:
+        print(f"       (跳过 {skipped} 行无效ID)")
 
     print(f"[2/6] 加载术语库")
-    term_lookup = _load_term_base(term_base_path)
+    term_lookup = _load_term_base(term_base_path, lang=lang)
     print(f"       {len(term_lookup)} 条术语" if term_lookup else "       (无术语库)")
 
     print(f"[3/6] 变量 & 标签检查")
     _run_variable_checks(states, auto_fix)
 
-    print(f"[4/6] 术语检查 + 中文残留")
+    print(f"[4/6] 术语检查")
     _run_term_checks(states, term_lookup, auto_fix)
-    _run_chinese_residue_checks(states)
 
     print(f"[5/6] 句式一致性检查")
     groups = _run_pattern_checks(states, auto_fix)
 
-    print(f"[6/6] UI文本识别")
+    print(f"[6/7] 中文残留检查")
+    _run_chinese_residue_checks(states)
+
+    print(f"[7/7] UI文本识别")
     _run_ui_detection(states)
 
     total_issues = sum(len(s.issues) for s in states.values())
@@ -385,6 +706,10 @@ def write_outputs(
     lang: str = 'en',
     output_dir: str = './output',
     lang_index: int = 0,
+    term_lookup: dict | None = None,
+    term_only_view: bool = False,
+    ai_reviewed_ids: set[int] | None = None,
+    ai_corrected_ids: set[int] | None = None,
 ) -> dict:
     """Phase 3: Write final output files after all reviews are done.
 
@@ -409,7 +734,8 @@ def write_outputs(
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     full_df = _build_result_full(df, col_map, states, lang_index)
-    review_df = _build_result_review(states)
+    review_df = _build_result_review(states, ai_reviewed_ids, ai_corrected_ids)
+    term_only_df = _build_term_only_view(states, term_lookup) if term_only_view else None
     report_sheets = _build_report_sheets(states, groups, input_path, lang)
 
     # Write to both locations
@@ -418,6 +744,8 @@ def write_outputs(
         with pd.ExcelWriter(result_path, engine='openpyxl') as writer:
             full_df.to_excel(writer, sheet_name='完整结果', index=False)
             review_df.to_excel(writer, sheet_name='需确认', index=False)
+            if term_only_df is not None:
+                term_only_df.to_excel(writer, sheet_name='术语行筛选', index=False)
 
         report_path = target_dir / f"report_{lang}.xlsx"
         with pd.ExcelWriter(report_path, engine='openpyxl') as writer:
@@ -428,6 +756,8 @@ def write_outputs(
     report_path = out / f"report_{lang}.xlsx"
 
     print(f"\n  -> {result_path}  (完整结果 + 需确认 {len(review_df)} 条)")
+    if term_only_df is not None:
+        print(f"  -> 术语行筛选: {len(term_only_df)} 条")
     print(f"  -> {report_path}  (4 sheets)")
     print(f"  -> {archive_dir}/  (归档)")
 
@@ -468,7 +798,7 @@ def process(
     separately, with AI review in between.
     """
     df, col_map, states, groups = run_machine_review(
-        input_path, term_base_path, auto_fix, lang_index,
+        input_path, term_base_path, auto_fix, lang_index, lang,
     )
     return write_outputs(
         df, col_map, states, groups, input_path, lang, output_dir, lang_index,
