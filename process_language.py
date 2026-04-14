@@ -26,7 +26,7 @@ from utils.pattern_detector import detect_patterns
 from utils.ui_detector import is_ui_text
 from utils.ai_checker import prepare_all_batches, apply_corrections
 from utils.text_normalize import repair_translation_surface
-from utils.ui_length_checker import check_ui_length
+from utils.ui_length_checker import assess_ui_length, check_ui_length
 
 
 # ─────────────────────────────────────────────────────────────
@@ -39,6 +39,8 @@ class RowState:
         'notes', 'is_ui', 'ui_confidence', 'issues',
         'needs_human_review', 'human_review_reason', 'ai_suggestion',
         'review_confidence',
+        'short_text_length_policy', 'short_text_source_len',
+        'short_text_target_len', 'short_text_budget',
     )
 
     def __init__(self, row_id: int, original: str, translation: str):
@@ -54,6 +56,10 @@ class RowState:
         self.human_review_reason = ''
         self.ai_suggestion = ''
         self.review_confidence = 1.0
+        self.short_text_length_policy = ''
+        self.short_text_source_len = 0
+        self.short_text_target_len = 0
+        self.short_text_budget = 0
 
 
 # ─────────────────────────────────────────────────────────────
@@ -323,6 +329,18 @@ def _run_ui_detection(states: dict[int, RowState]):
 
 def _run_ui_length_checks(states: dict[int, RowState], lang: str):
     for state in states.values():
+        assessment = assess_ui_length(
+            row_id=state.row_id,
+            original=state.original,
+            translation=state.fixed_translation,
+            is_ui=state.is_ui,
+            lang=lang,
+        )
+        if assessment:
+            state.short_text_length_policy = assessment.policy
+            state.short_text_source_len = assessment.source_length
+            state.short_text_target_len = assessment.target_length
+            state.short_text_budget = assessment.budget
         for issue in check_ui_length(
             row_id=state.row_id,
             original=state.original,
@@ -401,14 +419,11 @@ def prepare_ai_review(
                 for i in s.issues
                 if getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization', 'romanized_name_residue'}
             )))
-        ui_length_issue = next(
-            (i for i in s.issues if getattr(i, 'check_type', '') == 'ui_length_overflow'),
-            None,
-        )
-        if ui_length_issue:
-            item['ui_length_source_len'] = int(getattr(ui_length_issue, 'source_length', 0))
-            item['ui_length_target_len'] = int(getattr(ui_length_issue, 'target_length', 0))
-            item['ui_length_budget'] = int(getattr(ui_length_issue, 'budget', 0))
+        if s.short_text_length_policy and s.short_text_length_policy != 'exempt':
+            item['ui_length_policy'] = s.short_text_length_policy
+            item['ui_length_source_len'] = int(s.short_text_source_len)
+            item['ui_length_target_len'] = int(s.short_text_target_len)
+            item['ui_length_budget'] = int(s.short_text_budget)
         rows.append(item)
     return prepare_all_batches(rows, batch_size=batch_size, term_lookup=term_lookup, lang=lang)
 
@@ -621,6 +636,7 @@ def _build_report_sheets(
         'term_capitalization': '术语大小写问题',
         'romanized_name_residue': '译文中残留拼音或音译专名',
         'ui_length_overflow': 'UI短文案长度超出预算',
+        'short_text_length_watch': '短文本长度偏长（软提示）',
         'chinese_residue': '译文中残留中文字符',
         'pattern_inconsistency': '译文句式与组内标准不一致',
     }

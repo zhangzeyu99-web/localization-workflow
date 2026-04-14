@@ -41,11 +41,12 @@ def _make_prompt_header(lang: str = "en") -> str:
 
 def _make_ui_length_section() -> str:
     return (
-        "UI length rule for labels, buttons, tags, and short phrases:\n"
+        "Short-text length rule for Chinese source text with 10 or fewer characters:\n"
         "- Keep the translation natural and easy to understand.\n"
-        "- Keep it as close to the source length as practical.\n"
+        "- If LEN mode is hard, treat the budget as a strong compactness requirement.\n"
+        "- If LEN mode is soft, prefer a shorter option, but keep clarity first.\n"
         "- English may be slightly longer than Chinese, but avoid obvious length expansion.\n"
-        "- If LEN metadata is present, try to stay within the budget unless a slightly longer form is required for clarity.\n"
+        "- If LEN metadata is present, use the budget as a guide and only exceed it when clarity clearly requires it.\n"
         "\n"
     )
 
@@ -210,6 +211,7 @@ def format_batch_prompt(
             if "ui_length_budget" in row:
                 meta.append(
                     "LEN:"
+                    f"mode={row.get('ui_length_policy', 'hard')},"
                     f"source={row.get('ui_length_source_len', 0)},"
                     f"target={row.get('ui_length_target_len', 0)},"
                     f"budget<={row.get('ui_length_budget', 0)}"
@@ -317,6 +319,7 @@ def format_recheck_prompt(
         if has_len_meta and "ui_length_budget" in row:
             len_meta = (
                 "LEN:"
+                f"mode={row.get('ui_length_policy', 'hard')},"
                 f"source={row.get('ui_length_source_len', 0)},"
                 f"target={row.get('ui_length_target_len', 0)},"
                 f"budget<={row.get('ui_length_budget', 0)}"

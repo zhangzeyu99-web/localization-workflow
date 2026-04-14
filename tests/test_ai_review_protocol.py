@@ -23,6 +23,7 @@ class AIReviewProtocolTests(unittest.TestCase):
                     "original": "消息推送",
                     "translation": "Push Notifications",
                     "is_ui": True,
+                    "ui_length_policy": "hard",
                     "ui_length_source_len": 4,
                     "ui_length_target_len": 17,
                     "ui_length_budget": 12,
@@ -33,8 +34,8 @@ class AIReviewProtocolTests(unittest.TestCase):
             lang="en",
         )
 
-        self.assertIn("UI length rule for labels, buttons, tags, and short phrases", prompt)
-        self.assertIn("LEN:source=4,target=17,budget<=12", prompt)
+        self.assertIn("Short-text length rule for Chinese source text with 10 or fewer characters", prompt)
+        self.assertIn("LEN:mode=hard,source=4,target=17,budget<=12", prompt)
         self.assertIn("ID | Source | Translation | UI | LEN", prompt)
 
     def test_parse_review_response_supports_exhaustive_keep_and_fix_lines(self):
