@@ -1,9 +1,79 @@
 import unittest
 
-from utils.term_checker import check_term_hit
+from utils.term_checker import check_term_hit, merge_builtin_name_terms
 
 
 class TermCheckerTests(unittest.TestCase):
+    def test_merges_builtin_name_terms_when_term_base_missing_entries(self):
+        merged = merge_builtin_name_terms({}, lang="en")
+
+        self.assertIn("红山谷", merged)
+        self.assertEqual(merged["红山谷"]["primary"], "Red Valley")
+        self.assertIn("巨石阵", merged)
+        self.assertEqual(merged["巨石阵"]["primary"], "Stonehenge")
+
+    def test_flags_romanized_name_residue_for_english_map_name(self):
+        term_lookup = {
+            "红山谷": {"primary": "Red Valley", "variants": []},
+        }
+
+        results = check_term_hit(
+            row_id=101,
+            original="红山谷14",
+            translation="Hongshangu14",
+            term_lookup=term_lookup,
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].check_type, "romanized_name_residue")
+        self.assertEqual(results[0].auto_fix, "Red Valley 14")
+
+    def test_flags_romanized_name_residue_for_indonesian_map_name(self):
+        term_lookup = {
+            "玫瑰湖": {"primary": "Danau Mawar", "variants": []},
+        }
+
+        results = check_term_hit(
+            row_id=102,
+            original="玫瑰湖5",
+            translation="Meiguihu 5",
+            term_lookup=term_lookup,
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].check_type, "romanized_name_residue")
+        self.assertEqual(results[0].auto_fix, "Danau Mawar 5")
+
+    def test_flags_spaced_romanized_name_residue(self):
+        term_lookup = {
+            "溪谷湿地": {"primary": "Creek Wetland", "variants": []},
+        }
+
+        results = check_term_hit(
+            row_id=104,
+            original="溪谷湿地6",
+            translation="Xigu Wetland 6",
+            term_lookup=term_lookup,
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].check_type, "romanized_name_residue")
+        self.assertEqual(results[0].auto_fix, "Creek Wetland 6")
+
+    def test_does_not_flag_standard_name_when_expected_name_exists(self):
+        term_lookup = {
+            "红山谷": {"primary": "Red Valley", "variants": []},
+        }
+
+        results = check_term_hit(
+            row_id=103,
+            original="红山谷14",
+            translation="Red Valley 14",
+            term_lookup=term_lookup,
+        )
+
+        self.assertEqual(results, [])
+
     def test_accepts_plural_variant_for_hero_term(self):
         term_lookup = {
             "英雄": {"primary": "Heroes", "variants": []},

@@ -21,10 +21,12 @@ import pandas as pd
 from utils.excel_reader import read_language_file, get_text_pairs
 from utils.language_detection import inspect_language_file
 from utils.variable_checker import check_all as check_variables
-from utils.term_checker import check_term_hit, check_chinese_residue
+from utils.term_checker import check_term_hit, check_chinese_residue, merge_builtin_name_terms
 from utils.pattern_detector import detect_patterns
 from utils.ui_detector import is_ui_text
 from utils.ai_checker import prepare_all_batches, apply_corrections
+from utils.text_normalize import repair_translation_surface
+from utils.ui_length_checker import check_ui_length
 
 
 # ─────────────────────────────────────────────────────────────
@@ -130,7 +132,7 @@ def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
     JSON format:  {"lookup": {"中文": "English"}} or flat {"中文": "English"}.
     """
     if not path or not Path(path).exists():
-        return {}
+        return merge_builtin_name_terms({}, lang)
 
     ext = Path(path).suffix.lower()
     if ext in ('.xlsx', '.xls'):
@@ -186,7 +188,7 @@ def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
                 if constraint_raw and not entry.get('constraint'):
                     entry['constraint'] = constraint_raw
 
-            return _normalize_term_lookup(lookup)
+            return merge_builtin_name_terms(_normalize_term_lookup(lookup), lang)
 
         # Fallback: old format parsing
         from utils.excel_reader import read_language_file, get_text_pairs
@@ -198,12 +200,12 @@ def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
             tgt = strip_tags_and_vars(str(row['translation']))
             if src and tgt:
                 raw_lookup[src] = tgt
-        return _normalize_term_lookup(raw_lookup)
+        return merge_builtin_name_terms(_normalize_term_lookup(raw_lookup), lang)
 
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     raw = data.get('lookup', data) if isinstance(data, dict) else {}
-    return _normalize_term_lookup(raw if isinstance(raw, dict) else {})
+    return merge_builtin_name_terms(_normalize_term_lookup(raw if isinstance(raw, dict) else {}), lang)
 
 
 def _safe_apply_fix(state, new_translation: str, note: str):
@@ -240,6 +242,20 @@ def _run_variable_checks(states: dict[int, RowState], auto_fix: bool):
                 state.human_review_reason = r.message
                 state.ai_suggestion = r.auto_fix or state.fixed_translation
                 state.review_confidence = r.confidence
+
+
+def _run_surface_fixes(states: dict[int, RowState], auto_fix: bool, lang: str):
+    for state in states.values():
+        repaired = repair_translation_surface(state.original, state.fixed_translation, lang=lang)
+        if repaired == state.fixed_translation:
+            continue
+        if auto_fix:
+            _safe_apply_fix(state, repaired, "符号/占位符规范化")
+        else:
+            state.needs_human_review = True
+            state.human_review_reason = "符号或占位符格式异常"
+            state.ai_suggestion = repaired
+            state.review_confidence = 0.95
 
 
 def _run_term_checks(states: dict[int, RowState], term_lookup: dict, auto_fix: bool):
@@ -305,6 +321,22 @@ def _run_ui_detection(states: dict[int, RowState]):
         state.ui_confidence = conf
 
 
+def _run_ui_length_checks(states: dict[int, RowState], lang: str):
+    for state in states.values():
+        for issue in check_ui_length(
+            row_id=state.row_id,
+            original=state.original,
+            translation=state.fixed_translation,
+            is_ui=state.is_ui,
+            lang=lang,
+        ):
+            state.issues.append(issue)
+            state.needs_human_review = True
+            state.human_review_reason = issue.message
+            state.ai_suggestion = state.fixed_translation
+            state.review_confidence = issue.confidence
+
+
 def prepare_ai_review(
     states: dict[int, RowState],
     batch_size: int = 200,
@@ -360,15 +392,23 @@ def prepare_ai_review(
             item['is_ui'] = s.is_ui
             item['term_status'] = (
                 'TERM_ERROR' if any(
-                    getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization'}
+                    getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization', 'romanized_name_residue'}
                     for i in s.issues
                 ) else 'TERM_OK'
             )
             item['term_issue_types'] = '; '.join(sorted(set(
                 getattr(i, 'check_type', '')
                 for i in s.issues
-                if getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization'}
+                if getattr(i, 'check_type', '') in {'term_missing', 'term_partial_hit', 'term_capitalization', 'romanized_name_residue'}
             )))
+        ui_length_issue = next(
+            (i for i in s.issues if getattr(i, 'check_type', '') == 'ui_length_overflow'),
+            None,
+        )
+        if ui_length_issue:
+            item['ui_length_source_len'] = int(getattr(ui_length_issue, 'source_length', 0))
+            item['ui_length_target_len'] = int(getattr(ui_length_issue, 'target_length', 0))
+            item['ui_length_budget'] = int(getattr(ui_length_issue, 'budget', 0))
         rows.append(item)
     return prepare_all_batches(rows, batch_size=batch_size, term_lookup=term_lookup, lang=lang)
 
@@ -418,7 +458,7 @@ def _build_result_review(
         if not state.needs_human_review:
             continue
 
-        term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
+        term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization', 'romanized_name_residue'}
         has_term_issue = any(
             getattr(i, 'check_type', '') in term_error_types for i in state.issues
         )
@@ -460,7 +500,7 @@ def _build_term_only_view(
     if not term_lookup:
         return pd.DataFrame(columns=cols)
 
-    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
+    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization', 'romanized_name_residue'}
 
     # Prebuild term candidates (skip too-short CN terms to reduce noisy hits)
     term_items: list[tuple[str, str]] = []
@@ -579,6 +619,8 @@ def _build_report_sheets(
         'term_missing': '标准术语未在译文中出现',
         'term_partial_hit': '多词术语仅部分匹配',
         'term_capitalization': '术语大小写问题',
+        'romanized_name_residue': '译文中残留拼音或音译专名',
+        'ui_length_overflow': 'UI短文案长度超出预算',
         'chinese_residue': '译文中残留中文字符',
         'pattern_inconsistency': '译文句式与组内标准不一致',
     }
@@ -677,6 +719,7 @@ def run_machine_review(
     print(f"       {len(term_lookup)} 条术语" if term_lookup else "       (无术语库)")
 
     print(f"[3/6] 变量 & 标签检查")
+    _run_surface_fixes(states, auto_fix, lang)
     _run_variable_checks(states, auto_fix)
 
     print(f"[4/6] 术语检查")
@@ -688,8 +731,11 @@ def run_machine_review(
     print(f"[6/7] 中文残留检查")
     _run_chinese_residue_checks(states)
 
-    print(f"[7/7] UI文本识别")
+    print(f"[7/8] UI文本识别")
     _run_ui_detection(states)
+
+    print(f"[8/8] UI长度预算检查")
+    _run_ui_length_checks(states, lang)
 
     total_issues = sum(len(s.issues) for s in states.values())
     print(f"\n       机审发现 {total_issues} 个问题")

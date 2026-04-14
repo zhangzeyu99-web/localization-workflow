@@ -5,6 +5,7 @@ from pathlib import Path
 from process_language import RowState
 from utils.ai_checker import (
     BatchInfo,
+    format_batch_prompt,
     merge_review_batches,
     parse_ai_response,
     parse_review_response,
@@ -14,6 +15,28 @@ from utils.ai_checker import (
 
 
 class AIReviewProtocolTests(unittest.TestCase):
+    def test_format_batch_prompt_includes_ui_length_guidance_and_len_metadata(self):
+        prompt = format_batch_prompt(
+            batch_rows=[
+                {
+                    "id": 1,
+                    "original": "消息推送",
+                    "translation": "Push Notifications",
+                    "is_ui": True,
+                    "ui_length_source_len": 4,
+                    "ui_length_target_len": 17,
+                    "ui_length_budget": 12,
+                }
+            ],
+            batch_num=1,
+            total_batches=1,
+            lang="en",
+        )
+
+        self.assertIn("UI length rule for labels, buttons, tags, and short phrases", prompt)
+        self.assertIn("LEN:source=4,target=17,budget<=12", prompt)
+        self.assertIn("ID | Source | Translation | UI | LEN", prompt)
+
     def test_parse_review_response_supports_exhaustive_keep_and_fix_lines(self):
         decisions = parse_review_response(
             "1 | KEEP\n2 | FIX | Updated translation\n",

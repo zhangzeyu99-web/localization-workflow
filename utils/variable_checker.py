@@ -51,9 +51,7 @@ def check_variables(row_id: int, original: str, translation: str) -> list[CheckR
             extra_vars.extend([var] * (have - need))
 
     if missing_vars:
-        fixed = normalize_escapes(translation)
-        for var in missing_vars:
-            fixed = fixed.rstrip() + ' ' + var
+        fixed = _build_missing_var_autofix(translation, missing_vars)
 
         results.append(CheckResult(
             row_id=row_id,
@@ -89,6 +87,25 @@ def check_variables(row_id: int, original: str, translation: str) -> list[CheckR
             ))
 
     return results
+
+
+def _build_missing_var_autofix(translation: str, missing_vars: list[str]) -> str:
+    """Build a conservative autofix for missing placeholders.
+
+    Only simple cases are auto-fixed. Complex square-bracket markup loss
+    is left for review instead of appending tokens blindly.
+    """
+    if not missing_vars:
+        return ''
+
+    square_vars = [var for var in missing_vars if var.startswith('[')]
+    if len(square_vars) > 1 or len(missing_vars) > 2:
+        return ''
+
+    fixed = normalize_escapes(translation)
+    for var in missing_vars:
+        fixed = fixed.rstrip() + ' ' + var
+    return fixed
 
 
 def check_bbcode_tags(row_id: int, original: str, translation: str) -> list[CheckResult]:

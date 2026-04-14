@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
 VAR_PATTERN = re.compile(r'\{[^}]+\}')
+SQUARE_PLACEHOLDER_PATTERN = re.compile(r'\[(?!/?color\b)(?:[A-Za-z]+\d+|\d+)\]')
+BOXED_INDEX_PATTERN = re.compile(r'⟦\d+⟧')
 BBCODE_PATTERN = re.compile(r'\[/?color[^\]]*\]', re.IGNORECASE)
 NUMBER_PATTERN = re.compile(r'\d+')
 CN_CHAR_PATTERN = re.compile(r'[\u4e00-\u9fa5]+')
@@ -64,6 +66,8 @@ def create_chinese_template(text: str) -> str:
     """
     t = str(text)
     t = VAR_PATTERN.sub('{V}', t)
+    t = SQUARE_PLACEHOLDER_PATTERN.sub('{V}', t)
+    t = BOXED_INDEX_PATTERN.sub('{V}', t)
     t = BBCODE_PATTERN.sub('', t)
     t = NUMBER_PATTERN.sub('{N}', t)
 
@@ -102,6 +106,8 @@ def _find_slot_words(translations: list[str]) -> set[str]:
     def tokenize(text: str) -> list[str]:
         clean = BBCODE_PATTERN.sub('', text)
         clean = VAR_PATTERN.sub('', clean)
+        clean = SQUARE_PLACEHOLDER_PATTERN.sub('', clean)
+        clean = BOXED_INDEX_PATTERN.sub('', clean)
         return re.findall(r"[A-Za-z'\u2019]+", clean)
 
     word_sets = [set(tokenize(t)) for t in translations]
@@ -143,6 +149,8 @@ def create_english_template(text: str, slot_words: set[str] | None = None) -> st
     """
     t = str(text)
     t = VAR_PATTERN.sub('{V}', t)
+    t = SQUARE_PLACEHOLDER_PATTERN.sub('{V}', t)
+    t = BOXED_INDEX_PATTERN.sub('{V}', t)
     t = BBCODE_PATTERN.sub('', t)
     t = NUMBER_PATTERN.sub('{N}', t)
 
@@ -198,8 +206,12 @@ def _build_fix_from_pattern(
 
     Returns empty string when a safe substitution cannot be determined.
     """
-    target_clean = BBCODE_PATTERN.sub('', VAR_PATTERN.sub('', target_translation)).strip()
-    example_clean = BBCODE_PATTERN.sub('', VAR_PATTERN.sub('', best_example)).strip()
+    target_clean = BBCODE_PATTERN.sub('', VAR_PATTERN.sub('', target_translation))
+    target_clean = SQUARE_PLACEHOLDER_PATTERN.sub('', target_clean)
+    target_clean = BOXED_INDEX_PATTERN.sub('', target_clean).strip()
+    example_clean = BBCODE_PATTERN.sub('', VAR_PATTERN.sub('', best_example))
+    example_clean = SQUARE_PLACEHOLDER_PATTERN.sub('', example_clean)
+    example_clean = BOXED_INDEX_PATTERN.sub('', example_clean).strip()
 
     target_words = re.findall(r"[A-Za-z'\u2019]+", target_clean)
     example_words = re.findall(r"[A-Za-z'\u2019]+", example_clean)

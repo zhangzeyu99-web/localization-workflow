@@ -8,6 +8,39 @@ from dataclasses import dataclass
 
 from utils.text_normalize import strip_tags_and_vars, normalize_escapes
 
+ROMANIZED_NAME_RESIDUES = {
+    '巨石阵': ['jushizhen'],
+    '红山谷': ['hongshangu'],
+    '溪谷湿地': [
+        'xiguwetland',
+        'xigu wetland',
+        'xiguvalleywetland',
+        'xigu valley wetland',
+        'xigushidi',
+        'xigu shidi',
+        'xigushidi wetland',
+    ],
+    '玫瑰湖': ['meiguihu'],
+    '蓝石堤': ['lanshidi'],
+}
+
+BUILTIN_NAME_TERM_LOOKUP = {
+    'en': {
+        '巨石阵': {'primary': 'Stonehenge', 'variants': []},
+        '红山谷': {'primary': 'Red Valley', 'variants': []},
+        '溪谷湿地': {'primary': 'Creek Wetland', 'variants': []},
+        '玫瑰湖': {'primary': 'Rose Lake', 'variants': []},
+        '蓝石堤': {'primary': 'Bluestone Embankment', 'variants': []},
+    },
+    'idn': {
+        '巨石阵': {'primary': 'Stonehenge', 'variants': []},
+        '红山谷': {'primary': 'Lembah Gunung Merah', 'variants': []},
+        '溪谷湿地': {'primary': 'Lahan Basah Sungai Kecil', 'variants': []},
+        '玫瑰湖': {'primary': 'Danau Mawar', 'variants': []},
+        '蓝石堤': {'primary': 'Tanggul Batu Biru', 'variants': []},
+    },
+}
+
 TERM_ALIASES = {
     'atk': ['attack', 'attacks', 'attacked', 'attacking'],
     'dmg': ['damage', 'damages'],
@@ -202,6 +235,78 @@ def _normalize_term_entry(term_value) -> tuple[str, list[str], bool]:
     return '', [], False
 
 
+def merge_builtin_name_terms(term_lookup: dict, lang: str) -> dict:
+    merged = dict(term_lookup or {})
+    for cn_term, term_entry in BUILTIN_NAME_TERM_LOOKUP.get(lang, {}).items():
+        merged.setdefault(cn_term, term_entry)
+    return merged
+
+
+def _build_romanized_fix(
+    translation: str,
+    residue: str,
+    primary_term: str,
+) -> str:
+    pattern = re.compile(
+        rf'(?<![A-Za-z]){re.escape(residue)}(?:\s*[-]?\s*(\d+))?(?![A-Za-z])',
+        re.IGNORECASE,
+    )
+
+    def _replace(match: re.Match[str]) -> str:
+        suffix = match.group(1)
+        if suffix:
+            return f"{primary_term} {suffix}"
+        return primary_term
+
+    return pattern.sub(_replace, translation, count=1)
+
+
+def _compact_name(text: str) -> str:
+    return re.sub(r'[\s\-]+', '', strip_tags_and_vars(text).lower())
+
+
+def _check_romanized_name_residue(
+    row_id: int,
+    original: str,
+    translation: str,
+    source_term: str,
+    primary_term: str,
+    accepted_terms: list[str],
+) -> list[TermCheckResult]:
+    residues = ROMANIZED_NAME_RESIDUES.get(source_term, [])
+    if not residues or not primary_term:
+        return []
+
+    normalized_translation = _compact_name(translation)
+    normalized_expected = {_compact_name(term) for term in accepted_terms if term}
+    results: list[TermCheckResult] = []
+
+    for residue in residues:
+        residue_compact = _compact_name(residue)
+        if residue_compact not in normalized_translation:
+            continue
+        if any(residue_compact in expected for expected in normalized_expected):
+            continue
+
+        auto_fix = _build_romanized_fix(translation, residue, primary_term)
+        if auto_fix == translation:
+            continue
+        results.append(TermCheckResult(
+            row_id=row_id,
+            check_type='romanized_name_residue',
+            severity='error',
+            message=f"Romanized name residue found: '{residue}' should be '{primary_term}' for '{source_term}'",
+            source_term=source_term,
+            expected_target=primary_term,
+            actual_fragment=residue,
+            auto_fix=auto_fix,
+            confidence=0.95,
+        ))
+        break
+
+    return results
+
+
 def _check_capitalization(
     term: str,
     translation: str,
@@ -295,6 +400,17 @@ def check_term_hit(
 
         primary_term, accepted_terms, enforce_case = _normalize_term_entry(term_entry)
         if not accepted_terms:
+            continue
+        romanized_results = _check_romanized_name_residue(
+            row_id=row_id,
+            original=original,
+            translation=translation,
+            source_term=cn_term,
+            primary_term=primary_term,
+            accepted_terms=accepted_terms,
+        )
+        if romanized_results:
+            results.extend(romanized_results)
             continue
         search_terms = _expand_search_terms(accepted_terms)
 

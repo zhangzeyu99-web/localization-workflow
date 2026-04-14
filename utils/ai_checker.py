@@ -39,6 +39,17 @@ def _make_prompt_header(lang: str = "en") -> str:
     )
 
 
+def _make_ui_length_section() -> str:
+    return (
+        "UI length rule for labels, buttons, tags, and short phrases:\n"
+        "- Keep the translation natural and easy to understand.\n"
+        "- Keep it as close to the source length as practical.\n"
+        "- English may be slightly longer than Chinese, but avoid obvious length expansion.\n"
+        "- If LEN metadata is present, try to stay within the budget unless a slightly longer form is required for clarity.\n"
+        "\n"
+    )
+
+
 def _make_term_section(lang: str = "en", has_constraints: bool = False) -> str:
     lang_name = LANG_NAMES.get(lang, lang)
     header_cols = (
@@ -163,6 +174,8 @@ def format_batch_prompt(
     """Generate the AI review prompt for one batch."""
 
     prompt = _make_prompt_header(lang)
+    if any("ui_length_budget" in row for row in batch_rows):
+        prompt += _make_ui_length_section()
     relevant_terms = _extract_relevant_terms(batch_rows, term_lookup, max_terms=max_terms)
     if relevant_terms:
         has_constraints = any(constraint for _, _, _, constraint in relevant_terms)
@@ -184,17 +197,35 @@ def format_batch_prompt(
 
     lines = []
     has_ui_meta = any("is_ui" in row for row in batch_rows)
+    has_len_meta = any("ui_length_budget" in row for row in batch_rows)
     for row in batch_rows:
         row_id = row["id"]
         original = str(row["original"]).replace("\n", "\\n")
         translation = str(row["translation"]).replace("\n", "\\n")
+        meta = []
         if has_ui_meta:
             ui_flag = "yes" if row.get("is_ui") else "no"
-            lines.append(f"{row_id} | {original} | {translation} | UI:{ui_flag}")
+            meta.append(f"UI:{ui_flag}")
+        if has_len_meta:
+            if "ui_length_budget" in row:
+                meta.append(
+                    "LEN:"
+                    f"source={row.get('ui_length_source_len', 0)},"
+                    f"target={row.get('ui_length_target_len', 0)},"
+                    f"budget<={row.get('ui_length_budget', 0)}"
+                )
+            else:
+                meta.append("LEN:-")
+        if meta:
+            lines.append(f"{row_id} | {original} | {translation} | " + " | ".join(meta))
         else:
             lines.append(f"{row_id} | {original} | {translation}")
 
-    header = "ID | Source | Translation | UI" if has_ui_meta else "ID | Source | Translation"
+    header = "ID | Source | Translation"
+    if has_ui_meta:
+        header += " | UI"
+    if has_len_meta:
+        header += " | LEN"
     prompt += (
         f"Rows to review (batch {batch_num}/{total_batches}):\n\n"
         + header
@@ -257,6 +288,8 @@ def format_recheck_prompt(
         "- Do not output explanations, headings, summaries, or code fences.\n"
         "\n"
     )
+    if any("ui_length_budget" in row for row in batch_rows):
+        prompt += _make_ui_length_section()
 
     relevant_terms = _extract_relevant_terms(batch_rows, term_lookup, max_terms=max_terms)
     if relevant_terms:
@@ -275,16 +308,26 @@ def format_recheck_prompt(
         )
 
     lines = []
+    has_len_meta = any("ui_length_budget" in row for row in batch_rows)
     for row in batch_rows:
         row_id = row["id"]
         original = str(row["original"]).replace("\n", "\\n")
         translation = str(row["translation"]).replace("\n", "\\n")
         issue = str(row.get("term_issue", "")).replace("\n", " ")
-        lines.append(f"{row_id} | {original} | {translation} | {issue}")
+        if has_len_meta and "ui_length_budget" in row:
+            len_meta = (
+                "LEN:"
+                f"source={row.get('ui_length_source_len', 0)},"
+                f"target={row.get('ui_length_target_len', 0)},"
+                f"budget<={row.get('ui_length_budget', 0)}"
+            )
+            lines.append(f"{row_id} | {original} | {translation} | {issue} | {len_meta}")
+        else:
+            lines.append(f"{row_id} | {original} | {translation} | {issue}")
 
     prompt += (
         f"Rows to recheck (batch {batch_num}/{total_batches}):\n\n"
-        "ID | Source | Translation | Term issue\n"
+        + ("ID | Source | Translation | Term issue | LEN\n" if has_len_meta else "ID | Source | Translation | Term issue\n")
         + "\n".join(lines)
     )
     return prompt
