@@ -67,6 +67,7 @@ localization-workflow-project/
 
 ## 文档
 
+- [变更日志](CHANGELOG.md)
 - [使用说明书](docs/使用说明书.md)
 - [工作流说明](工作流说明.md)
 - [工作流设计文档](workflow-design.md)
