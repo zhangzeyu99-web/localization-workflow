@@ -1,0 +1,39 @@
+# 复制到 Clash Verge 的 Merge 配置里（不要提交含真实密码的版本到 Git）
+# 路径示例：
+#   %APPDATA%\io.github.clash-verge-rev.clash-verge-rev\profiles\Merge.yaml
+#
+# 作用：仅把 OpenAI / ChatGPT / Claude 相关域名走「住宅 SOCKS5」，其余 MATCH DIRECT
+# 这样：浏览器与公司内网默认直连；Codex 经本机 127.0.0.1:7897 进入 Clash 后按规则走住宅 IP
+
+profile:
+  store-selected: true
+
+proxies:
+  - name: "US-Residential"
+    type: socks5
+    server: YOUR_RESIDENTIAL_HOST
+    port: YOUR_PORT
+    username: "YOUR_USER"
+    password: "YOUR_PASS"
+    udp: true
+
+proxy-groups:
+  - name: "AI-Services"
+    type: select
+    proxies:
+      - "US-Residential"
+      - DIRECT
+
+rules:
+  - DOMAIN-SUFFIX,openai.com,AI-Services
+  - DOMAIN-SUFFIX,oaiusercontent.com,AI-Services
+  - DOMAIN-SUFFIX,chatgpt.com,AI-Services
+  - DOMAIN-SUFFIX,oaistatic.com,AI-Services
+  - DOMAIN-SUFFIX,auth0.com,AI-Services
+  - DOMAIN-SUFFIX,featuregates.org,AI-Services
+  - DOMAIN-SUFFIX,statsigapi.net,AI-Services
+  - DOMAIN-SUFFIX,intercom.io,AI-Services
+  - DOMAIN-SUFFIX,sentry.io,AI-Services
+  - DOMAIN-SUFFIX,anthropic.com,AI-Services
+  - DOMAIN-SUFFIX,claude.ai,AI-Services
+  - MATCH,DIRECT

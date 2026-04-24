@@ -1,0 +1,4 @@
+# 本地机密：不要提交
+.env
+*.local.yaml
+secrets/
