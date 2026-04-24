@@ -70,7 +70,7 @@ localization-workflow-project/
 ## 相关工具
 
 - **[Codex + 固定住宅 IP（Clash Verge）完整落地指南](tools/codex-residential-launcher/README.md)**  
-  Windows 下一键/脚本启动 Codex Desktop 与 CLI、Merge 分流模板、VS Code 代理说明、登录与排障；可单独拷贝目录到其他机器复用。
+  Windows 下可用 **`tools/codex-residential-launcher/start-codex-desktop.cmd`**（根入口，路径自适应）或 `scripts\Start-CodexDesktop.cmd` 启动 Desktop；另有 CLI 脚本、Merge 模板、VS Code 代理说明与排障；可单独拷贝目录到其他机器复用。
 
 ## 文档
 
