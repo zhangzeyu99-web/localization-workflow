@@ -60,10 +60,17 @@ localization-workflow-project/
 │   └── variable_checker.py #   变量占位符检查
 ├── docs/
 │   └── 使用说明书.md        # 详细使用文档
+├── tools/
+│   └── codex-residential-launcher/  # Codex + Clash 住宅 IP 启动封装（见该目录 README）
 ├── output/                 # 输出目录
 │   └── ai_review/          #   AI 审查结果
 └── workflow-design.md      # 需求与设计文档
 ```
+
+## 相关工具
+
+- **[Codex + 固定住宅 IP（Clash Verge）完整落地指南](tools/codex-residential-launcher/README.md)**  
+  Windows 下一键/脚本启动 Codex Desktop 与 CLI、Merge 分流模板、VS Code 代理说明、登录与排障；可单独拷贝目录到其他机器复用。
 
 ## 文档
 

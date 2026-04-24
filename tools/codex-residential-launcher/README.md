@@ -1,110 +1,183 @@
-# Codex + 住宅 IP（Clash Verge）稳定启动封装
+# Codex + 固定住宅 IP（Clash Verge）完整落地指南
 
-在**不开 TUN** 的前提下，让 **Codex Desktop / CLI** 走本机 Clash 的 **mixed-port**，由 Clash **规则分流**把 OpenAI / ChatGPT / Claude 域名出口落到**固定住宅 IP**；其余流量 **DIRECT**，尽量不打乱公司网与浏览器。
+在 **Windows** 上，用 **Clash Verge** 的 **mixed-port + Merge 规则分流**，让 **OpenAI / ChatGPT / Claude** 相关域名从 **固定住宅 SOCKS5** 出口；**不开 TUN、不设系统代理**，其余流量 **DIRECT**，尽量不影响公司内网与普通浏览器。
 
----
-
-## 当前封装相对「随手开 Clash + 双击 Codex」优化了什么
-
-| 点 | 说明 |
-|----|------|
-| **只代理 Codex 进程树** | 通过 `HTTPS_PROXY`/`HTTP_PROXY` 仅作用于从启动脚本拉起的子进程；**不启用系统代理、不开 TUN**，避免全局 DNS/路由被改坏公司网。 |
-| **自动拉起 Clash Verge** | 若未运行则启动，并**轮询等待 mixed-port 监听**，避免 Codex 先起、代理未就绪导致偶发失败。 |
-| **可选结束旧实例** | `Start-CodexDesktop.ps1 -KillExisting`（cmd 包装已默认开启）减少多开争用 **同一套 `~/.codex/auth.json` 刷新令牌** 的概率。 |
-| **配置与密钥分离** | 仓库只含 `config/clash-merge.yaml.example`；真实 SOCKS5 填在你本机 Merge 里，**不要提交 Git**。 |
-| **新机复用** | 复制本目录 → 配 `.env` → 配 Clash Merge → 双击 `scripts\Start-CodexDesktop.cmd` 即可。 |
+**本目录可单独拷贝或从本仓库拉取后在其他机器复用。** 密钥只放本机，勿提交 Git。
 
 ---
 
-## 端到端流程（你要记在脑子里的顺序）
+## 目录
 
-```mermaid
-flowchart LR
-  A[双击 Start-CodexDesktop] --> B{Clash Verge 已运行?}
-  B -->|否| C[启动 Clash Verge]
-  B -->|是| D[等待 127.0.0.1:PORT 监听]
-  C --> D
-  D --> E[设置 HTTPS_PROXY=http://127.0.0.1:PORT]
-  E --> F[启动 Codex Desktop]
-  F --> G[Electron 子进程 codex.exe 走代理]
-  G --> H[Clash 规则: openai/chatgpt → 住宅 SOCKS5]
-  H --> I[其它域名 MATCH DIRECT]
-```
-
-1. **Clash Verge** 加载订阅 + **Merge**（住宅 SOCKS5 + 仅 AI 域名走 `AI-Services`）。
-2. 本机 **mixed-port**（如 `7897`）提供 HTTP 入口。
-3. 启动脚本为 **Codex 子进程**设置 `HTTPS_PROXY` → 流量进 Clash。
-4. Clash **按域名**把 OpenAI 相关请求送到 **kookeey 等住宅出口**；其它仍走你机器默认出口（如香港公司网）。
+1. [目标与原则](#1-目标与原则)  
+2. [前置条件](#2-前置条件)  
+3. [Clash Verge：Merge 与端口](#3-clash-vergemerge-与端口)  
+4. [本仓库脚本做什么](#4-本仓库脚本做什么)  
+5. [新机落地步骤（复制即用）](#5-新机落地步骤复制即用)  
+6. [Codex Desktop](#6-codex-desktop)  
+7. [Codex CLI](#7-codex-cli)  
+8. [VS Code 里的 Codex 扩展](#8-vs-code-里的-codex-扩展)  
+9. [登录与令牌](#9-登录与令牌)  
+10. [验证是否走住宅出口](#10-验证是否走住宅出口)  
+11. [排障](#11-排障)  
+12. [内地环境：链式代理（可选）](#12-内地环境链式代理可选)  
+13. [仓库与许可](#13-仓库与许可)
 
 ---
 
-## 在新机器上复用（GitHub）
+## 1. 目标与原则
 
-### 1. 拷贝本目录
+| 目标 | 做法 |
+|------|------|
+| Codex 访问 OpenAI 使用 **固定住宅 IP** | Clash Merge 里 SOCKS5 住宅节点 + 域名规则走 `AI-Services` |
+| **不破坏公司网** | **不用 TUN**；不用 Windows「系统代理」全局开关；仅对 **从脚本启动的 Codex 进程树** 注入 `HTTPS_PROXY` |
+| 可复现、可上 Git | 仓库只含 **示例配置**与脚本；**密码、真实 Merge、`.env` 不入库**（见 `.gitignore`） |
 
-把 `tools/codex-residential-launcher/` 整个目录拷走，或从本仓库 clone 后只取该子目录。
+---
 
-### 2. 安装依赖
+## 2. 前置条件
 
-- [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev/releases)
-- [Codex Desktop](https://openai.com/) / 或官方安装包路径与默认一致
+- Windows 10/11 或 Windows Server（能跑 Clash Verge 与 Codex）
+- 已安装 **Clash Verge Rev**：[releases](https://github.com/clash-verge-rev/clash-verge-rev/releases)
+- 已安装 **Codex Desktop** 与/或 **Codex CLI**（OpenAI 官方安装路径常见为 `%LOCALAPPDATA%\Programs\OpenAI\...`）
+- 一条 **SOCKS5 住宅代理**（如 kookeey；HTTP 代理若仅有 SOCKS5，仍由 Clash 接 SOCKS5，本机 mixed-port 用 HTTP 即可）
 
-### 3. 配置 Clash Merge（住宅 IP）
+---
 
-1. 打开 `config/clash-merge.yaml.example`，复制内容。
-2. 在 Clash Verge：**配置 → Merge**（或编辑 Merge 文件），粘贴并填写你的 **SOCKS5 住宅** `server/port/username/password`。
-3. 保存并让 Clash **重载配置**。确认 **mixed-port** 与下面 `.env` 里一致。
+## 3. Clash Verge：Merge 与端口
 
-### 4. 本机 `.env`（不要提交）
+### 3.1 Merge 文件位置（常见）
 
-```text
-copy env.example .env
-```
+将 `config/clash-merge.yaml.example` 复制为 Clash Verge 的 **Merge** 内容（在 UI 里编辑 Merge，或编辑生成目录下的 `profiles\Merge.yaml`，以你本机 Clash Verge 数据目录为准）。
 
-用记事本编辑 **与 `scripts` 同级的** `.env`（即 `codex-residential-launcher\.env`）：
+常见数据目录：
 
-- `CLASH_VERGE_EXE`：Clash 可执行文件完整路径  
-- `CLASH_MIXED_PORT`：与 Clash 里 mixed-port 一致  
-- `CODEX_DESKTOP_EXE` / `CODEX_CLI_EXE`：若安装路径非默认，写绝对路径（**不要用 `%VAR%`**，本脚本简单解析不展开）
+`%APPDATA%\io.github.clash-verge-rev.clash-verge-rev\`
 
-### 5. 启动
+其中 `profiles\Merge.yaml` 会与订阅合并；**把 example 里的占位符改成你的住宅 SOCKS5**。
 
-- **桌面版**：双击 `scripts\Start-CodexDesktop.cmd`  
-- **命令行**：在 PowerShell 里执行：
+### 3.2 规则思路（与 example 一致）
+
+- `DOMAIN-SUFFIX`：`openai.com`、`chatgpt.com`、`auth0.com`、Anthropic 等 → 走 `AI-Services`（住宅）
+- **`MATCH,DIRECT`**：其余全部直连（公司网、普通浏览）
+
+### 3.3 mixed-port
+
+在 Clash Verge 设置里查看 **mixed-port**（常见 `7890` / `7897`）。**必须与** `.env` 里的 `CLASH_MIXED_PORT` 一致。
+
+### 3.4 为何默认不用 TUN
+
+TUN 在部分公司环境会劫持 DNS/路由导致内网异常。本方案用 **进程级 HTTP 代理** 只裹 Codex，风险更小。
+
+---
+
+## 4. 本仓库脚本做什么
+
+| 文件 | 作用 |
+|------|------|
+| `scripts/Start-CodexDesktop.ps1` | 未运行则启动 Clash；**等待 mixed-port 监听**；设置 `HTTPS_PROXY`/`HTTP_PROXY`；默认 `-KillExisting` 关掉旧 Desktop 再启动 |
+| `scripts/Start-CodexDesktop.cmd` | 双击入口：`powershell -File ...\Start-CodexDesktop.ps1 -KillExisting` |
+| `scripts/Start-CodexCLI.ps1` | 同上拉起 Clash + 代理，再执行 `codex.exe`，参数原样透传 |
+| `env.example` | 复制为同目录 `.env` 填写路径与端口 |
+| `config/clash-merge.yaml.example` | Merge 模板（**无真实密码**） |
+
+**相对「手动开 Clash + 直接双击 Codex 图标」的优化**：等端口、关旧实例减 token 争用、路径可配置、文档可随仓库走。
+
+---
+
+## 5. 新机落地步骤（复制即用）
+
+1. **Clone 或拷贝**本仓库中的 `tools/codex-residential-launcher/` 到目标机任意路径。  
+2. 安装 **Clash Verge**、**Codex**（路径非默认则后面 `.env` 写绝对路径）。  
+3. 按 [§3](#3-clash-vergemerge-与端口) 配置 **Merge**（住宅 SOCKS5 + AI 域名规则 + `MATCH,DIRECT`），重载配置。  
+4. `copy env.example .env`，编辑 **与本目录同级** 的 `.env`：`CLASH_VERGE_EXE`、`CLASH_MIXED_PORT`，必要时 `CODEX_DESKTOP_EXE` / `CODEX_CLI_EXE`。  
+5. **桌面版**：双击 `scripts\Start-CodexDesktop.cmd`。  
+6. **CLI**：`powershell -ExecutionPolicy Bypass -File .\scripts\Start-CodexCLI.ps1`（可加 `exec "..."` 等参数）。
+
+---
+
+## 6. Codex Desktop
+
+- **Electron 主进程**（`Codex.exe`）可能仍有直连（更新、遥测等），**一般不影响 OpenAI 主链路**。  
+- 真正调模型的是子进程 **`resources\codex.exe`**：会继承启动脚本设置的 **`HTTPS_PROXY`**，从而连接 **`http://127.0.0.1:<mixed-port>`** → Clash 规则 → 住宅出口。  
+- **不要**只从开始菜单/桌面快捷方式直接点 Codex（除非该快捷方式已改为调用本仓库 `Start-CodexDesktop.cmd`），否则子进程**可能**不带代理。
+
+---
+
+## 7. Codex CLI
+
+- 使用 `scripts\Start-CodexCLI.ps1`，或在同一 PowerShell 会话中手动：
 
   ```powershell
-  .\scripts\Start-CodexCLI.ps1
-  # 或带参数
-  .\scripts\Start-CodexCLI.ps1 exec "hello"
+  $env:HTTPS_PROXY="http://127.0.0.1:7897"
+  $env:HTTP_PROXY="http://127.0.0.1:7897"
+  & "$env:LOCALAPPDATA\Programs\OpenAI\Codex\bin\codex.exe" @args
   ```
 
-### 6. 推到 GitHub
+- 端口以你 `.env` / Clash 实际为准。
 
-在仓库根目录（或 monorepo 根）：
+---
 
-```bash
-git add tools/codex-residential-launcher
-git commit -m "chore: add Codex residential launcher scripts"
-git push
+## 8. VS Code 里的 Codex 扩展
+
+扩展 Marketplace ID 一般为 **`openai.chatgpt`**（即 Codex 相关能力）。在 **用户级** `settings.json` 中建议：
+
+```json
+{
+  "http.proxy": "http://127.0.0.1:7897",
+  "http.proxyStrictSSL": false,
+  "http.proxySupport": "on",
+  "chatgpt.cliPath": "C:\\Users\\<你>\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe"
+}
 ```
 
-**切勿**把含密码的 `Merge.yaml`、真实 `.env` 提交上去。
+路径与端口按本机修改；**先启动 Clash Verge** 再开 VS Code。
 
 ---
 
-## 登录与「refresh token was already used」
+## 9. 登录与令牌
 
-- **设备码登录**（`codex login --device-auth`）建议 **直连** 完成，避免住宅 IP 对 auth 接口 **429**。  
-- 登录/刷新时尽量**只留一个 Codex 客户端**（先关 Desktop 再 CLI 登录），避免并发刷新 **同一条 refresh token**。
-
----
-
-## 验证是否走固定出口（可选）
-
-在 Codex 已用脚本启动、Clash 已开的前提下，用另一终端（**不设**代理）访问普通网站应为本地/公司出口；对 `api.openai.com` 的探测若经 `127.0.0.1:PORT` 代理应返回 **401**（说明到达 OpenAI 而非被墙 HTML）。
+| 场景 | 建议 |
+|------|------|
+| **设备码登录** `codex login --device-auth` | 使用 **直连**（不设 `HTTPS_PROXY`），避免住宅 IP 对 `auth.openai.com` **429 Too Many Requests** |
+| **`refresh token was already used`** | 多实例（Desktop + CLI + VS Code）**并发刷新**同一 `~/.codex\auth.json` 会导致；先 **关 Desktop**，再 `codex logout` 后重新 `login --device-auth`，最后再开 Desktop |
+| 凭据文件 | `%USERPROFILE%\.codex\auth.json`（勿上传） |
 
 ---
 
-## 许可
+## 10. 验证是否走住宅出口
 
-脚本以 MIT 随仓库发布；Clash / Codex / 住宅 IP 服务各自遵循其厂商条款。
+1. Clash 已运行、Merge 已加载。  
+2. **不设代理**的终端：`curl https://httpbin.org/ip` → 应为你本机/公司出口（如香港 IDC）。  
+3. **走代理**的终端：`curl -x http://127.0.0.1:<PORT> https://api.openai.com/v1/models -H "Authorization: Bearer test"` → 期望 **HTTP 401** JSON（说明到达 OpenAI API，而非被墙 HTML）。
+
+---
+
+## 11. 排障
+
+| 现象 | 可能原因 | 处理 |
+|------|-----------|------|
+| Codex 仍提示 IP/地区 | 未走 Clash 或规则未命中 | 用本仓库 **cmd/ps1** 启动 Desktop；检查 Merge 域名与 `MATCH` 顺序 |
+| 公司网上不去 | 曾开 TUN 或系统代理 | 关闭 TUN；关闭系统代理；仅用脚本注入进程代理 |
+| Desktop 子进程无 `127.0.0.1:7897` 连接 | 未通过脚本启动 | 改用 `Start-CodexDesktop.cmd` |
+| OpenClaw / 其它工具 WebSocket 500 | `chatgpt.com/backend-api` 与 curl 不同，Cloudflare 策略更严 | 见各产品文档；本仓库仅解决 **经 Clash 的 HTTP(S) 出口 IP** |
+| `git push` 凭据异常 | 与 Codex 无关 | 使用 `gh auth login` 或 PAT |
+
+---
+
+## 12. 内地环境：链式代理（可选）
+
+若本机 **无法直连** 住宅 SOCKS5 出口，需在 Merge 里为住宅节点配置 **`dialer-proxy`**（先走机场/出境节点，再连住宅）。参见 [Clash Verge 链式代理文档](https://www.clashverge.dev/guide/proxy_chain.html)。
+
+---
+
+## 13. 仓库与许可
+
+- 脚本与文档以 **MIT** 随仓库发布（若根仓库另有协议，以根仓库为准）。  
+- Clash Verge、Codex、住宅 IP 服务商条款各自遵守。
+
+---
+
+## 一键链接（本仓库路径）
+
+本工具在 monorepo 中的路径：**`tools/codex-residential-launcher/`**  
+根目录说明见仓库 **`README.md`** 中的「相关工具」一节。
