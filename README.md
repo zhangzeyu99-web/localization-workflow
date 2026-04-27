@@ -1,8 +1,21 @@
 # Localization QA Workflow
 
-> 游戏本地化质检工作流 — AI 粗翻后的人机协作质检工具
+> Game localization QA workflow for Excel language packs, AI draft review, terminology consistency, placeholder validation, and UI tag safety.
 
-## 概述
+这是一个面向**游戏本地化团队**的质检工作流仓库，专门处理 **AI 粗翻后的 Excel 语言包**。它会自动检查变量占位符、UI 标签、术语一致性、格式模式和高风险翻译问题，并输出可复核的质检结果。
+
+**Keywords:** game localization QA, localization workflow, Excel translation QA, terminology consistency, placeholder validation, UI tag validation, AI translation review, game LQA.
+
+## Why This Project Exists
+
+Most localization tools stop at translation or generic QA. This project focuses on the messy middle:
+
+- AI draft output that still needs human review
+- Excel-based language packs used by game teams
+- Variables, BBCode, UI tags, and short UI strings that are easy to break
+- Repeatable QA rules that can run before delivery instead of after bug reports
+
+## 中文概述
 
 面向游戏本地化场景的自动化质检工具，处理 AI 粗翻后的语言包（Excel 格式），自动检测变量占位符、UI 标记、术语一致性等问题，输出质检报告。
 
