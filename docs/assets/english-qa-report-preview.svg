@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620" role="img" aria-labelledby="title desc">
+  <title id="title">English QA report preview</title>
+  <desc id="desc">Preview of an English localization QA report table.</desc>
+  <rect width="1100" height="620" fill="#f8fafc"/>
+  <rect x="56" y="54" width="988" height="512" rx="16" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="92" y="112" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#0f172a">English QA Report Preview</text>
+  <text x="92" y="148" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#475569">Sample output after checking placeholders, UI tags, terminology, and short UI length.</text>
+  <rect x="92" y="190" width="916" height="54" fill="#1e293b"/>
+  <text x="116" y="224" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff">ID</text>
+  <text x="210" y="224" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Source</text>
+  <text x="420" y="224" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Translation</text>
+  <text x="690" y="224" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Finding</text>
+  <text x="116" y="288" font-family="Consolas, monospace" font-size="16" fill="#0f172a">1001</text>
+  <text x="210" y="288" font-family="Consolas, monospace" font-size="16" fill="#334155">Start Battle</text>
+  <text x="420" y="288" font-family="Consolas, monospace" font-size="16" fill="#334155">Start Battle</text>
+  <text x="690" y="288" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#166534">OK</text>
+  <text x="116" y="352" font-family="Consolas, monospace" font-size="16" fill="#0f172a">1002</text>
+  <text x="210" y="352" font-family="Consolas, monospace" font-size="16" fill="#334155">{0} Gold</text>
+  <text x="420" y="352" font-family="Consolas, monospace" font-size="16" fill="#334155">Gold</text>
+  <text x="690" y="352" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#991b1b">variable_missing</text>
+  <text x="116" y="416" font-family="Consolas, monospace" font-size="16" fill="#0f172a">1003</text>
+  <text x="210" y="416" font-family="Consolas, monospace" font-size="16" fill="#334155">&lt;color&gt;Epic&lt;/color&gt;</text>
+  <text x="420" y="416" font-family="Consolas, monospace" font-size="16" fill="#334155">&lt;color&gt;Epic</text>
+  <text x="690" y="416" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#92400e">ui_tag_unclosed</text>
+  <rect x="92" y="472" width="916" height="52" rx="10" fill="#eff6ff"/>
+  <text x="116" y="505" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#1e3a8a">Use this report before delivery to catch broken runtime strings and risky AI draft output.</text>
+</svg>

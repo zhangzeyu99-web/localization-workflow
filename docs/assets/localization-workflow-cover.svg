@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Localization QA Workflow cover</title>
+  <desc id="desc">Game localization QA dashboard preview for Excel translation packs.</desc>
+  <rect width="1200" height="630" fill="#0b1220"/>
+  <rect x="60" y="64" width="1080" height="500" rx="18" fill="#f8fafc"/>
+  <text x="96" y="126" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="800" fill="#111827">Localization QA Workflow</text>
+  <text x="96" y="166" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#475569">Excel language pack review for game UI, placeholders, terms, and tags</text>
+  <rect x="96" y="212" width="514" height="280" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="96" y="212" width="514" height="48" rx="12" fill="#1d4ed8"/>
+  <text x="120" y="243" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" fill="#ffffff">Input: language pack rows</text>
+  <text x="120" y="304" font-family="Consolas, monospace" font-size="17" fill="#111827">ID    CN        EN</text>
+  <text x="120" y="342" font-family="Consolas, monospace" font-size="17" fill="#334155">1001  开始      Start</text>
+  <text x="120" y="380" font-family="Consolas, monospace" font-size="17" fill="#334155">1002  {0}金币   {0} Gold</text>
+  <text x="120" y="418" font-family="Consolas, monospace" font-size="17" fill="#334155">1003  &lt;color&gt;红&lt;/color&gt;  &lt;color&gt;Red&lt;/color&gt;</text>
+  <rect x="666" y="212" width="378" height="280" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="666" y="212" width="378" height="48" rx="12" fill="#047857"/>
+  <text x="690" y="243" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" fill="#ffffff">Output: QA findings</text>
+  <rect x="704" y="300" width="260" height="36" rx="8" fill="#dcfce7"/>
+  <text x="724" y="324" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#166534">placeholder_ok</text>
+  <rect x="704" y="356" width="260" height="36" rx="8" fill="#fef3c7"/>
+  <text x="724" y="380" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#92400e">term_review_needed</text>
+  <rect x="704" y="412" width="260" height="36" rx="8" fill="#fee2e2"/>
+  <text x="724" y="436" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#991b1b">ui_length_overflow</text>
+  <text x="96" y="538" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700" fill="#111827">Built for game LQA, AI draft review, terminology consistency, and delivery safety.</text>
+</svg>
