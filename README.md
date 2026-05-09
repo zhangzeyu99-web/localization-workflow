@@ -110,6 +110,7 @@ localization-workflow-project/
 - [工作流说明](工作流说明.md)
 - [工作流设计文档](workflow-design.md)
 - [不可读缩写与截断词拦截规则](docs/readability-abbreviation-gate.md)
+- [质量回归 Harness](docs/quality-harness.md)
 
 ## 最新更新（2026-04-14）
 
@@ -137,6 +138,9 @@ localization-workflow-project/
 - 英文大小写风格复检
   - 错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`
   - Title Case 只保留给专名、功能名、标题、商店项和术语表明确要求的名称
+- 质量回归 Harness
+  - `fixtures/quality_regression.json` 固化历史坏例和好例，防止旧问题回归或误杀合理译文
+  - `scripts/run_quality_harness.py` 可同时跑 fixture 和真实 workbook 扫描
 
 ### 典型适用场景
 
@@ -183,6 +187,12 @@ localization-workflow-project/
 - `variable_missing`
 - `variable_extra`
 - `term_missing`
+
+### 7. 最终交付前建议跑 quality harness
+
+```bash
+python scripts/run_quality_harness.py fixtures/quality_regression.json --workbook <final.xlsx>
+```
 
 ## License
 

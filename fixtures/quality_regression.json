@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "description": "Regression cases distilled from real localization delivery failures.",
+  "cases": [
+    {
+      "id": "bad-title-case-too-many-roles",
+      "source": "该帐号创角过多",
+      "translation": "Too Many Roles",
+      "expected_issues": ["title_case_overuse"]
+    },
+    {
+      "id": "good-title-case-feature-login",
+      "source": "七日登录",
+      "translation": "7-Day Login",
+      "expected_issues": []
+    },
+    {
+      "id": "good-title-case-feature-name",
+      "source": "战令",
+      "translation": "Battle Pass",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-clipped-login-timeout",
+      "source": "登录超时",
+      "translation": "Logi time",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-please-enter-correct-chars",
+      "source": "请输入正确的字符",
+      "translation": "Plea ente corr char",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-opaque-abbreviation-ui",
+      "source": "请输入举报原因",
+      "translation": "PERR",
+      "expected_issues": ["opaque_abbreviation"]
+    },
+    {
+      "id": "bad-opaque-placeholder-code",
+      "source": "本关至多上阵4个英雄",
+      "translation": "AM4HUITL",
+      "expected_issues": ["internal_token_leak"]
+    },
+    {
+      "id": "bad-internal-token-random",
+      "source": "调试残留",
+      "translation": "ZXN37Q",
+      "expected_issues": ["internal_token_leak"]
+    },
+    {
+      "id": "bad-html-entity",
+      "source": "稀有的商人出售各种稀有道具",
+      "translation": "Rare&#39;s dark web merchant sells all sorts of rare items.",
+      "expected_issues": ["html_entity_leak"]
+    },
+    {
+      "id": "bad-orphan-leading-clitic",
+      "source": "毒舌依旧",
+      "translation": "’s poisonous tongue remains the same.",
+      "expected_issues": ["orphan_leading_clitic"]
+    },
+    {
+      "id": "bad-leading-lowercase",
+      "source": "双层红色液体。",
+      "translation": "double red liquid.",
+      "expected_issues": ["leading_lowercase"]
+    },
+    {
+      "id": "bad-fullwidth-punctuation",
+      "source": "系统错误",
+      "translation": "System error！",
+      "expected_issues": ["fullwidth_punctuation"]
+    },
+    {
+      "id": "bad-question-quote-corruption",
+      "source": "怎么了？",
+      "translation": "What's wrong, Nora\"",
+      "expected_issues": ["punctuation_corruption"]
+    },
+    {
+      "id": "bad-placeholder-missing-v0",
+      "source": "[v0]次射击",
+      "translation": "0 shots",
+      "expected_issues": ["variable_missing"]
+    },
+    {
+      "id": "good-placeholder-v0",
+      "source": "[v0]次射击",
+      "translation": "[v0] shots",
+      "expected_issues": []
+    },
+    {
+      "id": "good-game-abbreviation",
+      "source": "生命值",
+      "translation": "HP",
+      "expected_issues": []
+    },
+    {
+      "id": "good-sentence-case-status",
+      "source": "系统错误",
+      "translation": "System error",
+      "expected_issues": []
+    },
+    {
+      "id": "good-placeholder-order",
+      "source": "##1等##2人被重新分配了工作",
+      "translation": "##1 and ##2 others were reassigned",
+      "expected_issues": []
+    }
+  ]
+}

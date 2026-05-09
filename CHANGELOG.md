@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-05-09 - Quality Harness
+
+本次更新把会话中反复暴露的本地化质量问题沉淀成可执行 harness，目标是防止“越跑越差”。
+
+### 新增
+
+- 新增 `utils/quality_harness.py`
+  - 统一运行变量/BBCode、中文残留、可读性、HTML 实体、内部 token、首字母小写、标点破坏、全角符号等检查
+  - 支持固定字符串 fixture 和真实 workbook 扫描
+- 新增 `scripts/run_quality_harness.py`
+  - 可运行 `fixtures/quality_regression.json`
+  - 可通过 `--workbook` 扫描最终版 Excel
+  - 支持 `--json` 输出
+- 新增 `fixtures/quality_regression.json`
+  - 覆盖 `[v0]` 损坏、`ZXN37Q`、`Rare&#39;s`、`PERR`、`Logi time`、`Too Many Roles`、孤立 `’s`、句首小写、全角符号、问号变引号等回归用例
+  - 同时保留 `7-Day Login`、`Battle Pass`、`HP`、占位符开头句子等好例，避免误杀
+- 新增 `docs/quality-harness.md`
+
+### 验证
+
+- `python scripts\run_quality_harness.py fixtures\quality_regression.json`
+- `python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <战机UI最终版> --workbook <战机语言表最终版>`
+- `python -m unittest discover -s tests -p "test_*.py"`
+
 ## 2026-05-09
 
 ### 补充：英文大小写风格

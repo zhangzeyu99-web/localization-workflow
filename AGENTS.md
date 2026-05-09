@@ -94,6 +94,7 @@
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
 - 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。
 - Title Case 只用于合理范围：专名、功能名、标题、商店项、术语表明确要求的名称。
+- 新增任何质量规则时，必须同步补 `fixtures/quality_regression.json`：坏例要被拦住，好例不能被误杀。
 
 ## 最终版交付管线
 
@@ -112,9 +113,10 @@
      - `title_case_overuse`
      - 其他结构性错误
   6. 反复复检，直到不再有硬错误
-  7. 允许保留 `short_text_length_watch` 这类软提示作为说明项，除非用户明确要求清到 0
-  8. 在任务目录落一个明确命名的最终版文件，例如 `原文件名_最终版.xlsx`
-  9. 同时输出 `result_{lang}.xlsx` 和 `report_{lang}.xlsx`
+  7. 跑质量回归 harness：`python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx>`
+  8. 允许保留 `short_text_length_watch` 这类软提示作为说明项，除非用户明确要求清到 0
+  9. 在任务目录落一个明确命名的最终版文件，例如 `原文件名_最终版.xlsx`
+  10. 同时输出 `result_{lang}.xlsx` 和 `report_{lang}.xlsx`
 
 ## 交付要求
 
