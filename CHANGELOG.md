@@ -15,6 +15,7 @@
 
 - 新增 `utils/quality_harness.py`
   - 统一运行变量/BBCode、中文残留、可读性、HTML 实体、内部 token、首字母小写、标点破坏、全角符号等检查
+  - 增加 `hash_code_abbreviation`、`placeholder_compaction`、`placeholder_word_glue`，拦截 `#BRUL`、`S##1##2`、`##1Employed##2` 这类缩写残留
   - 支持固定字符串 fixture 和真实 workbook 扫描
 - 新增 `scripts/run_quality_harness.py`
   - 可运行 `fixtures/quality_regression.json`

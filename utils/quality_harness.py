@@ -22,6 +22,9 @@ from utils.variable_checker import CheckResult, check_all as check_variables
 
 HTML_ENTITY_PATTERN = re.compile(r'&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);')
 INTERNAL_TOKEN_PATTERN = re.compile(r'\b[A-Z]{2,}[A-Z0-9]*\d[A-Z0-9]*\b')
+HASH_CODE_PATTERN = re.compile(r'#[A-Z]{2,}(?:##\d+|#\d+)*\b')
+LETTER_PLACEHOLDER_COMPACTION_PATTERN = re.compile(r'\b[A-Z]{1,6}(?:##\d+|#\d+){2,}[A-Z0-9#]*\b')
+PLACEHOLDER_WORD_GLUE_PATTERN = re.compile(r'##\d+[A-Za-z]{2,}##\d+')
 ORPHAN_LEADING_CLITIC_PATTERN = re.compile(r"^\s*['’]s\b", re.IGNORECASE)
 FULLWIDTH_PUNCTUATION_PATTERN = re.compile(r'[，。！？：；（）【】％＋－]')
 WORD_START_PATTERN = re.compile(r'[A-Za-z]')
@@ -40,6 +43,9 @@ DEFAULT_HARD_ISSUES = {
     'clipped_word',
     'title_case_overuse',
     'internal_token_leak',
+    'hash_code_abbreviation',
+    'placeholder_compaction',
+    'placeholder_word_glue',
     'html_entity_leak',
     'orphan_leading_clitic',
     'leading_lowercase',
@@ -205,6 +211,36 @@ def _check_surface_regressions(row_id, source: str, translation: str) -> list[Ch
             row_id,
             'internal_token_leak',
             f"Internal token-like text leaked: {token_match.group(0)}",
+            source,
+            translation,
+        ))
+
+    hash_match = HASH_CODE_PATTERN.search(translation)
+    if hash_match:
+        results.append(_issue(
+            row_id,
+            'hash_code_abbreviation',
+            f"Hash-prefixed code abbreviation leaked: {hash_match.group(0)}",
+            source,
+            translation,
+        ))
+
+    compact_match = LETTER_PLACEHOLDER_COMPACTION_PATTERN.search(translation)
+    if compact_match:
+        results.append(_issue(
+            row_id,
+            'placeholder_compaction',
+            f"Letters are compacted into placeholders: {compact_match.group(0)}",
+            source,
+            translation,
+        ))
+
+    glued_match = PLACEHOLDER_WORD_GLUE_PATTERN.search(translation)
+    if glued_match:
+        results.append(_issue(
+            row_id,
+            'placeholder_word_glue',
+            f"Word is glued between placeholders: {glued_match.group(0)}",
             source,
             translation,
         ))

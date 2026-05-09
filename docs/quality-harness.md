@@ -14,6 +14,8 @@
 - 占位符损坏：`[v0]` 被改成 `0`。
 - HTML 实体泄漏：`Rare&#39;s`。
 - 内部 token 泄漏：`ZXN37Q`、`AM4HUITL`、`SAAI##1DIT`。
+- 井号代码缩写：`#BRUL`、`#FRUL`、`#DA##1##2`。
+- 字母和占位符硬粘连：`S##1##2`、`L##1##2##3`、`##1Employed##2`。
 - 不可读缩写：`PERR`、`DTT`、`IJA`。
 - 截断词：`Logi time`、`Plea ente corr char`。
 - 错误提示滥用 Title Case：`Too Many Roles`、`System Error`。
@@ -71,6 +73,9 @@ Workbook 扫描默认把以下问题当阻断项：
 - `clipped_word`
 - `title_case_overuse`
 - `internal_token_leak`
+- `hash_code_abbreviation`
+- `placeholder_compaction`
+- `placeholder_word_glue`
 - `html_entity_leak`
 - `orphan_leading_clitic`
 - `leading_lowercase`

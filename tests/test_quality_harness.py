@@ -114,6 +114,34 @@ class QualityHarnessTests(unittest.TestCase):
 
         self.assertTrue(result.passed, result.failures)
 
+    def test_hash_code_and_placeholder_compaction_are_hard_issues(self):
+        fixture = {
+            "cases": [
+                {
+                    "id": "blacklist-limit-code",
+                    "source": "黑名单数量已达上限",
+                    "translation": "#BRUL",
+                    "expected_issues": ["hash_code_abbreviation"],
+                },
+                {
+                    "id": "spend-item-code",
+                    "source": "花费##1个##2",
+                    "translation": "S##1##2",
+                    "expected_issues": ["placeholder_compaction"],
+                },
+                {
+                    "id": "employed-glue-code",
+                    "source": "##1上岗##2位居民",
+                    "translation": "##1Employed##2",
+                    "expected_issues": ["placeholder_word_glue"],
+                },
+            ]
+        }
+
+        result = run_fixture(fixture)
+
+        self.assertTrue(result.passed, result.failures)
+
 
 if __name__ == "__main__":
     unittest.main()
