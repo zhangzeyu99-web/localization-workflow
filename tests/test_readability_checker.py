@@ -70,6 +70,16 @@ class ReadabilityCheckerTests(unittest.TestCase):
 
         self.assertEqual(issues, [])
 
+    def test_allows_reasonable_login_feature_title(self):
+        issues = check_readability(
+            row_id=5,
+            original="七日登录",
+            translation="7-Day Login",
+            lang="en",
+        )
+
+        self.assertEqual(issues, [])
+
 
 if __name__ == "__main__":
     unittest.main()
