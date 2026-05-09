@@ -109,6 +109,7 @@ localization-workflow-project/
 - [使用说明书](docs/使用说明书.md)
 - [工作流说明](工作流说明.md)
 - [工作流设计文档](workflow-design.md)
+- [不可读缩写与截断词拦截规则](docs/readability-abbreviation-gate.md)
 
 ## 最新更新（2026-04-14）
 
@@ -129,6 +130,10 @@ localization-workflow-project/
   - 再按类型分层处理：紧凑 UI 走硬约束，普通短文本走软提示，编号专名和复杂富文本豁免
   - 机审会新增 `ui_length_overflow`
   - AI 审核 prompt 会带上 `LEN:mode=...,source=...,target=...,budget<=...` 元数据，要求在自然可懂前提下尽量贴近中文长度
+- 不可读缩写 / 截断词硬门槛
+  - 机审会拦截 `PERR`、`DTT`、`IJA`、`CL##1##2` 这类内部代码式文案
+  - 机审会拦截 `rewa`、`obta`、`coll imme`、`tmrw` 这类截断词
+  - AI 审核 prompt 明确要求：长度和可读性冲突时，以自然可懂为准
 
 ### 典型适用场景
 
@@ -169,6 +174,8 @@ localization-workflow-project/
 
 - `romanized_name_residue`
 - `ui_length_overflow`
+- `opaque_abbreviation`
+- `clipped_word`
 - `variable_missing`
 - `variable_extra`
 - `term_missing`

@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-05-09
+
+本次更新把“UI 过度压缩导致不可读缩写”的问题固化为流程硬门槛，避免最终版再次出现 `PERR`、`DTT`、`IJA`、`CL##1##2` 这类不可上线文案。
+
+### 新增
+
+- 新增 `utils/readability_checker.py`
+  - 检测不可读缩写：`opaque_abbreviation`
+  - 检测截断词 / 机械压缩词：`clipped_word`
+  - 默认允许稳定游戏缩写：`HP`、`ATK`、`DEF`、`DMG`、`DPS`、`PVP`、`PVE`、`VIP`、`FPS`、`SFX`、`UI`、`Lv`
+- 主流程在 UI 长度检查后增加“可读缩写 / 截断词检查”
+- AI 审核 prompt 明确禁止为了长度预算发明不可读缩写或截断单词
+- 新增规则文档：`docs/readability-abbreviation-gate.md`
+
+### 规则变更
+
+- `opaque_abbreviation` 和 `clipped_word` 现在属于最终版阻断错误，交付前必须清到 0。
+- `Rwd`、`Req`、`Acct`、`Tmrw`、`OC`、`Mod` 不再默认视为安全缩写，除非项目术语表明确允许。
+- 长度和可读性冲突时，以自然可懂为准，宁可略长。
+
+### 验证
+
+- `python -m unittest tests.test_readability_checker tests.test_process_language tests.test_ai_review_protocol`
+
 ## 2026-04-15
 
 本次版本把近期已经验证过的工作流增强正式合入主线，重点是把“机审 -> AI 审核 -> 严格回填 -> 复核输出”这条链路补成稳定的闭环。

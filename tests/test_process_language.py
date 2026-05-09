@@ -1,6 +1,11 @@
 import unittest
 
-from process_language import RowState, _run_ui_length_checks, prepare_ai_review
+from process_language import (
+    RowState,
+    _run_readability_checks,
+    _run_ui_length_checks,
+    prepare_ai_review,
+)
 
 
 class ProcessLanguageUILengthTests(unittest.TestCase):
@@ -51,6 +56,16 @@ class ProcessLanguageUILengthTests(unittest.TestCase):
         prompt = batches[0].prompt_text
         self.assertIn("mode=soft", prompt)
         self.assertIn("budget<=", prompt)
+
+    def test_run_readability_checks_marks_opaque_abbreviations_for_review(self):
+        state = RowState(5, "请输入举报原因", "PERR")
+        states = {5: state}
+
+        _run_readability_checks(states, lang="en")
+
+        self.assertTrue(state.needs_human_review)
+        self.assertEqual(state.issues[0].check_type, "opaque_abbreviation")
+        self.assertEqual(state.review_confidence, 0.95)
 
 
 if __name__ == "__main__":

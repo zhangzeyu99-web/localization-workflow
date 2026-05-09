@@ -27,6 +27,7 @@ from utils.ui_detector import is_ui_text
 from utils.ai_checker import prepare_all_batches, apply_corrections
 from utils.text_normalize import repair_translation_surface
 from utils.ui_length_checker import assess_ui_length, check_ui_length
+from utils.readability_checker import check_readability
 
 
 # ─────────────────────────────────────────────────────────────
@@ -355,6 +356,21 @@ def _run_ui_length_checks(states: dict[int, RowState], lang: str):
             state.review_confidence = issue.confidence
 
 
+def _run_readability_checks(states: dict[int, RowState], lang: str):
+    for state in states.values():
+        for issue in check_readability(
+            row_id=state.row_id,
+            original=state.original,
+            translation=state.fixed_translation,
+            lang=lang,
+        ):
+            state.issues.append(issue)
+            state.needs_human_review = True
+            state.human_review_reason = issue.message
+            state.ai_suggestion = state.fixed_translation
+            state.review_confidence = issue.confidence
+
+
 def prepare_ai_review(
     states: dict[int, RowState],
     batch_size: int = 200,
@@ -637,6 +653,8 @@ def _build_report_sheets(
         'romanized_name_residue': '译文中残留拼音或音译专名',
         'ui_length_overflow': 'UI短文案长度超出预算',
         'short_text_length_watch': '短文本长度偏长（软提示）',
+        'opaque_abbreviation': '译文包含不可读缩写或内部代码式文案',
+        'clipped_word': '译文包含截断词或过度压缩缩写',
         'chinese_residue': '译文中残留中文字符',
         'pattern_inconsistency': '译文句式与组内标准不一致',
     }
@@ -703,7 +721,7 @@ def run_machine_review(
 
     Returns (df, col_map, states, groups) for further processing.
     """
-    print(f"[1/6] 读取输入: {input_path}")
+    print(f"[1/9] 读取输入: {input_path}")
     df, col_map = read_language_file(input_path)
     pairs = get_text_pairs(df, col_map, lang_index=lang_index)
     print(f"       {len(pairs)} 行已加载")
@@ -730,28 +748,31 @@ def run_machine_review(
     if skipped:
         print(f"       (跳过 {skipped} 行无效ID)")
 
-    print(f"[2/6] 加载术语库")
+    print(f"[2/9] 加载术语库")
     term_lookup = _load_term_base(term_base_path, lang=lang)
     print(f"       {len(term_lookup)} 条术语" if term_lookup else "       (无术语库)")
 
-    print(f"[3/6] 变量 & 标签检查")
+    print(f"[3/9] 变量 & 标签检查")
     _run_surface_fixes(states, auto_fix, lang)
     _run_variable_checks(states, auto_fix)
 
-    print(f"[4/6] 术语检查")
+    print(f"[4/9] 术语检查")
     _run_term_checks(states, term_lookup, auto_fix)
 
-    print(f"[5/6] 句式一致性检查")
+    print(f"[5/9] 句式一致性检查")
     groups = _run_pattern_checks(states, auto_fix)
 
-    print(f"[6/7] 中文残留检查")
+    print(f"[6/9] 中文残留检查")
     _run_chinese_residue_checks(states)
 
-    print(f"[7/8] UI文本识别")
+    print(f"[7/9] UI文本识别")
     _run_ui_detection(states)
 
-    print(f"[8/8] UI长度预算检查")
+    print(f"[8/9] UI长度预算检查")
     _run_ui_length_checks(states, lang)
+
+    print("[9/9] 可读缩写/截断词检查")
+    _run_readability_checks(states, lang)
 
     total_issues = sum(len(s.issues) for s in states.values())
     print(f"\n       机审发现 {total_issues} 个问题")

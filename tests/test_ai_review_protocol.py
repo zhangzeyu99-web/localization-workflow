@@ -37,6 +37,8 @@ class AIReviewProtocolTests(unittest.TestCase):
         self.assertIn("Short-text length rule for Chinese source text with 10 or fewer characters", prompt)
         self.assertIn("LEN:mode=hard,source=4,target=17,budget<=12", prompt)
         self.assertIn("ID | Source | Translation | UI | LEN", prompt)
+        self.assertIn("Do not invent opaque abbreviations", prompt)
+        self.assertIn("never use opaque abbreviations or clipped words", prompt)
 
     def test_parse_review_response_supports_exhaustive_keep_and_fix_lines(self):
         decisions = parse_review_response(

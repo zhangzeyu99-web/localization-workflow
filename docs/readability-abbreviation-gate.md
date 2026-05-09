@@ -1,0 +1,61 @@
+# 不可读缩写与截断词拦截规则
+
+## 目标
+
+避免 UI 长度优化把可上线文案压成用户看不懂的内部代码或残缺词。长度优化只能服务于可读性，不能反过来破坏可读性。
+
+## 阻断规则
+
+以下问题属于最终版阻断错误：
+
+- `opaque_abbreviation`：不可读缩写或内部代码式文案，例如 `PERR`、`DTT`、`IDNE`、`IJA`、`CL##1##2`。
+- `clipped_word`：截断词、删元音词或机械压缩片段，例如 `rewa`、`obta`、`coll imme`、`tmrw`。
+
+最终交付前这两类数量必须为 `0`。
+
+## 允许缩写
+
+默认允许稳定游戏缩写：
+
+- `HP`
+- `ATK`
+- `DEF`
+- `DMG`
+- `DPS`
+- `PVP`
+- `PVE`
+- `VIP`
+- `FPS`
+- `SFX`
+- `UI`
+- `Lv`
+
+其他缩写只有在项目术语表或客户规则中明确允许时才可使用。`Rwd`、`Req`、`Acct`、`Tmrw`、`OC`、`Mod` 不再默认视为安全缩写。
+
+## AI 审核约束
+
+模型审核时必须遵守：
+
+- 不为了贴近中文长度而发明缩写。
+- 不通过截断单词、删除元音、拼内部首字母来压长度。
+- 如果长度预算和自然可懂冲突，以自然可懂为准，宁可略长。
+- UI / 按钮 / 标签 / 中文原文 10 字以内短文本优先短，但不能牺牲理解成本。
+
+## 流程位置
+
+该规则在两处生效：
+
+- 源头：`utils/ai_checker.py` 的 prompt 明确禁止不可读缩写和截断词。
+- 终点：`utils/readability_checker.py` 在机审阶段输出硬错误，`process_language.py` 会把问题行加入复审。
+
+## 交付检查
+
+最终交付前必须查看 `report_{lang}.xlsx` 的错误模式：
+
+- `opaque_abbreviation = 0`
+- `clipped_word = 0`
+- `ui_length_overflow = 0`
+- `variable_missing = 0`
+- `variable_extra = 0`
+
+如果仍有 `short_text_length_watch`，它是软提示，不等同于阻断错误；但不能用坏缩写去消掉软提示。

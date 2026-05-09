@@ -27,6 +27,9 @@ def _make_prompt_header(lang: str = "en") -> str:
         f"You are reviewing {lang_name} game localization.\n"
         "Check each row for meaning errors, missing content, unnatural style, and term compliance.\n"
         "Keep placeholders, variables, BBCode, and line breaks exactly as needed.\n"
+        "Do not invent opaque abbreviations or internal-code style UI text, such as PERR, DTT, IDNE, IJA, or CL##1##2.\n"
+        "Do not shorten text by clipping words, dropping vowels, or truncating fragments, such as rewa, obta, coll imme, or tmrw.\n"
+        "Allowed stable game abbreviations include HP, ATK, DEF, DMG, DPS, PVP, PVE, VIP, FPS, SFX, UI, and Lv.\n"
         "\n"
         "Output protocol (mandatory):\n"
         "- Cover every ID in this batch exactly once.\n"
@@ -47,6 +50,7 @@ def _make_ui_length_section() -> str:
         "- If LEN mode is soft, prefer a shorter option, but keep clarity first.\n"
         "- English may be slightly longer than Chinese, but avoid obvious length expansion.\n"
         "- If LEN metadata is present, use the budget as a guide and only exceed it when clarity clearly requires it.\n"
+        "- If compactness conflicts with readability, choose the readable translation; never use opaque abbreviations or clipped words to fit the budget.\n"
         "\n"
     )
 
