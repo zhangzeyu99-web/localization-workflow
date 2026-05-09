@@ -2,6 +2,14 @@
 
 ## 2026-05-09
 
+### 补充：英文大小写风格
+
+- 新增 `title_case_overuse` 检查，拦截错误、状态、提示类文案里的无理由 Title Case，例如 `Too Many Roles`、`System Error`。
+- `Logi time` 这类 `Login` 截断/拼错已纳入 `clipped_word` 检查。
+- AI 审核 prompt 新增约束：英文错误、状态、提示类文案默认用 sentence case；Title Case 只用于专名、功能名、标题、商店项和术语表明确要求的名称。
+
+### 可读性硬门槛
+
 本次更新把“UI 过度压缩导致不可读缩写”的问题固化为流程硬门槛，避免最终版再次出现 `PERR`、`DTT`、`IJA`、`CL##1##2` 这类不可上线文案。
 
 ### 新增

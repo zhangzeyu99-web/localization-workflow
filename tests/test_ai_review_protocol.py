@@ -39,6 +39,7 @@ class AIReviewProtocolTests(unittest.TestCase):
         self.assertIn("ID | Source | Translation | UI | LEN", prompt)
         self.assertIn("Do not invent opaque abbreviations", prompt)
         self.assertIn("never use opaque abbreviations or clipped words", prompt)
+        self.assertIn("Use sentence case by default for English status, error, and prompt text", prompt)
 
     def test_parse_review_response_supports_exhaustive_keep_and_fix_lines(self):
         decisions = parse_review_response(

@@ -134,6 +134,9 @@ localization-workflow-project/
   - 机审会拦截 `PERR`、`DTT`、`IJA`、`CL##1##2` 这类内部代码式文案
   - 机审会拦截 `rewa`、`obta`、`coll imme`、`tmrw` 这类截断词
   - AI 审核 prompt 明确要求：长度和可读性冲突时，以自然可懂为准
+- 英文大小写风格复检
+  - 错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`
+  - Title Case 只保留给专名、功能名、标题、商店项和术语表明确要求的名称
 
 ### 典型适用场景
 
@@ -176,6 +179,7 @@ localization-workflow-project/
 - `ui_length_overflow`
 - `opaque_abbreviation`
 - `clipped_word`
+- `title_case_overuse`
 - `variable_missing`
 - `variable_extra`
 - `term_missing`

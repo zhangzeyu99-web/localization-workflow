@@ -1,8 +1,8 @@
-# 不可读缩写与截断词拦截规则
+# 可读性、缩写与大小写拦截规则
 
 ## 目标
 
-避免 UI 长度优化把可上线文案压成用户看不懂的内部代码或残缺词。长度优化只能服务于可读性，不能反过来破坏可读性。
+避免 UI 长度优化和模型风格漂移把可上线文案压成用户看不懂的内部代码、残缺词或不自然的 Title Case。长度优化只能服务于可读性，不能反过来破坏可读性。
 
 ## 阻断规则
 
@@ -10,8 +10,9 @@
 
 - `opaque_abbreviation`：不可读缩写或内部代码式文案，例如 `PERR`、`DTT`、`IDNE`、`IJA`、`CL##1##2`。
 - `clipped_word`：截断词、删元音词或机械压缩片段，例如 `rewa`、`obta`、`coll imme`、`tmrw`。
+- `title_case_overuse`：错误、状态、提示类文案无理由使用 Title Case，例如 `Too Many Roles`、`System Error`。
 
-最终交付前这两类数量必须为 `0`。
+最终交付前这三类明显问题必须为 `0`。
 
 ## 允许缩写
 
@@ -40,6 +41,8 @@
 - 不通过截断单词、删除元音、拼内部首字母来压长度。
 - 如果长度预算和自然可懂冲突，以自然可懂为准，宁可略长。
 - UI / 按钮 / 标签 / 中文原文 10 字以内短文本优先短，但不能牺牲理解成本。
+- 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`。
+- Title Case 只用于专名、功能名、标题、商店项、术语表明确要求的名称。
 
 ## 流程位置
 
@@ -47,6 +50,7 @@
 
 - 源头：`utils/ai_checker.py` 的 prompt 明确禁止不可读缩写和截断词。
 - 终点：`utils/readability_checker.py` 在机审阶段输出硬错误，`process_language.py` 会把问题行加入复审。
+- 大小写检查是保守规则，只对明显错误/状态/提示类中文源文触发，避免误伤 `Battle Pass` 这类合理功能名。
 
 ## 交付检查
 
@@ -54,6 +58,7 @@
 
 - `opaque_abbreviation = 0`
 - `clipped_word = 0`
+- `title_case_overuse = 0`
 - `ui_length_overflow = 0`
 - `variable_missing = 0`
 - `variable_extra = 0`

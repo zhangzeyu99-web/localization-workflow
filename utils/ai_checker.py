@@ -30,6 +30,7 @@ def _make_prompt_header(lang: str = "en") -> str:
         "Do not invent opaque abbreviations or internal-code style UI text, such as PERR, DTT, IDNE, IJA, or CL##1##2.\n"
         "Do not shorten text by clipping words, dropping vowels, or truncating fragments, such as rewa, obta, coll imme, or tmrw.\n"
         "Allowed stable game abbreviations include HP, ATK, DEF, DMG, DPS, PVP, PVE, VIP, FPS, SFX, UI, and Lv.\n"
+        "Use sentence case by default for English status, error, and prompt text; reserve Title Case for proper names, feature names, headings, and glossary-approved terms.\n"
         "\n"
         "Output protocol (mandatory):\n"
         "- Cover every ID in this batch exactly once.\n"

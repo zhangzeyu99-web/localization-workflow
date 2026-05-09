@@ -655,6 +655,7 @@ def _build_report_sheets(
         'short_text_length_watch': '短文本长度偏长（软提示）',
         'opaque_abbreviation': '译文包含不可读缩写或内部代码式文案',
         'clipped_word': '译文包含截断词或过度压缩缩写',
+        'title_case_overuse': '错误/状态/提示类文案过度使用 Title Case',
         'chinese_residue': '译文中残留中文字符',
         'pattern_inconsistency': '译文句式与组内标准不一致',
     }

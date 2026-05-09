@@ -92,6 +92,8 @@
 - 不允许截断英文单词或删除元音来压长度，例如 `rewa`、`obta`、`coll imme`、`tmrw`。
 - 允许稳定游戏缩写：`HP`、`ATK`、`DEF`、`DMG`、`DPS`、`PVP`、`PVE`、`VIP`、`FPS`、`SFX`、`UI`、`Lv`。
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
+- 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。
+- Title Case 只用于合理范围：专名、功能名、标题、商店项、术语表明确要求的名称。
 
 ## 最终版交付管线
 
@@ -107,6 +109,7 @@
      - `ui_length_overflow`
      - `opaque_abbreviation`
      - `clipped_word`
+     - `title_case_overuse`
      - 其他结构性错误
   6. 反复复检，直到不再有硬错误
   7. 允许保留 `short_text_length_watch` 这类软提示作为说明项，除非用户明确要求清到 0
@@ -126,7 +129,7 @@
 - 如果当前交付仍有剩余问题，必须明确区分：
   - 硬错误是否已清零
   - 剩余的是软提示还是结构性问题
-- 最终复检必须确认 `opaque_abbreviation` 和 `clipped_word` 为 0；否则不能说是可上线最终版。
+- 最终复检必须确认 `opaque_abbreviation`、`clipped_word`、明显的 `title_case_overuse` 为 0；否则不能说是可上线最终版。
 
 ## 文档优先级
 

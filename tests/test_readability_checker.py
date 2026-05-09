@@ -28,11 +28,47 @@ class ReadabilityCheckerTests(unittest.TestCase):
 
         self.assertIn("clipped_word", issues)
 
+    def test_flags_title_case_overuse_for_error_or_status_messages(self):
+        issues = {
+            issue.check_type
+            for issue in check_readability(
+                row_id=2,
+                original="该账号角色过多",
+                translation="Too Many Roles",
+                lang="en",
+            )
+        }
+
+        self.assertIn("title_case_overuse", issues)
+
+    def test_title_case_overuse_suggests_sentence_case(self):
+        issues = check_readability(
+            row_id=3,
+            original="系统错误",
+            translation="System Error",
+            lang="en",
+        )
+
+        self.assertEqual(issues[0].auto_fix, "System error")
+
+    def test_flags_login_truncation(self):
+        self.assertIn("clipped_word", self._types("Logi time"))
+
     def test_allows_stable_game_abbreviations_and_plain_ui_copy(self):
         self.assertEqual(self._types("HP"), set())
         self.assertEqual(self._types("ATK"), set())
         self.assertEqual(self._types("PVP"), set())
         self.assertEqual(self._types("More Info"), set())
+
+    def test_allows_reasonable_title_case_labels(self):
+        issues = check_readability(
+            row_id=4,
+            original="战令",
+            translation="Battle Pass",
+            lang="en",
+        )
+
+        self.assertEqual(issues, [])
 
 
 if __name__ == "__main__":
