@@ -4,6 +4,13 @@
 
 本次更新把会话中反复暴露的本地化质量问题沉淀成可执行 harness，目标是防止“越跑越差”。
 
+### GitHub 项目管理
+
+- 建立里程碑 `Quality Harness v1`
+- 建立标签：`type:harness`、`type:workflow`、`type:docs`、`priority:p0`、`priority:p1`、`status:ready`、`status:backlog`
+- 建立 issues `#2` 到 `#7`，覆盖最终交付 gate、CI、私有回归快照、delta report、多语言扩展和备份发布流程
+- 新增 `docs/project-management.md`
+
 ### 新增
 
 - 新增 `utils/quality_harness.py`

@@ -111,6 +111,7 @@ localization-workflow-project/
 - [工作流设计文档](workflow-design.md)
 - [不可读缩写与截断词拦截规则](docs/readability-abbreviation-gate.md)
 - [质量回归 Harness](docs/quality-harness.md)
+- [项目管理](docs/project-management.md)
 
 ## 最新更新（2026-04-14）
 
