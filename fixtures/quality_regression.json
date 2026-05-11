@@ -27,6 +27,66 @@
       "expected_issues": ["clipped_word"]
     },
     {
+      "id": "bad-clipped-profession-role",
+      "source": "\u80fd\u6e90\u5b66\u5bb6\u5965\u6587",
+      "translation": "Ener Scie Owen",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-item-name",
+      "source": "10\u70b9\u6539\u826f\u7cbe\u7cb9",
+      "translation": "10 Pts impr esse",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-search-result",
+      "source": "\u6682\u65e0\u641c\u7d22\u7ed3\u679c",
+      "translation": "No sear resu yet",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-romanized-person-name",
+      "source": "\u53a8\u5e08\u4f0a\u82b3",
+      "translation": "Chef Yifang",
+      "expected_issues": ["romanized_name_residue"]
+    },
+    {
+      "id": "good-natural-profession-role",
+      "source": "\u80fd\u6e90\u5b66\u5bb6\u5965\u6587",
+      "translation": "Energy Scientist Owen",
+      "expected_issues": []
+    },
+    {
+      "id": "good-natural-item-name",
+      "source": "10\u70b9\u6539\u826f\u7cbe\u7cb9",
+      "translation": "10 Improvement Essence",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-clipped-equipment-name",
+      "source": "\u795e\u950b\u88c5\u7532",
+      "translation": "Shen Armo",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "good-natural-equipment-name",
+      "source": "\u795e\u950b\u88c5\u7532",
+      "translation": "Divine Edge Armor",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-clipped-status-available",
+      "source": "\u6ca1\u6709\u7a7a\u4f59\u5e8a\u4f4d",
+      "translation": "No beds avai",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-thunder-order",
+      "source": "\u96f7\u9706\u4e4b\u4ee4",
+      "translation": "Orde Thun",
+      "expected_issues": ["clipped_word"]
+    },
+    {
       "id": "bad-clipped-please-enter-correct-chars",
       "source": "请输入正确的字符",
       "translation": "Plea ente corr char",

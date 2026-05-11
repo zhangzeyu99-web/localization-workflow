@@ -1,5 +1,17 @@
 # 可读性、缩写与大小写拦截规则
 
+## 2026-05-11 补充坏例
+
+以下新发现的过度压缩也属于最终版阻断错误：
+
+- 职业/人名：`Chef Yifang`、`Ener Scie Owen`、`Stru Expe Ethan`、`Smel Expe Kevin`
+- 道具/资源：`10 Pts impr esse`、`100 elec ener`、`1K hero expe`
+- 装备名：`Shen Armo`、`Tian Engi`、`Thun Wing`
+- 状态/搜索：`No sear resu yet`、`No beds avai`
+- 活动/功能：`Orde Thun`、`Lege Hero Gath`
+
+处理原则：这些词不要为了长度继续压缩，直接使用自然可读译法，例如 `Chef Yvonne`、`Energy Scientist Owen`、`Divine Edge Armor`、`Thunder Order`、`No search results`。
+
 ## 目标
 
 避免 UI 长度优化和模型风格漂移把可上线文案压成用户看不懂的内部代码、残缺词或不自然的 Title Case。长度优化只能服务于可读性，不能反过来破坏可读性。

@@ -54,13 +54,89 @@ ALLOWED_GAME_ABBREVIATIONS = {
 
 _CLIPPED_WORD_PATTERN = re.compile(
     r'\b(?:'
-    r'acct|acti|adde|afte|alre|anon|arri|batt|blac|bloc|char|coll|comm|coun|cur|'
-    r'del|dist|effe|foll|frie|imme|init|memb|mgmt|obta|opti|perm|perms|phon|'
-    r'poti|prog|purc|rada|rand|rece|reco|refr|rema|repa|req|resi|reso|rewa|rwd|logi|'
-    r'sele|sett|supp|tmrw|toke|tran|trea|upgr'
+    r'acct|acti|adde|afte|alre|anon|arri|assa|assi|atta|avai|batt|blac|bloc|char|coll|comm|coun|cur|'
+    r'del|dist|doct|docto|effe|elec|ener|esse|expe|foll|frie|imme|impr|init|'
+    r'defe|engi|gath|incr|lege|logi|memb|mgmt|obta|opti|orde|outp|outs|perm|perms|phon|poti|prod|prog|purc|rada|rand|'
+    r'rece|reco|refr|rema|repa|req|resi|reso|resu|rewa|rwd|scie|sear|sele|sett|'
+    r'smel|ston|stru|supp|toda|tomo|tmrw|toke|tran|trea|upgr'
     r')\b',
     re.IGNORECASE,
 )
+_ROMANIZED_NAME_RESIDUE_PATTERN = re.compile(r'\b(?:yifang)\b', re.IGNORECASE)
+_SOURCE_SENSITIVE_CLIPPED_PATTERNS = [
+    (
+        re.compile(r'\u5bfc\u6f14'),
+        re.compile(r'(?<![A-Za-z])(?:Dir\.?|Dire|Dais)(?![A-Za-z])', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u533b\u751f'),
+        re.compile(r'\bDoct(?:o)?\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u80fd\u6e90\u5b66\u5bb6'),
+        re.compile(r'\b(?:Ener|Scie)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u7ed3\u6784\u4e13\u5bb6'),
+        re.compile(r'\b(?:Stru|Expe)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u51b6\u70bc\u4e13\u5bb6'),
+        re.compile(r'\b(?:Smel|Expe)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u6539\u826f\u7cbe\u7cb9'),
+        re.compile(r'\b(?:Pts|impr|esse)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u79ef\u5206|\u70b9\u6570|\d+\u70b9'),
+        re.compile(r'\bPts\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u6682\u65e0\u641c\u7d22\u7ed3\u679c'),
+        re.compile(r'\b(?:sear|resu)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u751f\u4ea7|\u4ea7\u51fa|\u63d0\u5347'),
+        re.compile(r'\b(?:incr|impr|outp|prod|ston)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u653b\u51fb'),
+        re.compile(r'\b(?:atta|miss|relo|surp|outp)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u9632\u5fa1'),
+        re.compile(r'\b(?:abso|defe|rein|outp)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u751f\u547d'),
+        re.compile(r'\b(?:assa|rein|outp)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u53ec\u96c6'),
+        re.compile(r'\b(?:gath|lege|outs)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u82f1\u96c4\u7ecf\u9a8c|\u6302\u673a\u7ecf\u9a8c'),
+        re.compile(r'\b(?:expe|outp)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u7535\u80fd'),
+        re.compile(r'\b(?:elec|ener)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u88c5\u7532|\u673a\u7ffc|\u5f15\u64ce|\u96f7\u8fbe|\u793c\u5305'),
+        re.compile(r'\b(?:armo|avai|crac|engi|garr|shad|shen|supe|tian|thun)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u96f7\u9706'),
+        re.compile(r'\b(?:orde|thun)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u968f\u673a\u5c45\u6c11|\u8d44\u6e90'),
+        re.compile(r'(?<![A-Za-z])Res\.(?![A-Za-z])', re.IGNORECASE),
+    ),
+]
 _WORD_PATTERN = re.compile(r"[A-Za-z][A-Za-z']*")
 _STATUS_OR_ERROR_SOURCE = re.compile(
     r'失败|错误|异常|超时|过多|不足|无法|不能|不可|尚未|暂无|'
@@ -149,6 +225,17 @@ def _sentence_case(text: str) -> str:
     return _WORD_PATTERN.sub(replace, text)
 
 
+def _find_source_sensitive_clipped_word(original: str, translation: str) -> str:
+    visible = _visible_text(translation)
+    for source_pattern, target_pattern in _SOURCE_SENSITIVE_CLIPPED_PATTERNS:
+        if not source_pattern.search(str(original or '')):
+            continue
+        match = target_pattern.search(visible)
+        if match:
+            return match.group(0)
+    return ''
+
+
 def check_readability(row_id: int, original: str, translation: str, lang: str = 'en') -> list[CheckResult]:
     """Return hard readability issues caused by over-compression.
 
@@ -173,13 +260,27 @@ def check_readability(row_id: int, original: str, translation: str, lang: str = 
             confidence=0.95,
         ))
 
+    romanized_name = _ROMANIZED_NAME_RESIDUE_PATTERN.search(_visible_text(text))
+    if romanized_name:
+        results.append(CheckResult(
+            row_id=row_id,
+            check_type='romanized_name_residue',
+            severity='error',
+            message=f"Romanized Chinese-name residue found in translation: {romanized_name.group(0)}",
+            original=original,
+            translation=translation,
+            confidence=0.95,
+        ))
+
     clipped = _CLIPPED_WORD_PATTERN.search(_visible_text(text))
-    if clipped:
+    source_sensitive_clipped = _find_source_sensitive_clipped_word(original, text)
+    clipped_token = clipped.group(0) if clipped else source_sensitive_clipped
+    if clipped_token:
         results.append(CheckResult(
             row_id=row_id,
             check_type='clipped_word',
             severity='error',
-            message=f"Clipped word found in translation: {clipped.group(0)}",
+            message=f"Clipped word found in translation: {clipped_token}",
             original=original,
             translation=translation,
             confidence=0.9,

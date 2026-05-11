@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-11 - Over-compression residue gate expansion
+
+- 扩展 `clipped_word` / `romanized_name_residue` 规则，覆盖 `Chef Yifang`、`Ener Scie`、`Stru Expe`、`Pts impr esse`、`No sear resu`、`Shen Armo`、`Orde Thun` 等新发现坏例。
+- AI 审核 prompt 增加职业名、资源名、装备名、搜索结果文案不得截断缩写的约束。
+- 新增回归样例，确保 `Divine Edge Armor`、`Thunder Order`、`No beds available` 这类自然译法不会被误杀。
+- 重跑战机语言表和 UI 表：语言表修复 175 处典型过度压缩/拼音残留，UI 表无同类命中。
+
 ## 2026-05-11 - UI length budget relaxation
 
 - 放宽 UI hard 长度预算，英语从 `min(20, max(6, source*2+4))` 调整为 `min(26, max(8, source*2+8))`。

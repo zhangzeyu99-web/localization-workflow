@@ -42,6 +42,7 @@ DEFAULT_HARD_ISSUES = {
     'opaque_abbreviation',
     'clipped_word',
     'title_case_overuse',
+    'romanized_name_residue',
     'internal_token_leak',
     'hash_code_abbreviation',
     'placeholder_compaction',

@@ -92,6 +92,8 @@
 - 自然可懂优先，长度第二。
 - 不允许为了长度生成不可读缩写或内部代码式文案，例如 `PERR`、`DTT`、`IDNE`、`IJA`、`CL##1##2`。
 - 不允许截断英文单词或删除元音来压长度，例如 `rewa`、`obta`、`coll imme`、`tmrw`。
+- 不允许把职业、资源、装备、搜索结果、积分等常规词压成片段，例如 `Ener Scie`、`Stru Expe`、`Smel Expe`、`Pts impr esse`、`No sear resu`、`Shen Armo`、`Orde Thun`。
+- 不允许保留不该上线的中文拼音残留，例如 `Chef Yifang`；应改为自然本地化姓名，例如 `Chef Yvonne`。
 - 允许稳定游戏缩写：`HP`、`ATK`、`DEF`、`DMG`、`DPS`、`PVP`、`PVE`、`VIP`、`FPS`、`SFX`、`UI`、`Lv`。
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
 - 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。

@@ -29,6 +29,8 @@ def _make_prompt_header(lang: str = "en") -> str:
         "Keep placeholders, variables, BBCode, and line breaks exactly as needed.\n"
         "Do not invent opaque abbreviations or internal-code style UI text, such as PERR, DTT, IDNE, IJA, or CL##1##2.\n"
         "Do not shorten text by clipping words, dropping vowels, or truncating fragments, such as rewa, obta, coll imme, or tmrw.\n"
+        "Do not abbreviate profession, resource, item, or search-result words into fragments such as Doct, Ener Scie, Stru Expe, Smel Expe, Pts impr esse, Res., or No sear resu.\n"
+        "Do not leave romanized Chinese-name residue in English rows when a natural localized name is needed, such as Chef Yifang.\n"
         "Allowed stable game abbreviations include HP, ATK, DEF, DMG, DPS, PVP, PVE, VIP, FPS, SFX, UI, and Lv.\n"
         "Use sentence case by default for English status, error, and prompt text; reserve Title Case for proper names, feature names, headings, and glossary-approved terms.\n"
         "\n"
