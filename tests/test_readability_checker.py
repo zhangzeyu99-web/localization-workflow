@@ -75,6 +75,19 @@ class ReadabilityCheckerTests(unittest.TestCase):
             ("\u795e\u950b\u88c5\u7532", "Shen Armo"),
             ("\u6ca1\u6709\u7a7a\u4f59\u5e8a\u4f4d", "No beds avai"),
             ("\u96f7\u9706\u4e4b\u4ee4", "Orde Thun"),
+            ("\u75be\u901f\u8ffd\u8e2a\u5f39", "Fast Trac Bull"),
+            ("\u7206\u88c2\u8f70\u51fb", "Expl bomb"),
+            ("\u7a7f\u900f\u5b50\u5f39", "Pene bull"),
+            ("\u8986\u76d6\u6253\u51fb", "Satu Stri"),
+            ("\u591a\u91cd\u5236\u88c1", "Mult sanc"),
+            ("\u667a\u80fd\u5236\u5bfc", "Inte guid"),
+            ("\u8363\u8000\u5951\u7ea6", "Glor Cont"),
+            ("\u5185\u5bb9\u4e0d\u80fd\u4e3a\u7a7a", "Cont cann empt"),
+            ("\u60a8\u7684\u8d21\u732e\uff1a##1", "Your cont ##1"),
+            ("\u4f4d\u7f6e\u4e0d\u53ef\u6446\u653e", "Loca cann plac"),
+            ("\u5df2\u7a7f\u6234\u7684\u88c5\u5907\u4e0d\u53ef\u91cd\u7f6e", "Wear equi cann rese"),
+            ("\u6ca1\u6709\u53ef\u7a7f\u6234\u7684\u88c5\u5907", "No wear equi"),
+            ("\u5f3a\u529b\u88c5\u5907\u793c\u5305", "Stro equi Pack"),
         ]
 
         for original, translation in cases:
@@ -104,6 +117,19 @@ class ReadabilityCheckerTests(unittest.TestCase):
             ("\u795e\u950b\u88c5\u7532", "Divine Edge Armor"),
             ("\u6ca1\u6709\u7a7a\u4f59\u5e8a\u4f4d", "No beds available"),
             ("\u96f7\u9706\u4e4b\u4ee4", "Thunder Order"),
+            ("\u75be\u901f\u8ffd\u8e2a\u5f39", "Rapid Tracking Round"),
+            ("\u7206\u88c2\u8f70\u51fb", "Explosive Bombardment"),
+            ("\u7a7f\u900f\u5b50\u5f39", "Piercing Bullet"),
+            ("\u8986\u76d6\u6253\u51fb", "Saturation Strike"),
+            ("\u591a\u91cd\u5236\u88c1", "Multiple Sanctions"),
+            ("\u667a\u80fd\u5236\u5bfc", "Smart Guidance"),
+            ("\u8363\u8000\u5951\u7ea6", "Glory Contract"),
+            ("\u5185\u5bb9\u4e0d\u80fd\u4e3a\u7a7a", "Content cannot be empty"),
+            ("\u60a8\u7684\u8d21\u732e\uff1a##1", "Your contribution: ##1"),
+            ("\u4f4d\u7f6e\u4e0d\u53ef\u6446\u653e", "Cannot place here"),
+            ("\u5df2\u7a7f\u6234\u7684\u88c5\u5907\u4e0d\u53ef\u91cd\u7f6e", "Equipped gear cannot be reset"),
+            ("\u6ca1\u6709\u53ef\u7a7f\u6234\u7684\u88c5\u5907", "No wearable gear available"),
+            ("\u5f3a\u529b\u88c5\u5907\u793c\u5305", "Powerful Gear Pack"),
         ]
 
         for original, translation in cases:

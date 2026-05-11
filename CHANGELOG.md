@@ -6,6 +6,7 @@
 - AI 审核 prompt 增加职业名、资源名、装备名、搜索结果文案不得截断缩写的约束。
 - 新增回归样例，确保 `Divine Edge Armor`、`Thunder Order`、`No beds available` 这类自然译法不会被误杀。
 - 重跑战机语言表和 UI 表：语言表修复 175 处典型过度压缩/拼音残留，UI 表无同类命中。
+- 补充技能名/商店名/提示文案重灾区规则，覆盖 `Fast Trac Bull`、`Pene bull`、`Mult sanc`、`Inte guid`、`Glor Cont`、`Dese Cara`、`Cont cann empt`、`Your cont ##1`、`Loca cann plac`、`Wear equi cann rese`、`No wear equi`、`Stro equi Pack` 等整段截断。
 
 ## 2026-05-11 - UI length budget relaxation
 

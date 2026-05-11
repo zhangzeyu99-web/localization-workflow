@@ -87,6 +87,78 @@
       "expected_issues": ["clipped_word"]
     },
     {
+      "id": "bad-clipped-skill-tracking-round",
+      "source": "\u75be\u901f\u8ffd\u8e2a\u5f39",
+      "translation": "Fast Trac Bull",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-skill-smart-guidance",
+      "source": "\u667a\u80fd\u5236\u5bfc",
+      "translation": "Inte guid",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-skill-glory-contract",
+      "source": "\u8363\u8000\u5951\u7ea6",
+      "translation": "Glor Cont",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "good-natural-skill-name",
+      "source": "\u75be\u901f\u8ffd\u8e2a\u5f39",
+      "translation": "Rapid Tracking Round",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-clipped-content-empty",
+      "source": "\u5185\u5bb9\u4e0d\u80fd\u4e3a\u7a7a",
+      "translation": "Cont cann empt",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-contribution",
+      "source": "\u60a8\u7684\u8d21\u732e\uff1a##1",
+      "translation": "Your cont ##1",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "good-natural-content-empty",
+      "source": "\u5185\u5bb9\u4e0d\u80fd\u4e3a\u7a7a",
+      "translation": "Content cannot be empty",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-clipped-position-placement",
+      "source": "\u4f4d\u7f6e\u4e0d\u53ef\u6446\u653e",
+      "translation": "Loca cann plac",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-equipment-reset",
+      "source": "\u5df2\u7a7f\u6234\u7684\u88c5\u5907\u4e0d\u53ef\u91cd\u7f6e",
+      "translation": "Wear equi cann rese",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "good-natural-equipment-reset",
+      "source": "\u5df2\u7a7f\u6234\u7684\u88c5\u5907\u4e0d\u53ef\u91cd\u7f6e",
+      "translation": "Equipped gear cannot be reset",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-clipped-wearable-equipment",
+      "source": "\u6ca1\u6709\u53ef\u7a7f\u6234\u7684\u88c5\u5907",
+      "translation": "No wear equi",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-strong-equipment-pack",
+      "source": "\u5f3a\u529b\u88c5\u5907\u793c\u5305",
+      "translation": "Stro equi Pack",
+      "expected_issues": ["clipped_word"]
+    },
+    {
       "id": "bad-clipped-please-enter-correct-chars",
       "source": "请输入正确的字符",
       "translation": "Plea ente corr char",

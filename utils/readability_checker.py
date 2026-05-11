@@ -54,11 +54,11 @@ ALLOWED_GAME_ABBREVIATIONS = {
 
 _CLIPPED_WORD_PATTERN = re.compile(
     r'\b(?:'
-    r'acct|acti|adde|afte|alre|anon|arri|assa|assi|atta|avai|batt|blac|bloc|char|coll|comm|coun|cur|'
-    r'del|dist|doct|docto|effe|elec|ener|esse|expe|foll|frie|imme|impr|init|'
-    r'defe|engi|gath|incr|lege|logi|memb|mgmt|obta|opti|orde|outp|outs|perm|perms|phon|poti|prod|prog|purc|rada|rand|'
-    r'rece|reco|refr|rema|repa|req|resi|reso|resu|rewa|rwd|scie|sear|sele|sett|'
-    r'smel|ston|stru|supp|toda|tomo|tmrw|toke|tran|trea|upgr'
+    r'acct|acti|adde|afte|alre|anon|arri|assa|assi|atta|avai|batt|blac|bloc|cann|char|coll|comm|coun|cur|'
+    r'del|dist|devi|doct|docto|effe|elec|ener|equi|esse|expe|foll|frie|imme|impr|init|'
+    r'defe|engi|gath|incr|lege|loca|logi|memb|mgmt|obta|opti|orde|outp|outs|perm|perms|phon|plac|poti|prod|prog|purc|rada|rand|'
+    r'rece|reco|refr|rema|repa|req|rese|resi|reso|resu|rewa|rwd|scie|sear|sele|sett|'
+    r'smel|ston|stro|stru|supp|symb|toda|tomo|tmrw|toke|tran|trea|unwo|upgr'
     r')\b',
     re.IGNORECASE,
 )
@@ -131,6 +131,54 @@ _SOURCE_SENSITIVE_CLIPPED_PATTERNS = [
     (
         re.compile(r'\u96f7\u9706'),
         re.compile(r'\b(?:orde|thun)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u8352\u6f20\u5546\u961f'),
+        re.compile(r'\b(?:dese|cara)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u5b9e\u529b'),
+        re.compile(r'\b(?:stre)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u8ffd\u8e2a|\u6218\u672f'),
+        re.compile(r'\b(?:tact\.?|trac|bull)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u7206\u88c2|\u71c3\u7206'),
+        re.compile(r'\b(?:expl|thro)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u7a7f\u900f|\u8d2f\u5c04'),
+        re.compile(r'\b(?:pene|bull)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u8986\u76d6|\u7cbe\u51c6|\u9b45\u5f71'),
+        re.compile(r'\b(?:satu|stri|prec|phan)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u591a\u91cd\u5236\u88c1'),
+        re.compile(r'\b(?:mult|sanc)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u667a\u80fd\u5236\u5bfc'),
+        re.compile(r'\b(?:inte|guid)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u8f90\u88c2\u5c04\u51fb'),
+        re.compile(r'\b(?:radi)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u65e0\u754f\u8a93\u76df'),
+        re.compile(r'\b(?:pled)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u8363\u8000\u5951\u7ea6'),
+        re.compile(r'\b(?:glor|cont)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u4e0d\u548c\u8c10\u8bcd\u6c47|\u654f\u611f\u8bcd\u6c47|\u5185\u5bb9|\u8d21\u732e'),
+        re.compile(r'\b(?:cont|disc|sens|cann|empt)\b', re.IGNORECASE),
     ),
     (
         re.compile(r'\u968f\u673a\u5c45\u6c11|\u8d44\u6e90'),
