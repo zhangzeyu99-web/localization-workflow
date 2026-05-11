@@ -195,6 +195,30 @@
       "expected_issues": []
     },
     {
+      "id": "bad-clipped-troop-capacity",
+      "source": "\u90e8\u961f\u5bb9\u91cf",
+      "translation": "Troo capa",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-spend-diamonds",
+      "source": "\u786e\u8ba4\u82b1\u8d39##1\u4e2a\u94bb\u77f3\uff1f",
+      "translation": "Conf spen ##1 diam",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-offline-rewards",
+      "source": "\u79bb\u7ebf\u6536\u76ca",
+      "translation": "Offline Rwds",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "good-natural-troop-capacity",
+      "source": "\u90e8\u961f\u5bb9\u91cf",
+      "translation": "Troop Capacity",
+      "expected_issues": []
+    },
+    {
       "id": "bad-clipped-please-enter-correct-chars",
       "source": "请输入正确的字符",
       "translation": "Plea ente corr char",

@@ -54,11 +54,14 @@ ALLOWED_GAME_ABBREVIATIONS = {
 
 _CLIPPED_WORD_PATTERN = re.compile(
     r'\b(?:'
-    r'acct|acti|adde|afte|alre|anon|arri|assa|assi|atta|avai|batt|blac|bloc|cann|char|coll|comm|coun|cur|'
-    r'del|dist|devi|doct|docto|effe|elec|ener|equi|esse|expe|expi|foll|frie|imme|impr|init|'
-    r'defe|engi|gath|incr|lege|loca|logi|memb|mgmt|obta|opti|orde|outp|outs|perm|perms|phon|plac|poti|prod|prog|purc|rada|rand|'
-    r'rece|reco|refr|rema|repa|repl|req|rese|resi|reso|resu|rewa|rwd|scie|sear|sele|sett|'
-    r'smel|ston|stro|stru|supp|swip|symb|toda|tomo|tmrw|toke|tran|trea|unre|unwo|upgr'
+    r'acct|acti|adde|afte|alre|anon|appo|arri|assa|assi|atta|avai|basi|batt|beig|blac|blee|bles|bloc|bubb|cale|'
+    r'cann|capa|caus|chal|chap|char|clas|clea|coll|comm|cond|conf|coun|cur|dama|del|deta|diam|dist|devi|'
+    r'doct|docto|driv|dura|effe|elec|ener|ente|equi|esse|expe|expi|figh|foll|foun|frie|grou|hist|hosp|'
+    r'imme|impr|inco|inef|init|intr|defe|engi|gath|incr|lege|leve|loca|logi|memb|meth|mgmt|modi|norm|obta|'
+    r'offl|opti|orde|othe|outp|outs|perm|perms|phon|phoe|piec|plac|plea|posi|poti|prod|prof|prog|purc|rada|rand|'
+    r'rapi|reac|reas|rece|reco|recy|redu|refr|regi|rema|repa|repl|req|resc|rese|resi|reso|resu|rewa|rwd|rwds|'
+    r'scie|sear|seas|sele|sett|smel|spen|stag|ston|stor|stro|stru|supp|surv|swip|symb|toda|tomo|tmrw|'
+    r'toke|trai|trac|tran|trea|troo|unde|uned|unli|unre|unsu|unti|unwo|upgr|yday'
     r')\b',
     re.IGNORECASE,
 )

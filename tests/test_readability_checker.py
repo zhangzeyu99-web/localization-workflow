@@ -93,6 +93,11 @@ class ReadabilityCheckerTests(unittest.TestCase):
             ("\u56de\u590d\uff1a\u6b64\u6d88\u606f\u5df2\u8fc7\u671f", "Repl This mess expi"),
             ("\u6ca1\u6709\u672a\u8bfb\u90ae\u4ef6", "No unre mess"),
             ("\u9a9a\u6270/\u5237\u5c4f/\u5783\u573e\u4fe1\u606f", "Hara swip spam mess"),
+            ("\u90e8\u961f\u5bb9\u91cf", "Troo capa"),
+            ("\u8bad\u7ec3\u5bb9\u91cf", "Trai Capa"),
+            ("\u786e\u8ba4\u82b1\u8d39##1\u4e2a\u94bb\u77f3\uff1f", "Conf spen ##1 diam"),
+            ("\u6218\u673a\u6539\u88c5\u7b49\u7ea7\uff1a##1", "Figh modi leve ##1"),
+            ("\u79bb\u7ebf\u6536\u76ca", "Offline Rwds"),
         ]
 
         for original, translation in cases:
@@ -140,6 +145,11 @@ class ReadabilityCheckerTests(unittest.TestCase):
             ("\u56de\u590d\uff1a\u6b64\u6d88\u606f\u5df2\u8fc7\u671f", "Reply: This message has expired"),
             ("\u6ca1\u6709\u672a\u8bfb\u90ae\u4ef6", "No unread mail"),
             ("\u9a9a\u6270/\u5237\u5c4f/\u5783\u573e\u4fe1\u606f", "Harassment, spam, or junk messages"),
+            ("\u90e8\u961f\u5bb9\u91cf", "Troop Capacity"),
+            ("\u8bad\u7ec3\u5bb9\u91cf", "Training Capacity"),
+            ("\u786e\u8ba4\u82b1\u8d39##1\u4e2a\u94bb\u77f3\uff1f", "Spend ##1 Diamonds?"),
+            ("\u6218\u673a\u6539\u88c5\u7b49\u7ea7\uff1a##1", "Fighter Mod Level: ##1"),
+            ("\u79bb\u7ebf\u6536\u76ca", "Offline Rewards"),
         ]
 
         for original, translation in cases:
