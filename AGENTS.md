@@ -90,9 +90,9 @@
 - 英语 UI hard 预算：`min(26, max(8, 中文可见长度 * 2 + 8))`。
 - 印尼语 UI hard 预算：`min(28, max(9, 中文可见长度 * 2 + 9))`。
 - 自然可懂优先，长度第二。
-- 不允许为了长度生成不可读缩写或内部代码式文案，例如 `PERR`、`DTT`、`IDNE`、`IJA`、`CL##1##2`。
+- 不允许为了长度生成不可读缩写或内部代码式文案，例如 `PERR`、`DTT`、`IDNE`、`IJA`、`CL##1##2`、`TPRM#P`。
 - 不允许截断英文单词或删除元音来压长度，例如 `rewa`、`obta`、`coll imme`、`tmrw`。
-- 不允许把职业、资源、装备、技能名、商店名、搜索结果、积分、内容/敏感词提示、摆放提示等常规词压成片段，例如 `Ener Scie`、`Stru Expe`、`Smel Expe`、`Pts impr esse`、`No sear resu`、`Shen Armo`、`Orde Thun`、`Fast Trac Bull`、`Glor Cont`、`Cont cann empt`、`Your cont ##1`、`Loca cann plac`、`Wear equi cann rese`、`No wear equi`、`Stro equi Pack`。
+- 不允许把职业、资源、装备、技能名、商店名、搜索结果、积分、内容/敏感词提示、摆放提示等常规词压成片段，例如 `Ener Scie`、`Stru Expe`、`Smel Expe`、`Pts impr esse`、`No sear resu`、`Shen Armo`、`Orde Thun`、`Fast Trac Bull`、`Fina ATK SPD`、`Glor Cont`、`Cont cann empt`、`Your cont ##1`、`Loca cann plac`、`Wear equi cann rese`、`No wear equi`、`Stro equi Pack`。
 - 不允许保留不该上线的中文拼音残留，例如 `Chef Yifang`；应改为自然本地化姓名，例如 `Chef Yvonne`。
 - 允许稳定游戏缩写：`HP`、`ATK`、`DEF`、`DMG`、`DPS`、`PVP`、`PVE`、`VIP`、`FPS`、`SFX`、`UI`、`Lv`。
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。

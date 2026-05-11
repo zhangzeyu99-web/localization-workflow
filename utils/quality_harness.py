@@ -23,9 +23,11 @@ from utils.variable_checker import CheckResult, check_all as check_variables
 HTML_ENTITY_PATTERN = re.compile(r'&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);')
 INTERNAL_TOKEN_PATTERN = re.compile(r'\b[A-Z]{2,}[A-Z0-9]*\d[A-Z0-9]*\b')
 HASH_CODE_PATTERN = re.compile(r'#[A-Z]{2,}(?:##\d+|#\d+)*\b')
+HASHED_INTERNAL_CODE_PATTERN = re.compile(r'\b[A-Z]{2,}[A-Z0-9]*#[A-Z][A-Z0-9#]*\b')
 LETTER_PLACEHOLDER_COMPACTION_PATTERN = re.compile(r'\b[A-Z]{1,6}(?:##\d+|#\d+){2,}[A-Z0-9#]*\b')
 PLACEHOLDER_WORD_GLUE_PATTERN = re.compile(r'##\d+[A-Za-z]{2,}##\d+')
 ORPHAN_LEADING_CLITIC_PATTERN = re.compile(r"^\s*['’]s\b", re.IGNORECASE)
+BROKEN_BULLET_PATTERN = re.compile(r'(?:^|\\n|\n)\?[A-Za-z0-9]')
 FULLWIDTH_PUNCTUATION_PATTERN = re.compile(r'[，。！？：；（）【】％＋－]')
 WORD_START_PATTERN = re.compile(r'[A-Za-z]')
 
@@ -216,6 +218,16 @@ def _check_surface_regressions(row_id, source: str, translation: str) -> list[Ch
             translation,
         ))
 
+    hashed_internal_match = HASHED_INTERNAL_CODE_PATTERN.search(translation)
+    if hashed_internal_match:
+        results.append(_issue(
+            row_id,
+            'hash_code_abbreviation',
+            f"Hashed internal-code abbreviation leaked: {hashed_internal_match.group(0)}",
+            source,
+            translation,
+        ))
+
     hash_match = HASH_CODE_PATTERN.search(translation)
     if hash_match:
         results.append(_issue(
@@ -366,6 +378,8 @@ def _starts_with_runtime_payload(text: str) -> bool:
 
 def _has_punctuation_corruption(source: str, translation: str) -> bool:
     if translation.count('"') % 2 == 1 and '"' not in source:
+        return True
+    if '◇' in source and BROKEN_BULLET_PATTERN.search(translation):
         return True
     source_asks_question = bool(re.search(r'[？?]|吗|么|什么|怎么|为何|是否', source))
     if source_asks_question and '?' not in translation and '"' in translation:

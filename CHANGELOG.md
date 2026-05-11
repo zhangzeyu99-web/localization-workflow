@@ -2,6 +2,8 @@
 
 ## 2026-05-11 - Over-compression residue gate expansion
 
+- 修复 `ID/CN/EN` 三列表头识别，避免把 `CN` 误当目标语言列导致全表中文残留误报。
+- 扩展 hard gate，拦截 `TPRM#P` 这类内部代码加 `#` 的泄漏、`?R5` 这类项目符号损坏，以及 `Fina ATK SPD` 这类新截断残留。
 - 扩展 `clipped_word` / `romanized_name_residue` 规则，覆盖 `Chef Yifang`、`Ener Scie`、`Stru Expe`、`Pts impr esse`、`No sear resu`、`Shen Armo`、`Orde Thun` 等新发现坏例。
 - AI 审核 prompt 增加职业名、资源名、装备名、搜索结果文案不得截断缩写的约束。
 - 新增回归样例，确保 `Divine Edge Armor`、`Thunder Order`、`No beds available` 这类自然译法不会被误杀。

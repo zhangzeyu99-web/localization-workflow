@@ -99,6 +99,12 @@
       "expected_issues": ["clipped_word"]
     },
     {
+      "id": "bad-clipped-final-attack-speed",
+      "source": "\u6700\u7ec8\u653b\u901f",
+      "translation": "Fina ATK SPD",
+      "expected_issues": ["clipped_word"]
+    },
+    {
       "id": "bad-clipped-skill-glory-contract",
       "source": "\u8363\u8000\u5951\u7ea6",
       "translation": "Glor Cont",
@@ -189,6 +195,12 @@
       "expected_issues": ["hash_code_abbreviation"]
     },
     {
+      "id": "bad-hashed-internal-code",
+      "source": "该职位达到人数上限",
+      "translation": "TPRM#P",
+      "expected_issues": ["hash_code_abbreviation"]
+    },
+    {
       "id": "bad-placeholder-compaction",
       "source": "花费##1个##2",
       "translation": "S##1##2",
@@ -228,6 +240,12 @@
       "id": "bad-question-quote-corruption",
       "source": "怎么了？",
       "translation": "What's wrong, Nora\"",
+      "expected_issues": ["punctuation_corruption"]
+    },
+    {
+      "id": "bad-broken-bullet-glyph",
+      "source": "◇R5：军团协力积分的10%",
+      "translation": "?R5: 10% of Legion Co-op Points",
       "expected_issues": ["punctuation_corruption"]
     },
     {

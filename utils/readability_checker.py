@@ -141,6 +141,10 @@ _SOURCE_SENSITIVE_CLIPPED_PATTERNS = [
         re.compile(r'\b(?:stre)\b', re.IGNORECASE),
     ),
     (
+        re.compile(r'\u6700\u7ec8'),
+        re.compile(r'\b(?:fina)\b', re.IGNORECASE),
+    ),
+    (
         re.compile(r'\u8ffd\u8e2a|\u6218\u672f'),
         re.compile(r'\b(?:tact\.?|trac|bull)\b', re.IGNORECASE),
     ),
