@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-11 - UI length budget relaxation
+
+- 放宽 UI hard 长度预算，英语从 `min(20, max(6, source*2+4))` 调整为 `min(26, max(8, source*2+8))`。
+- 印尼语同步放宽到 `min(28, max(9, source*2+9))`。
+- AI 审核 prompt 明确：hard 预算是显示保护线，不是机械压缩目标，不能为了进预算产生拼音、截断词或代码式缩写。
+- 新增回归测试：`Divine Edge Armor`、`10 Improvement Essence` 这类自然短词不应被迫继续压缩。
+
 ## 2026-05-09 - Quality Harness
 
 本次更新把会话中反复暴露的本地化质量问题沉淀成可执行 harness，目标是防止“越跑越差”。

@@ -47,7 +47,7 @@ def _make_ui_length_section() -> str:
     return (
         "Short-text length rule for Chinese source text with 10 or fewer characters:\n"
         "- Keep the translation natural and easy to understand.\n"
-        "- If LEN mode is hard, treat the budget as a strong compactness requirement.\n"
+        "- If LEN mode is hard, treat the budget as a display guardrail, not a reason to over-compress normal words.\n"
         "- If LEN mode is soft, prefer a shorter option, but keep clarity first.\n"
         "- English may be slightly longer than Chinese, but avoid obvious length expansion.\n"
         "- If LEN metadata is present, use the budget as a guide and only exceed it when clarity clearly requires it.\n"

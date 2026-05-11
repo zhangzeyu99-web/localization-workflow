@@ -15,9 +15,9 @@ class UILengthCheckerTests(unittest.TestCase):
         self.assertFalse(is_short_text_candidate("这是一整句完整的系统说明文本", "This is a full sentence.",))
 
     def test_budget_for_english_and_indonesian_short_texts(self):
-        self.assertEqual(compute_ui_length_budget(4, lang="en"), 12)
-        self.assertEqual(compute_ui_length_budget(4, lang="idn"), 13)
-        self.assertEqual(compute_ui_length_budget(10, lang="en"), 20)
+        self.assertEqual(compute_ui_length_budget(4, lang="en"), 16)
+        self.assertEqual(compute_ui_length_budget(4, lang="idn"), 17)
+        self.assertEqual(compute_ui_length_budget(10, lang="en"), 26)
 
     def test_ui_rows_use_hard_policy(self):
         assessment = assess_ui_length(
@@ -36,7 +36,7 @@ class UILengthCheckerTests(unittest.TestCase):
         assessment = assess_ui_length(
             row_id=2,
             original="当前积分奖励",
-            translation="Current Points Reward",
+            translation="Current Event Point Reward",
             is_ui=False,
             lang="en",
         )
@@ -74,7 +74,7 @@ class UILengthCheckerTests(unittest.TestCase):
         results = check_ui_length(
             row_id=5,
             original="当前积分奖励",
-            translation="Current Points Reward",
+            translation="Current Event Point Reward",
             is_ui=False,
             lang="en",
         )
@@ -82,6 +82,28 @@ class UILengthCheckerTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].check_type, "short_text_length_watch")
         self.assertEqual(results[0].policy, "soft")
+
+    def test_allows_natural_short_equipment_terms_after_budget_relaxation(self):
+        results = check_ui_length(
+            row_id=7,
+            original="神锋装甲",
+            translation="Divine Edge Armor",
+            is_ui=True,
+            lang="en",
+        )
+
+        self.assertEqual(results, [])
+
+    def test_allows_natural_item_terms_after_budget_relaxation(self):
+        results = check_ui_length(
+            row_id=8,
+            original="10点改良精粹",
+            translation="10 Improvement Essence",
+            is_ui=True,
+            lang="en",
+        )
+
+        self.assertEqual(results, [])
 
     def test_accepts_compact_translation_within_budget(self):
         results = check_ui_length(

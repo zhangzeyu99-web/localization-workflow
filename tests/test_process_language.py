@@ -22,7 +22,7 @@ class ProcessLanguageUILengthTests(unittest.TestCase):
         self.assertEqual(state.review_confidence, 0.9)
 
     def test_run_ui_length_checks_marks_soft_overflow_rows_for_review(self):
-        state = RowState(2, "当前积分奖励", "Current Points Reward")
+        state = RowState(2, "当前积分奖励", "Current Event Point Reward")
         state.is_ui = False
         states = {2: state}
 
@@ -45,7 +45,7 @@ class ProcessLanguageUILengthTests(unittest.TestCase):
         self.assertEqual(state.short_text_length_policy, "exempt")
 
     def test_prepare_ai_review_includes_len_metadata_for_soft_short_text(self):
-        state = RowState(4, "当前积分奖励", "Current Points Reward")
+        state = RowState(4, "当前积分奖励", "Current Event Point Reward")
         state.is_ui = False
         states = {4: state}
         _run_ui_length_checks(states, lang="en")
