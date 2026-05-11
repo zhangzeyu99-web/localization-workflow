@@ -165,6 +165,36 @@
       "expected_issues": ["clipped_word"]
     },
     {
+      "id": "bad-clipped-reply-message",
+      "source": "\u56de\u590d##1\uff1a",
+      "translation": "Repl ##1",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-expired-message",
+      "source": "\u56de\u590d\uff1a\u6b64\u6d88\u606f\u5df2\u8fc7\u671f",
+      "translation": "Repl This mess expi",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-unread-mail",
+      "source": "\u6ca1\u6709\u672a\u8bfb\u90ae\u4ef6",
+      "translation": "No unre mess",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "bad-clipped-spam-message",
+      "source": "\u9a9a\u6270/\u5237\u5c4f/\u5783\u573e\u4fe1\u606f",
+      "translation": "Hara swip spam mess",
+      "expected_issues": ["clipped_word"]
+    },
+    {
+      "id": "good-natural-reply-message",
+      "source": "\u56de\u590d\uff1a\u6b64\u6d88\u606f\u5df2\u8fc7\u671f",
+      "translation": "Reply: This message has expired",
+      "expected_issues": []
+    },
+    {
       "id": "bad-clipped-please-enter-correct-chars",
       "source": "请输入正确的字符",
       "translation": "Plea ente corr char",

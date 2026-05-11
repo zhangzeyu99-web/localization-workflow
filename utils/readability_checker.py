@@ -55,10 +55,10 @@ ALLOWED_GAME_ABBREVIATIONS = {
 _CLIPPED_WORD_PATTERN = re.compile(
     r'\b(?:'
     r'acct|acti|adde|afte|alre|anon|arri|assa|assi|atta|avai|batt|blac|bloc|cann|char|coll|comm|coun|cur|'
-    r'del|dist|devi|doct|docto|effe|elec|ener|equi|esse|expe|foll|frie|imme|impr|init|'
+    r'del|dist|devi|doct|docto|effe|elec|ener|equi|esse|expe|expi|foll|frie|imme|impr|init|'
     r'defe|engi|gath|incr|lege|loca|logi|memb|mgmt|obta|opti|orde|outp|outs|perm|perms|phon|plac|poti|prod|prog|purc|rada|rand|'
-    r'rece|reco|refr|rema|repa|req|rese|resi|reso|resu|rewa|rwd|scie|sear|sele|sett|'
-    r'smel|ston|stro|stru|supp|symb|toda|tomo|tmrw|toke|tran|trea|unwo|upgr'
+    r'rece|reco|refr|rema|repa|repl|req|rese|resi|reso|resu|rewa|rwd|scie|sear|sele|sett|'
+    r'smel|ston|stro|stru|supp|swip|symb|toda|tomo|tmrw|toke|tran|trea|unre|unwo|upgr'
     r')\b',
     re.IGNORECASE,
 )
@@ -183,6 +183,10 @@ _SOURCE_SENSITIVE_CLIPPED_PATTERNS = [
     (
         re.compile(r'\u4e0d\u548c\u8c10\u8bcd\u6c47|\u654f\u611f\u8bcd\u6c47|\u5185\u5bb9|\u8d21\u732e'),
         re.compile(r'\b(?:cont|disc|sens|cann|empt)\b', re.IGNORECASE),
+    ),
+    (
+        re.compile(r'\u56de\u590d|\u6d88\u606f|\u64a4\u56de|\u8fc7\u671f|\u90ae\u4ef6|\u672a\u8bfb|\u9a9a\u6270|\u5237\u5c4f|\u5783\u573e\u4fe1\u606f|\u4fe1\u606f'),
+        re.compile(r'\b(?:hara|mess)\b', re.IGNORECASE),
     ),
     (
         re.compile(r'\u968f\u673a\u5c45\u6c11|\u8d44\u6e90'),

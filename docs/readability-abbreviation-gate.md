@@ -9,9 +9,9 @@
 - 装备名：`Shen Armo`、`Tian Engi`、`Thun Wing`
 - 状态/搜索：`No sear resu yet`、`No beds avai`
 - 活动/功能：`Orde Thun`、`Lege Hero Gath`
-- 技能/商店/提示文案：`Fast Trac Bull`、`Pene bull`、`Mult sanc`、`Inte guid`、`Fina ATK SPD`、`Glor Cont`、`Dese Cara`、`Cont cann empt`、`Your cont ##1`、`Loca cann plac`、`Wear equi cann rese`、`No wear equi`、`Stro equi Pack`、`TPRM#P`
+- 技能/商店/消息/提示文案：`Fast Trac Bull`、`Pene bull`、`Mult sanc`、`Inte guid`、`Fina ATK SPD`、`Repl This mess expi`、`No unre mess`、`Hara swip spam mess`、`Glor Cont`、`Dese Cara`、`Cont cann empt`、`Your cont ##1`、`Loca cann plac`、`Wear equi cann rese`、`No wear equi`、`Stro equi Pack`、`TPRM#P`
 
-处理原则：这些词不要为了长度继续压缩，直接使用自然可读译法，例如 `Chef Yvonne`、`Energy Scientist Owen`、`Divine Edge Armor`、`Thunder Order`、`Rapid Tracking Round`、`Final ATK SPD`、`Glory Contract`、`Position limit reached`、`Content cannot be empty`、`Cannot place here`、`Equipped gear cannot be reset`、`No wearable gear available`、`Powerful Gear Pack`、`No search results`。
+处理原则：这些词不要为了长度继续压缩，直接使用自然可读译法，例如 `Chef Yvonne`、`Energy Scientist Owen`、`Divine Edge Armor`、`Thunder Order`、`Rapid Tracking Round`、`Final ATK SPD`、`Reply: This message has expired`、`No unread mail`、`Harassment, spam, or junk messages`、`Glory Contract`、`Position limit reached`、`Content cannot be empty`、`Cannot place here`、`Equipped gear cannot be reset`、`No wearable gear available`、`Powerful Gear Pack`、`No search results`。
 
 ## 目标
 

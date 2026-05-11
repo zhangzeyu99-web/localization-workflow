@@ -89,6 +89,10 @@ class ReadabilityCheckerTests(unittest.TestCase):
             ("\u5df2\u7a7f\u6234\u7684\u88c5\u5907\u4e0d\u53ef\u91cd\u7f6e", "Wear equi cann rese"),
             ("\u6ca1\u6709\u53ef\u7a7f\u6234\u7684\u88c5\u5907", "No wear equi"),
             ("\u5f3a\u529b\u88c5\u5907\u793c\u5305", "Stro equi Pack"),
+            ("\u56de\u590d##1\uff1a", "Repl ##1"),
+            ("\u56de\u590d\uff1a\u6b64\u6d88\u606f\u5df2\u8fc7\u671f", "Repl This mess expi"),
+            ("\u6ca1\u6709\u672a\u8bfb\u90ae\u4ef6", "No unre mess"),
+            ("\u9a9a\u6270/\u5237\u5c4f/\u5783\u573e\u4fe1\u606f", "Hara swip spam mess"),
         ]
 
         for original, translation in cases:
@@ -132,6 +136,10 @@ class ReadabilityCheckerTests(unittest.TestCase):
             ("\u5df2\u7a7f\u6234\u7684\u88c5\u5907\u4e0d\u53ef\u91cd\u7f6e", "Equipped gear cannot be reset"),
             ("\u6ca1\u6709\u53ef\u7a7f\u6234\u7684\u88c5\u5907", "No wearable gear available"),
             ("\u5f3a\u529b\u88c5\u5907\u793c\u5305", "Powerful Gear Pack"),
+            ("\u56de\u590d##1\uff1a", "Reply ##1:"),
+            ("\u56de\u590d\uff1a\u6b64\u6d88\u606f\u5df2\u8fc7\u671f", "Reply: This message has expired"),
+            ("\u6ca1\u6709\u672a\u8bfb\u90ae\u4ef6", "No unread mail"),
+            ("\u9a9a\u6270/\u5237\u5c4f/\u5783\u573e\u4fe1\u606f", "Harassment, spam, or junk messages"),
         ]
 
         for original, translation in cases:
