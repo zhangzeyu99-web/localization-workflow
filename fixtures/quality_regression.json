@@ -331,6 +331,12 @@
       "source": "##1等##2人被重新分配了工作",
       "translation": "##1 and ##2 others were reassigned",
       "expected_issues": []
+    },
+    {
+      "id": "good-bbcode-size-prefix",
+      "source": "[size=80][c0]\u81ea\u9009\u4f20\u8bf4\u6280\u80fd[s0][/size]",
+      "translation": "[size=80][c0]Select Legendary Skill[s0][/size]",
+      "expected_issues": []
     }
   ]
 }

@@ -114,6 +114,22 @@ class QualityHarnessTests(unittest.TestCase):
 
         self.assertTrue(result.passed, result.failures)
 
+    def test_bbcode_size_prefix_does_not_trigger_leading_lowercase(self):
+        fixture = {
+            "cases": [
+                {
+                    "id": "bbcode-size-prefix",
+                    "source": "[size=80][c0]\u81ea\u9009\u4f20\u8bf4\u6280\u80fd[s0][/size]",
+                    "translation": "[size=80][c0]Select Legendary Skill[s0][/size]",
+                    "expected_issues": [],
+                }
+            ]
+        }
+
+        result = run_fixture(fixture)
+
+        self.assertTrue(result.passed, result.failures)
+
     def test_hash_code_and_placeholder_compaction_are_hard_issues(self):
         fixture = {
             "cases": [

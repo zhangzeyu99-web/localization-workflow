@@ -343,7 +343,11 @@ def _looks_like_allowed_runtime_code(token: str, source: str) -> bool:
 
 def _visible_start(text: str) -> str:
     stripped = str(text)
-    token_pattern = re.compile(r'^\s*(?:\\n|\n|<[^>]+>|\{[^}]+\}|##\d+|\[(?:[A-Za-z]+\d+|\d+)\])+')
+    token_pattern = re.compile(
+        r'^\s*(?:\\n|\n|<[^>]+>|\{[^}]+\}|##\d+|'
+        r'\[(?:/?size(?:=\d+)?|/?color(?:=[^\]]+)?|[A-Za-z]+\d+|\d+)\])+',
+        re.IGNORECASE,
+    )
     while True:
         new = token_pattern.sub('', stripped)
         if new == stripped:
