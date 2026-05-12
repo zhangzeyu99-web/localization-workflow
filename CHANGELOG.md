@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-12 - Full translation harness real-task validation
+
+- 使用英语全量翻译 harness 重跑一份目标列为中文回填的真实语言表，完成 `prepare -> agent response -> apply -> --run-qa -> quality_harness` 闭环。
+- 本轮验证覆盖 63 条语言表记录：`translation_response.jsonl` 按 ID 全量覆盖，回填阶段通过变量、标签、换行和 manifest 指纹校验。
+- 最终机审结果为 `需人工确认: 0`，`quality_harness` 扫描真实 workbook 返回 `passed: True`。
+- 剩余 `term_partial_hit: 3` 被确认为术语表机械匹配造成的软提示，不作为 hard gate 阻断；README 同步补充该判断口径。
+- 交付目录策略验证通过：最终只保留 `_最终版.xlsx`、`output_en_final/result_en.xlsx`、`output_en_final/report_en.xlsx` 和隐藏 `.translation_cache`，临时 harness/probe 目录不作为交付物。
+
 ## 2026-05-12 - English full translation harness v1
 
 - 新增 `scripts/run_translation_harness.py`，支持英语目标列为空、近乎全空或大面积中文回填时，先生成 `translation_workpack.jsonl`、`translation_manifest.json` 和 `translation_response.jsonl`。

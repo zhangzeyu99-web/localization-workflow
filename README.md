@@ -120,12 +120,18 @@ localization-workflow-project/
 - [英语全量翻译 Harness](docs/translation-harness.md)
 - [项目管理](docs/project-management.md)
 
-## 最新更新（2026-04-14）
+## 最新更新（2026-05-12）
 
-本次更新把近期已经验证过的质量增强正式合入主工作流，重点是减少批次错配、拼音残留、占位符破坏和短 UI 文案超框风险。
+本次更新把英语目标列为空或中文回填时的“全量翻译 -> 严格回填 -> QA 收口”固定成 agent-operated harness。脚本不调用 API，也不自动操作 ChatGPT 网页；主 agent 负责生成译文，脚本负责抽取、协议校验、按 ID 回填、隐藏缓存和后半 QA。
 
 ### 已合入改动
 
+- 英语全量翻译 harness
+  - `scripts/run_translation_harness.py` 可生成 `translation_workpack.jsonl`、`translation_manifest.json` 和 `translation_response.jsonl`
+  - response 只允许 `ID + translation`，回填前会拒绝漏 ID、重复 ID、额外 ID、乱序、输入漂移、占位符漂移、标签漂移和换行漂移
+  - 目标列为空、近乎全空或大量中文回填时，先把中文作为种子列再全量替换，避免空列流程和 QA 断层
+  - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用
+  - 已用真实 63 行中文回填英语表验证完整闭环：机审需确认 `0`，`quality_harness` 对最终 workbook 返回 `passed: True`
 - 严格 AI 审核链路
   - `prepare / merge` 以 manifest 和 fingerprint 绑定批次，避免输入输出词条错配
   - 模型回填必须逐条输出 `ID | KEEP` 或 `ID | FIX | corrected translation`，缺行或乱序会直接拒绝合并
@@ -202,6 +208,12 @@ localization-workflow-project/
 ```bash
 python scripts/run_quality_harness.py fixtures/quality_regression.json --workbook <final.xlsx>
 ```
+
+### 8. `term_partial_hit` 与 hard gate 分开看
+
+- `term_partial_hit` 通常表示多词术语只命中部分词，可能来自 UI 长度预算、自然表达或术语表过严
+- 交付判断先看 hard gate：变量、标签、换行、中文残留、乱码、坏缩写、截断词、明显大小写问题必须清零
+- 如果 `term_partial_hit` 不影响语义、可读性和核心术语一致性，可以作为软提示保留在报告中
 
 ## License
 
