@@ -106,6 +106,7 @@ def prepare_translation_harness(
     lang: str = "en",
     output_dir: str | Path | None = None,
     lang_index: int = 0,
+    style_hint: str = "",
 ) -> PreparedTranslationHarness:
     """Prepare a translation workpack and strict manifest."""
     if lang != "en":
@@ -114,11 +115,12 @@ def prepare_translation_harness(
     input_path = Path(input_path)
     output_dir = Path(output_dir) if output_dir else input_path.parent / "translation_harness"
     output_dir.mkdir(parents=True, exist_ok=True)
+    style_hint = _normalize_style_hint(style_hint)
 
     df, col_map = read_language_file(str(input_path))
     pairs = get_text_pairs(df, col_map, lang_index=lang_index)
     term_lookup = _load_term_base(str(term_base_path) if term_base_path else None, lang=lang)
-    cache = _load_translation_cache(input_path.parent, lang)
+    cache = _load_translation_cache(input_path.parent, lang, style_hint=style_hint)
 
     target_status = analyze_target_column(pairs)
     rows = []
@@ -142,6 +144,7 @@ def prepare_translation_harness(
                 "newline_shape": _newline_shape(source),
                 "term_hits": _term_hits(source, term_lookup),
                 "ui_length_meta": ui_meta,
+                "style_hint": style_hint,
                 "cache_hit": bool(cached_translation),
                 "cached_translation": cached_translation,
             }
@@ -155,7 +158,7 @@ def prepare_translation_harness(
         "lang_index": lang_index,
         "row_ids": [row["id"] for row in rows],
         "target_status": target_status.__dict__,
-        "style_profile": _build_style_profile(rows),
+        "style_profile": _build_style_profile(rows, style_hint=style_hint),
         "response_protocol": "jsonl:{id:int,translation:str}",
     }
 
@@ -215,7 +218,11 @@ def apply_translation_response(
         lang_index=int(manifest.get("lang_index", 0)),
     )
 
-    cache_path = _update_translation_cache(input_path.parent, lang, workpack, responses)
+    style_profile = manifest.get("style_profile", {})
+    style_hint = ""
+    if isinstance(style_profile, dict):
+        style_hint = _normalize_style_hint(style_profile.get("project_hint", ""))
+    cache_path = _update_translation_cache(input_path.parent, lang, workpack, responses, style_hint=style_hint)
     summary_path = output_dir / "translation_apply_summary.json"
     summary = {
         "final_workbook": str(final_path),
@@ -353,12 +360,13 @@ def _term_hits(source: str, term_lookup: dict[str, dict]) -> list[dict[str, str]
     return hits
 
 
-def _build_style_profile(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_style_profile(rows: list[dict[str, Any]], style_hint: str = "") -> dict[str, Any]:
     buckets: dict[str, list[int]] = {}
     for row in rows:
         buckets.setdefault(str(row["text_type"]), []).append(int(row["id"]))
     samples = {key: value[:5] for key, value in buckets.items()}
     return {
+        "project_hint": _normalize_style_hint(style_hint),
         "quality_target": "production_readable",
         "case_policy": "sentence_case_for_status_prompt_text",
         "term_policy": "strong_terms_required_soft_terms_guidance",
@@ -429,12 +437,16 @@ def _write_translations_to_workbook(workbook_path: Path, responses: dict[int, st
     wb.close()
 
 
-def _load_translation_cache(project_dir: Path, lang: str) -> dict[str, str]:
+def _load_translation_cache(project_dir: Path, lang: str, style_hint: str = "") -> dict[str, str]:
     cache_path = project_dir / ".translation_cache" / f"{lang}.jsonl"
     if not cache_path.exists():
         return {}
+    requested_hint = _normalize_style_hint(style_hint)
     cache: dict[str, str] = {}
     for row in _read_jsonl(cache_path):
+        cached_hint = _normalize_style_hint(row.get("style_hint", ""))
+        if cached_hint != requested_hint:
+            continue
         source = str(row.get("source", ""))
         translation = str(row.get("translation", ""))
         if source and translation:
@@ -447,25 +459,34 @@ def _update_translation_cache(
     lang: str,
     workpack: list[dict[str, Any]],
     responses: dict[int, str],
+    style_hint: str = "",
 ) -> Path:
     cache_dir = project_dir / ".translation_cache"
     cache_dir.mkdir(exist_ok=True)
     cache_path = cache_dir / f"{lang}.jsonl"
+    style_hint = _normalize_style_hint(style_hint)
     current = {}
     if cache_path.exists():
         for row in _read_jsonl(cache_path):
-            current[str(row.get("source", ""))] = row
+            cache_key = (str(row.get("source", "")), _normalize_style_hint(row.get("style_hint", "")))
+            current[cache_key] = row
     for row in workpack:
         row_id = int(row["id"])
         source = str(row["source"])
-        current[source] = {
+        current[(source, style_hint)] = {
             "source": source,
             "translation": responses[row_id],
             "text_type": row.get("text_type", ""),
             "lang": lang,
+            "style_hint": style_hint,
         }
     _write_jsonl(cache_path, [row for _, row in sorted(current.items())])
     return cache_path
+
+
+def _normalize_style_hint(style_hint: Any) -> str:
+    text = str(style_hint or "").strip()
+    return re.sub(r"\s+", " ", text)
 
 
 def _coerce_row_id(value: Any) -> int | None:

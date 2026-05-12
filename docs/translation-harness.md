@@ -13,7 +13,8 @@ python scripts\run_translation_harness.py `
   --input "C:\path\lang.xlsx" `
   --term-base "C:\path\terms.xlsx" `
   --lang en `
-  --output-dir "C:\path\translation_harness"
+  --output-dir "C:\path\translation_harness" `
+  --style-hint "面向美国移动端用户；SLG；简短、地道、自然"
 ```
 
 主 agent 读取 `translation_workpack.jsonl`，写入 `translation_response.jsonl`。每行必须是：
@@ -58,6 +59,35 @@ python scripts\run_translation_harness.py `
 - `translation_response.jsonl`：主 agent 写入的译文。
 - `.translation_cache/en.jsonl`：同项目隐藏翻译记忆，位于输入语言表所在目录。
 - `<原文件名>_最终版.xlsx`：按 ID 回填后的最终 workbook。
+
+## 项目提示词
+
+全量翻译可以传入简短项目提示词，用于约束译文风格。例如：
+
+```powershell
+python scripts\run_translation_harness.py `
+  --input "C:\path\lang.xlsx" `
+  --term-base "C:\path\terms.xlsx" `
+  --lang en `
+  --output-dir "C:\path\translation_harness" `
+  --style-hint "面向美国移动端用户" `
+  --style-hint "SLG 游戏；简短地道表达"
+```
+
+也可以从 UTF-8 文本文件读取：
+
+```powershell
+python scripts\run_translation_harness.py `
+  --input "C:\path\lang.xlsx" `
+  --term-base "C:\path\terms.xlsx" `
+  --lang en `
+  --output-dir "C:\path\translation_harness" `
+  --style-hint-file "C:\path\style-hint.txt"
+```
+
+提示词会写入 `translation_manifest.json` 的 `style_profile.project_hint`，并复制到 `translation_workpack.jsonl` 的每条 `style_hint`。主 agent 翻译时必须按它调整风格，但不能突破变量、标签、换行、术语和 QA hard gate。
+
+缓存按提示词隔离：同一目录下，提示词不同的旧译文不会作为当前任务的 `cache_hit`，避免“美国移动端 SLG”和其他项目风格互相污染。
 
 ## 质量约束
 

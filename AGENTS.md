@@ -81,12 +81,13 @@
 ## 英语全量翻译 Harness
 
 - 当英语目标列为空、近乎全空，或大面积中文回填时，优先使用 `scripts/run_translation_harness.py`，不要手工拼 Excel。
-- 准备阶段运行：`python scripts\run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir>`。
+- 准备阶段运行：`python scripts\run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --style-hint "<项目级短提示词>"`。
+- `--style-hint` 用于项目风格约束，例如“面向美国移动端用户；SLG；简短地道表达”；也可用 `--style-hint-file <txt>` 从 UTF-8 文本读取。
 - 主 agent 读取 `translation_workpack.jsonl`，只写 `translation_response.jsonl`，每行格式为 `{"id": 1001, "translation": "Claim Reward"}`。
 - 应用阶段运行：`python scripts\run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --response <output_dir>\translation_response.jsonl --run-qa`。
 - 该 harness 不调用 API、不自动操作 ChatGPT 网页、不启用 subagent；模型翻译由主 agent 直接完成。
 - 回填严格按 ID 和 manifest 校验，漏 ID、重复 ID、额外 ID、乱序、输入漂移、占位符/标签/换行漂移都必须拒绝写回。
-- 同项目翻译记忆只允许写入输入目录下的 `.translation_cache\en.jsonl`，不要扫描其他项目缓存。
+- 同项目翻译记忆只允许写入输入目录下的 `.translation_cache\en.jsonl`，不要扫描其他项目缓存；提示词不同的缓存不能混用。
 
 ## 质量要求
 

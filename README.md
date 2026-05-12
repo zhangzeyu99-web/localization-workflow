@@ -74,7 +74,7 @@ python gui.py
 python process_language.py --input <excel_file> --lang en
 
 # 英语全量翻译 harness：目标列为空或中文回填时先准备 workpack
-python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir>
+python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --style-hint "US mobile SLG; concise, idiomatic wording"
 
 # 主 agent 写完 translation_response.jsonl 后，严格按 ID 回填并进入 QA
 python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --response <output_dir>/translation_response.jsonl --run-qa
@@ -130,6 +130,7 @@ localization-workflow-project/
   - `scripts/run_translation_harness.py` 可生成 `translation_workpack.jsonl`、`translation_manifest.json` 和 `translation_response.jsonl`
   - response 只允许 `ID + translation`，回填前会拒绝漏 ID、重复 ID、额外 ID、乱序、输入漂移、占位符漂移、标签漂移和换行漂移
   - 目标列为空、近乎全空或大量中文回填时，先把中文作为种子列再全量替换，避免空列流程和 QA 断层
+  - 支持 `--style-hint` / `--style-hint-file` 注入项目风格提示，例如“面向美国移动端用户、SLG、简短地道表达”
   - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用
   - 已用真实 63 行中文回填英语表验证完整闭环：机审需确认 `0`，`quality_harness` 对最终 workbook 返回 `passed: True`
 - 严格 AI 审核链路

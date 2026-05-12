@@ -79,6 +79,70 @@ class TranslationHarnessTests(unittest.TestCase):
             self.assertIn("Survival Road", [term["target"] for term in rows[1]["term_hits"]])
             self.assertIn("[size=80]", rows[2]["tags"])
 
+    def test_prepare_includes_project_style_hint_and_scopes_cache_by_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            lang_path = tmp_path / "lang.xlsx"
+            out_dir = tmp_path / "out"
+            _write_language_workbook(lang_path)
+            style_hint = "US mobile SLG; concise, idiomatic UI wording"
+
+            prepared = prepare_translation_harness(
+                input_path=lang_path,
+                lang="en",
+                output_dir=out_dir,
+                style_hint=style_hint,
+            )
+
+            self.assertEqual(prepared.manifest["style_profile"]["project_hint"], style_hint)
+            rows = [
+                json.loads(line)
+                for line in prepared.workpack_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(rows[0]["style_hint"], style_hint)
+
+            response_path = tmp_path / "translation_response.jsonl"
+            _write_jsonl(
+                response_path,
+                [
+                    {"id": 1, "translation": "Claim"},
+                    {"id": 2, "translation": "Do Survival Road {0} times"},
+                    {"id": 3, "translation": "[size=80][c0]Pick Legendary Skill[s0][/size]"},
+                ],
+            )
+            apply_translation_response(
+                input_path=lang_path,
+                manifest_path=prepared.manifest_path,
+                response_path=response_path,
+                output_dir=out_dir,
+            )
+
+            same_hint = prepare_translation_harness(
+                input_path=lang_path,
+                lang="en",
+                output_dir=out_dir,
+                style_hint=style_hint,
+            )
+            same_rows = [
+                json.loads(line)
+                for line in same_hint.workpack_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertTrue(same_rows[0]["cache_hit"])
+            self.assertEqual(same_rows[0]["cached_translation"], "Claim")
+
+            different_hint = prepare_translation_harness(
+                input_path=lang_path,
+                lang="en",
+                output_dir=out_dir,
+                style_hint="UK PC strategy; formal wording",
+            )
+            different_rows = [
+                json.loads(line)
+                for line in different_hint.workpack_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertFalse(different_rows[0]["cache_hit"])
+            self.assertEqual(different_rows[0]["cached_translation"], "")
+
     def test_apply_rejects_incomplete_duplicate_extra_or_placeholder_drift(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

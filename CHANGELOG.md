@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-12 - Project style hints for full translation
+
+- 英语全量翻译 harness 新增 `--style-hint` 和 `--style-hint-file`，用于传入项目级短提示词，例如“面向美国移动端用户、SLG、简短地道表达”。
+- `translation_manifest.json` 现在记录 `style_profile.project_hint`，`translation_workpack.jsonl` 每行也包含 `style_hint`，方便主 agent 翻译时按同一项目风格执行。
+- `.translation_cache/en.jsonl` 增加提示词隔离：提示词不同的旧译文不会作为当前任务缓存命中，避免不同项目风格互相污染。
+- 保持回填协议和 QA hard gate 不变：项目提示词只能优化表达风格，不能突破变量、标签、换行、术语和可读性门槛。
+
 ## 2026-05-12 - Full translation harness real-task validation
 
 - 使用英语全量翻译 harness 重跑一份目标列为中文回填的真实语言表，完成 `prepare -> agent response -> apply -> --run-qa -> quality_harness` 闭环。
