@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-05-12 - English full translation harness v1
+
+- 新增 `scripts/run_translation_harness.py`，支持英语目标列为空、近乎全空或大面积中文回填时，先生成 `translation_workpack.jsonl`、`translation_manifest.json` 和 `translation_response.jsonl`。
+- 新增 `utils/translation_harness.py`，负责列识别后的行级打包、文本类型分类、术语命中、占位符/标签/换行结构提取、response 协议校验、按 ID 回填和同项目隐藏缓存。
+- 回填阶段会拒绝漏 ID、重复 ID、额外 ID、乱序、输入漂移、空译文、占位符漂移、标签漂移和换行漂移，避免全量翻译时串行或漏行。
+- 新增 `.translation_cache/<lang>.jsonl` 同项目缓存策略，只复用当前任务目录译文，避免跨项目污染和目录杂乱。
+- 新增 `docs/translation-harness.md` 和单元测试，明确该 harness 不调用 API，也不启用 subagent，由主 agent 直接生成译文后再由脚本校验回填。
+
 ## 2026-05-11 - Over-compression residue gate expansion
 
 - 修复 `ID/CN/EN` 三列表头识别，避免把 `CN` 误当目标语言列导致全表中文残留误报。

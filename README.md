@@ -72,6 +72,12 @@ python gui.py
 
 # 处理单个语言
 python process_language.py --input <excel_file> --lang en
+
+# 英语全量翻译 harness：目标列为空或中文回填时先准备 workpack
+python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir>
+
+# 主 agent 写完 translation_response.jsonl 后，严格按 ID 回填并进入 QA
+python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --response <output_dir>/translation_response.jsonl --run-qa
 ```
 
 ## 项目结构
@@ -111,6 +117,7 @@ localization-workflow-project/
 - [工作流设计文档](workflow-design.md)
 - [不可读缩写与截断词拦截规则](docs/readability-abbreviation-gate.md)
 - [质量回归 Harness](docs/quality-harness.md)
+- [英语全量翻译 Harness](docs/translation-harness.md)
 - [项目管理](docs/project-management.md)
 
 ## 最新更新（2026-04-14）
