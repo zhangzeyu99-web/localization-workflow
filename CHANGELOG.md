@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-14 - Generic workbook QA scan hardening
+
+- `quality_harness` 的 workbook 扫描改为非只读读取，更接近交付前真实 Excel 状态。
+- 真实 workbook 扫描现在会在 `rows_scanned=0` 时失败，避免空扫描被误判为 QA 通过。
+- 通用扫描跳过 `术语表` / glossary sheet，避免把词典里的 Title Case 术语当正文错误误杀；正文和 UI 行仍必须真实扫描。
+- 新增回归测试覆盖空扫描失败和 glossary sheet 跳过逻辑。
+
 ## 2026-05-12 - Project style hints for full translation
 
 - 英语全量翻译 harness 新增 `--style-hint` 和 `--style-hint-file`，用于传入项目级短提示词，例如“面向美国移动端用户、SLG、简短地道表达”。
@@ -32,7 +39,7 @@
 - 扩展 `clipped_word` / `romanized_name_residue` 规则，覆盖 `Chef Yifang`、`Ener Scie`、`Stru Expe`、`Pts impr esse`、`No sear resu`、`Shen Armo`、`Orde Thun` 等新发现坏例。
 - AI 审核 prompt 增加职业名、资源名、装备名、搜索结果文案不得截断缩写的约束。
 - 新增回归样例，确保 `Divine Edge Armor`、`Thunder Order`、`No beds available` 这类自然译法不会被误杀。
-- 重跑战机语言表和 UI 表：语言表修复 175 处典型过度压缩/拼音残留，UI 表无同类命中。
+- 重跑一组真实语言表和 UI 表：语言表修复 175 处典型过度压缩/拼音残留，UI 表无同类命中。
 - 补充技能名/商店名/提示文案重灾区规则，覆盖 `Fast Trac Bull`、`Pene bull`、`Mult sanc`、`Inte guid`、`Glor Cont`、`Dese Cara`、`Cont cann empt`、`Your cont ##1`、`Loca cann plac`、`Wear equi cann rese`、`No wear equi`、`Stro equi Pack` 等整段截断。
 
 ## 2026-05-11 - UI length budget relaxation
@@ -71,7 +78,7 @@
 ### 验证
 
 - `python scripts\run_quality_harness.py fixtures\quality_regression.json`
-- `python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <战机UI最终版> --workbook <战机语言表最终版>`
+- `python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <final-ui.xlsx> --workbook <final-language.xlsx>`
 - `python -m unittest discover -s tests -p "test_*.py"`
 
 ## 2026-05-09

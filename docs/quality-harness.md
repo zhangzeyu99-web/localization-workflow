@@ -44,9 +44,11 @@ python scripts\run_quality_harness.py fixtures\quality_regression.json
 
 ```powershell
 python scripts\run_quality_harness.py fixtures\quality_regression.json `
-  --workbook "C:\Users\Administrator\Desktop\本地化处理\飞机语言表翻译\战机英语UI表翻译_最终版.xlsx" `
-  --workbook "C:\Users\Administrator\Desktop\本地化处理\飞机语言表翻译\战机英语语言表翻译_最终版.xlsx"
+  --workbook "C:\path\to\final-ui.xlsx" `
+  --workbook "C:\path\to\final-language.xlsx"
 ```
+
+Workbook 扫描必须真实命中语言表行。`rows_scanned=0` 会被视为失败，不能把空扫描当作 QA 通过。扫描使用非只读方式打开 workbook，以便更接近交付前真实 Excel 状态。通用扫描会跳过 `术语表` / glossary sheet，避免把词典里的 Title Case 术语当正文错误误杀。
 
 输出 JSON：
 
@@ -94,20 +96,17 @@ Workbook 扫描默认把以下问题当阻断项：
 - 坏例：`Too Many Roles`。
 - 好例：`7-Day Login`、`Battle Pass`。
 
-## 当前战机回归结果
+## 当前回归结果
 
 最近一次验证命令：
 
 ```powershell
-python scripts\run_quality_harness.py fixtures\quality_regression.json `
-  --workbook "C:\Users\Administrator\Desktop\本地化处理\飞机语言表翻译\战机英语UI表翻译_最终版.xlsx" `
-  --workbook "C:\Users\Administrator\Desktop\本地化处理\飞机语言表翻译\战机英语语言表翻译_最终版.xlsx"
+python scripts\run_quality_harness.py fixtures\quality_regression.json
 ```
 
 结果：
 
-- fixture cases：18
-- workbook rows：2648
+- fixture cases：56
 - passed：True
 
-说明：`issue_counts` 里仍会统计 fixture 里的故意坏例；只要 `passed=True` 且没有 `workbook_issues`，就表示 workbook 通过当前 harness。
+说明：`issue_counts` 里仍会统计 fixture 里的故意坏例；只要 `passed=True` 且没有 `workbook_issues`，就表示 workbook 通过当前 harness。Workbook 扫描的空扫描失败和 glossary sheet 跳过逻辑由 `tests/test_quality_harness.py` 覆盖。

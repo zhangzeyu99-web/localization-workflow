@@ -30,6 +30,7 @@ ORPHAN_LEADING_CLITIC_PATTERN = re.compile(r"^\s*['’]s\b", re.IGNORECASE)
 BROKEN_BULLET_PATTERN = re.compile(r'(?:^|\\n|\n)\?[A-Za-z0-9]')
 FULLWIDTH_PUNCTUATION_PATTERN = re.compile(r'[，。！？：；（）【】％＋－]')
 WORD_START_PATTERN = re.compile(r'[A-Za-z]')
+GLOSSARY_SHEET_NAMES = {'术语表', 'glossary', 'terms', 'term base', 'termbase'}
 
 DEFAULT_HARD_ISSUES = {
     'variable_missing',
@@ -143,10 +144,12 @@ def scan_workbook(
     fail_set = set(fail_on or DEFAULT_HARD_ISSUES)
     result = HarnessResult(passed=True)
     workbook_path = Path(path)
-    wb = load_workbook(workbook_path, read_only=True, data_only=False)
+    wb = load_workbook(workbook_path, read_only=False, data_only=False)
 
     try:
         for ws in wb.worksheets:
+            if _is_glossary_sheet(ws):
+                continue
             id_col, src_col, tgt_col = _detect_columns(ws)
             if src_col is None or tgt_col is None:
                 continue
@@ -178,6 +181,22 @@ def scan_workbook(
                             'translation': target,
                             'auto_fix': issue.auto_fix,
                         })
+
+        if result.rows_scanned == 0:
+            result.passed = False
+            result.issue_counts['workbook_scan_empty'] += 1
+            result.issues.append({
+                'file': str(workbook_path),
+                'sheet': '',
+                'row': 0,
+                'id': '',
+                'check_type': 'workbook_scan_empty',
+                'severity': 'error',
+                'message': 'No workbook rows were scanned; check sheet names and headers before treating QA as passed',
+                'source': '',
+                'translation': '',
+                'auto_fix': '',
+            })
     finally:
         wb.close()
 
@@ -312,6 +331,17 @@ def _detect_columns(ws) -> tuple[int | None, int | None, int | None]:
     src_col = pick({'cn', 'zh', '中文', '原文', 'source', 'original'}, 1)
     tgt_col = pick({'en', 'english', '译文', 'translation', 'target'}, 2)
     return id_col, src_col, tgt_col
+
+
+def _is_glossary_sheet(ws) -> bool:
+    title = str(ws.title or '').strip().lower()
+    compact_title = re.sub(r'\s+', '', title)
+    if title in GLOSSARY_SHEET_NAMES or compact_title in {'termbase', 'terms'} or '术语' in title:
+        return True
+
+    first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
+    headers = [str(v or '').strip().lower() for v in first[:4]]
+    return headers == ['cn', 'en', 'en2', '分类']
 
 
 def _issue(

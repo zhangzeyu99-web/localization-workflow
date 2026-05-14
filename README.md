@@ -78,6 +78,7 @@ python scripts/run_translation_harness.py --input <excel_file> --term-base <term
 
 # 主 agent 写完 translation_response.jsonl 后，严格按 ID 回填并进入 QA
 python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --response <output_dir>/translation_response.jsonl --run-qa
+
 ```
 
 ## 项目结构
@@ -133,6 +134,9 @@ localization-workflow-project/
   - 支持 `--style-hint` / `--style-hint-file` 注入项目风格提示，例如“面向美国移动端用户、SLG、简短地道表达”
   - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用
   - 已用真实 63 行中文回填英语表验证完整闭环：机审需确认 `0`，`quality_harness` 对最终 workbook 返回 `passed: True`
+- 通用 workbook QA 扫描增强
+  - `run_quality_harness.py` 扫真实 workbook 时会跳过 glossary/术语 sheet，只对正文和 UI 做通用行级 QA，避免术语词典 Title Case 误杀
+  - `run_quality_harness.py` workbook 扫描改为非只读读取，且 `rows_scanned=0` 会失败，避免假通过
 - 严格 AI 审核链路
   - `prepare / merge` 以 manifest 和 fingerprint 绑定批次，避免输入输出词条错配
   - 模型回填必须逐条输出 `ID | KEEP` 或 `ID | FIX | corrected translation`，缺行或乱序会直接拒绝合并

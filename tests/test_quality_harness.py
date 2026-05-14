@@ -2,8 +2,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from utils.quality_harness import load_fixture, run_fixture, scan_workbook
 
@@ -81,6 +82,45 @@ class QualityHarnessTests(unittest.TestCase):
             self.assertEqual(result.issue_counts["title_case_overuse"], 1)
             self.assertEqual(result.rows_scanned, 2)
             self.assertEqual(result.issues[0]["row"], 2)
+
+    def test_scan_workbook_uses_non_read_only_and_fails_empty_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "unrecognized.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["Only", "Notes"])
+            ws.append(["x", "not a language table"])
+            wb.save(path)
+
+            with patch("utils.quality_harness.load_workbook", wraps=load_workbook) as mocked:
+                result = scan_workbook(path)
+
+            self.assertFalse(mocked.call_args.kwargs["read_only"])
+            self.assertFalse(result.passed)
+            self.assertEqual(result.rows_scanned, 0)
+            self.assertEqual(result.issue_counts["workbook_scan_empty"], 1)
+            self.assertEqual(result.issues[0]["check_type"], "workbook_scan_empty")
+
+    def test_scan_workbook_skips_glossary_sheet(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "with_glossary.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "术语表"
+            ws.append(["CN", "EN", "EN2", "分类"])
+            ws.append(["未加入军团", "Not in a Legion", None, "社交/军团"])
+            ws.append(["次数不足", "Not Enough Attempts", None, "通用提示"])
+
+            ws = wb.create_sheet("语言表5.8")
+            ws.append(["ID", "CN", "EN"])
+            ws.append([1, "系统错误", "System error"])
+            wb.save(path)
+
+            result = scan_workbook(path)
+
+            self.assertTrue(result.passed, result.issues)
+            self.assertEqual(result.rows_scanned, 1)
+            self.assertEqual(result.issue_counts["title_case_overuse"], 0)
 
     def test_runtime_placeholder_sentence_does_not_trigger_leading_lowercase(self):
         fixture = {
