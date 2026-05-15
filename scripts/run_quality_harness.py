@@ -17,6 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run localization quality harness")
     parser.add_argument("fixtures", nargs="*", help="Fixture JSON files to run")
     parser.add_argument("--workbook", action="append", default=[], help="Workbook path to scan")
+    parser.add_argument("--term-base", action="append", default=[], help="Optional term-base workbook/JSON override; workbook scans also auto-discover nearby term bases")
     parser.add_argument("--lang", default="en", help="Target language code")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     parser.add_argument("--max-issues", type=int, default=30, help="Text output issue sample limit")
@@ -28,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         results.append(run_fixture(fixture, lang=args.lang))
 
     for workbook_path in args.workbook:
-        results.append(scan_workbook(workbook_path, lang=args.lang))
+        results.append(scan_workbook(workbook_path, lang=args.lang, term_base=args.term_base))
 
     if not results:
         parser.error("provide at least one fixture or --workbook")

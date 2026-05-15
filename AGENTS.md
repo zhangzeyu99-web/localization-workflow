@@ -53,6 +53,7 @@
   - `ru`
 - 如果同目录或工作区里存在术语表，默认一起使用。
 - 如果没有术语表，则按无术语模式继续处理，不要因此停住。
+- 最终交付判定以 `scripts/run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx>` 为准；`process_language.py` 负责机审和自动修复，但不能作为唯一放行依据。
 
 ## 目标列状态规则
 
@@ -98,8 +99,8 @@
   - `mode=hard`：紧凑 UI / 按钮 / 标签
   - `mode=soft`：普通短文本软提示
   - `mode=exempt`：编号专名、复杂富文本等豁免
-- 英语 UI hard 预算：`min(26, max(8, 中文可见长度 * 2 + 8))`。
-- 印尼语 UI hard 预算：`min(28, max(9, 中文可见长度 * 2 + 9))`。
+- 英语 UI hard 预算：`min(32, max(10, 中文可见长度 * 2 + 14))`。
+- 印尼语 UI hard 预算：`min(34, max(12, 中文可见长度 * 2 + 15))`。
 - 自然可懂优先，长度第二。
 - 不允许为了长度生成不可读缩写或内部代码式文案，例如 `PERR`、`DTT`、`IDNE`、`IJA`、`CL##1##2`、`TPRM#P`。
 - 不允许截断英文单词或删除元音来压长度，例如 `rewa`、`obta`、`coll imme`、`tmrw`。
@@ -109,6 +110,11 @@
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
 - 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。
 - Title Case 只用于合理范围：专名、功能名、标题、商店项、术语表明确要求的名称。
+- 颜色标签必须翻译前后保持一致，`[color=#...]` 和 `<color=#...>` 的数量、开闭和色值都不能漂移。
+- 不允许非问句中把分隔符污染成 `?`，例如源文 `重装·普攻I` 不能译成 `Tank ? Basic Attack I`；真实问号键提示如 `Press ? for help` 不按分隔符污染处理。
+- 人名/角色名一致性是所有项目的硬门槛：术语表中 `分类` 含 `人名`、`角色`、`person`、`character`、`name` 的条目，正文命中中文名时必须使用术语表英文名，不能把 `Aria` 写成 `Arya`、`Leon` 写成 `Lyon` 这类近似名。
+- 术语表默认是强约束；只有 `分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 时才作为软提示，不阻断最终交付。
+- 连续编号词条必须临时沉淀批内术语：同一中文词根反复出现为 `词根-数字` 时，目标译文前缀、大小写和连字符格式必须一致，例如 `消灭怪物-74` 到 `消灭怪物-238` 不能混用 `Kill Monsters` / `Destroy monsters` / `Kill monsters`。
 - 新增任何质量规则时，必须同步补 `fixtures/quality_regression.json`：坏例要被拦住，好例不能被误杀。
 
 ## 公开仓库边界
@@ -126,6 +132,8 @@
   4. 跑预检、机审、自动修复
   5. 优先清掉硬错误：
      - `term_missing`
+     - `term_partial_hit`
+     - `term_capitalization`
      - `chinese_residue`
      - `variable_missing`
      - `ui_length_overflow`
@@ -134,7 +142,7 @@
      - `title_case_overuse`
      - 其他结构性错误
   6. 反复复检，直到不再有硬错误
-  7. 跑质量回归 harness：`python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx>`
+  7. 跑质量回归 harness：`python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx>`；QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表，只有自动发现失败或需要覆盖时才补 `--term-base <术语表.xlsx>`
   8. 允许保留 `short_text_length_watch` 这类软提示作为说明项，除非用户明确要求清到 0
   9. 在任务目录落一个明确命名的最终版文件，例如 `原文件名_最终版.xlsx`
   10. 同时输出 `result_{lang}.xlsx` 和 `report_{lang}.xlsx`

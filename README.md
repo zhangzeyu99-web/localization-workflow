@@ -43,7 +43,7 @@ python process_language.py --input sample-language.xlsx --lang en
 |------|------|
 | **变量检测** | 检查翻译中变量占位符（`{0}`, `%s` 等）是否完整 |
 | **UI 标记检测** | 检查 UI 控件标记（`<color>`, `<size>` 等）是否匹配 |
-| **术语一致性** | 基于术语库检查关键术语翻译是否一致 |
+| **术语一致性** | 基于术语库检查关键术语翻译是否一致；人名/角色名和连续编号词条批内一致性作为 hard gate |
 | **格式模式检测** | 检测数字格式、标点、空格等模式问题 |
 | **AI 审查** | 调用 LLM 对可疑条目进行二次审查 |
 | **GUI 界面** | 可视化操作界面，支持拖放 Excel 文件 |
@@ -53,7 +53,9 @@ python process_language.py --input sample-language.xlsx --lang en
 | 优先级 | 语言 |
 |--------|------|
 | P0 | 英语 |
-| P1 | 法语、德语、土耳其语、西班牙语、葡萄牙语、俄语 |
+| P1 | 印尼语、法语、德语、土耳其语、西班牙语、葡萄牙语、俄语 |
+
+说明：通用 QA harness 支持上述语言代码；英语全量翻译 harness v1 仍只支持 `en`。
 
 ## 安装
 
@@ -121,7 +123,21 @@ localization-workflow-project/
 - [英语全量翻译 Harness](docs/translation-harness.md)
 - [项目管理](docs/project-management.md)
 
-## 最新更新（2026-05-12）
+## 最新更新（2026-05-15）
+
+本次更新把最终交付 gate 收口到 `quality_harness`：术语默认强约束、UI 长度进入最终 workbook 扫描、连续编号词条优先按术语表或首个高质量译法统一，软术语必须显式标记。
+
+### 规则权威
+
+- `AGENTS.md` 和 `scripts/run_quality_harness.py` 是当前权威规则来源。
+- `README.md`、`docs/使用说明书.md` 只保留摘要和历史入口说明，不作为最终放行标准。
+- 最终交付必须跑：
+
+```bash
+python scripts/run_quality_harness.py fixtures/quality_regression.json --workbook <final.xlsx>
+```
+
+## 2026-05-12 更新
 
 本次更新把英语目标列为空或中文回填时的“全量翻译 -> 严格回填 -> QA 收口”固定成 agent-operated harness。脚本不调用 API，也不自动操作 ChatGPT 网页；主 agent 负责生成译文，脚本负责抽取、协议校验、按 ID 回填、隐藏缓存和后半 QA。
 
@@ -135,8 +151,11 @@ localization-workflow-project/
   - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用
   - 已用真实 63 行中文回填英语表验证完整闭环：机审需确认 `0`，`quality_harness` 对最终 workbook 返回 `passed: True`
 - 通用 workbook QA 扫描增强
-  - `run_quality_harness.py` 扫真实 workbook 时会跳过 glossary/术语 sheet，只对正文和 UI 做通用行级 QA，避免术语词典 Title Case 误杀
+  - `run_quality_harness.py` 扫真实 workbook 时会跳过 glossary/术语 sheet 和审计/裁决类辅助 sheet，只对正文和 UI 做通用行级 QA，避免术语词典 Title Case 或返修记录误杀
   - `run_quality_harness.py` workbook 扫描改为非只读读取，且 `rows_scanned=0` 会失败，避免假通过
+  - `run_quality_harness.py --workbook <最终版.xlsx>` 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表；`--term-base` 仅作为覆盖/补充入口
+  - 术语表默认强约束；显式标记 `soft/generic/common/参考/泛词/通用词` 的术语作为软提示
+  - 自动发现的术语表中，`分类` 含 `人名`、`角色`、`person`、`character`、`name` 的术语会作为硬门槛；正文命中中文名时必须使用对应英文名
 - 严格 AI 审核链路
   - `prepare / merge` 以 manifest 和 fingerprint 绑定批次，避免输入输出词条错配
   - 模型回填必须逐条输出 `ID | KEEP` 或 `ID | FIX | corrected translation`，缺行或乱序会直接拒绝合并
@@ -148,7 +167,7 @@ localization-workflow-project/
 - UI 短文案长度硬约束
   - 先把中文原文可见长度 `<= 10` 的短文本纳入候选
   - 再按类型分层处理：紧凑 UI 走硬约束，普通短文本走软提示，编号专名和复杂富文本豁免
-  - 英语预算为 `min(26, max(8, 中文可见长度 * 2 + 8))`，用于避免把正常词组压成拼音或截断词
+  - 英语预算为 `min(32, max(10, 中文可见长度 * 2 + 14))`，用于避免把正常词组压成拼音或截断词；印尼语预算为 `min(34, max(12, 中文可见长度 * 2 + 15))`
   - 机审会新增 `ui_length_overflow`
   - AI 审核 prompt 会带上 `LEN:mode=...,source=...,target=...,budget<=...` 元数据，要求在自然可懂前提下尽量贴近中文长度
 - 不可读缩写 / 截断词硬门槛
@@ -208,17 +227,21 @@ localization-workflow-project/
 - `variable_extra`
 - `term_missing`
 
-### 7. 最终交付前建议跑 quality harness
+### 7. 最终交付必须跑 quality harness
 
 ```bash
 python scripts/run_quality_harness.py fixtures/quality_regression.json --workbook <final.xlsx>
 ```
 
-### 8. `term_partial_hit` 与 hard gate 分开看
+说明：QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表。只有自动发现失败或需要强制指定额外术语源时，才补 `--term-base <terms.xlsx>`。
 
-- `term_partial_hit` 通常表示多词术语只命中部分词，可能来自 UI 长度预算、自然表达或术语表过严
+### 8. 术语 hard gate 与软术语分开看
+
+- 未标记为软参考的术语默认强约束，`term_missing`、`term_partial_hit`、`term_capitalization` 都会阻断最终交付
+- 如果某个术语只是泛词参考，请在术语表 `分类/category/type` 中显式写 `soft`、`generic`、`common`、`参考`、`泛词` 或 `通用词`
 - 交付判断先看 hard gate：变量、标签、换行、中文残留、乱码、坏缩写、截断词、明显大小写问题必须清零
-- 如果 `term_partial_hit` 不影响语义、可读性和核心术语一致性，可以作为软提示保留在报告中
+- 人名/角色名不属于可保留软提示；如果术语表标了人名，`person_name_term_mismatch` 必须清零后才能交付
+- 软术语问题会以 `term_soft_*` 统计，不阻断最终交付
 
 ## License
 

@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-05-15 - Color tag and punctuation boundary hardening
+
+- Color tag QA 同时支持 `[color=#...]` 和 `<color=#...>`，翻译前后颜色代码必须一致，并且色值不会再被误判为内部代码。
+- 术语命中增加变量边界处理，避免 `1小时` 误命中 `##1小时##2分钟` 这类 placeholder 数字结构。
+- `word ? word` 分隔符污染规则收窄到源文含分隔符的场景，继续拦截 `Tank ? Basic Attack I`，但不误杀 `Press ? for help`。
+- 英语 UI hard 预算继续按人工合格标准微调到 `min(32, max(10, source*2+14))`，允许清晰的短 UI 名词短语通过，避免为了预算压缩成坏缩写。
+
+## 2026-05-15 - UI length hard budget relaxation
+
+- 英语 UI hard 预算从 `min(26, max(8, source*2+8))` 放宽到 `min(30, max(10, source*2+12))`。
+- 印尼语 UI hard 预算从 `min(28, max(9, source*2+9))` 放宽到 `min(32, max(11, source*2+13))`。
+- 新增回归覆盖 `Showdown With Queen Bee` 这类 4 字中文 UI 的自然英文表达，避免为了过短预算继续压成不清楚的缩写。
+
+## 2026-05-15 - Unified quality harness final gate
+
+- `quality_harness --workbook` 现在接入 UI 长度检查，`ui_length_overflow` 为 hard gate，`short_text_length_watch` 作为软提示统计。
+- workbook 术语扫描改为默认强约束：未显式标记 `soft/generic/common/参考/泛词/通用词` 的术语缺失、部分命中和大小写问题都会阻断交付。
+- 连续编号词条一致性优先采用术语表标准；无术语时采用同批次首个通过基础可读性检查的译法，不再用多数派固化错误。
+- 文档收口为 `AGENTS.md + quality_harness` 权威，README 和使用说明只保留摘要；英语全量翻译 harness 仍明确为 v1 仅支持英语。
+
+## 2026-05-14 - Punctuation separator corruption gate
+
+- `quality_harness` 将非问句中的 `word ? word` 分隔符污染纳入 `punctuation_corruption` hard gate，用于拦截 `Tank ? Basic Attack I` 这类非 ASCII 分隔符编码降级问题。
+- 回归 fixture 同时保留正常疑问句好例，避免把 `Flying a Warplane? Let's try!` 这类自然英文误杀。
+
+## 2026-05-14 - Numbered temporary term consistency gate
+
+- `quality_harness` 新增 `numbered_term_inconsistency` hard gate：同一中文词根反复出现为 `词根-数字` 时，目标译文前缀、大小写和连字符格式必须一致。
+- 该规则用于临时沉淀批内术语，拦截 `消灭怪物-#` 同时出现 `Kill Monsters-#`、`Destroy monsters-#`、`Kill monsters -#` 这类混译。
+- 新增 workbook 级单元测试覆盖坏例和同表内好例，避免只靠人工截图发现批量编号任务名不一致。
+
+## 2026-05-14 - Generic person-name term hard gate
+
+- `quality_harness` 新增 `--term-base`，读取术语表中 `分类` 含 `人名` / `角色` / `person` / `character` / `name` 的条目。
+- 最终 workbook 扫描命中中文人名时，目标译文必须使用术语表英文名，`Aria -> Arya`、`Leon -> Lyon` 这类近似名会作为 `person_name_term_mismatch` 阻断。
+- `--workbook` 扫描现在会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表；术语 QA 是默认闭环，不是交付前额外操作。
+- 完整 workbook 作为 `--term-base` 时，只从真正术语表或显式 `分类/category/type` 表头的 sheet 收集人名术语，并跳过审计/裁决类辅助 sheet。
+- 文档和 `AGENTS.md` 最终交付命令保持为 `--workbook <最终版.xlsx>`；`--term-base` 只作为自动发现失败或需要覆盖时的补充参数。
+
 ## 2026-05-14 - Generic workbook QA scan hardening
 
 - `quality_harness` 的 workbook 扫描改为非只读读取，更接近交付前真实 Excel 状态。

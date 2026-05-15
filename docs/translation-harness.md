@@ -91,11 +91,11 @@ python scripts\run_translation_harness.py `
 
 ## 质量约束
 
-- 只支持英语 v1。
+- 只支持英语全量翻译 v1。多语言 QA 可以由 `quality_harness` 扫描，但本 harness 不负责生成印尼语、法语、德语、土耳其语、西班牙语、葡萄牙语或俄语译文。
 - 回填严格按 ID，不按行顺序猜。
 - response 必须覆盖全部 ID，不能漏 ID、重复 ID、额外 ID、乱序。
 - 占位符、变量、BBCode、富文本标签和换行结构必须与原文一致，否则拒绝写回。
-- 术语分强约束和软参考：专名、系统名、道具名、技能名优先；泛词不为了命中牺牲自然度。
+- 术语默认强约束；只有术语表显式标记 `soft/generic/common/参考/泛词/通用词` 的条目才作为软参考。
 - 后半 QA 不变，最终仍需跑 `scripts/run_quality_harness.py`。
 
 ## 主 agent 翻译原则

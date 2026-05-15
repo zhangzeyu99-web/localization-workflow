@@ -396,6 +396,20 @@ class TermCheckerTests(unittest.TestCase):
 
         self.assertEqual(results, [])
 
+    def test_numeric_term_does_not_match_inside_placeholder_number(self):
+        term_lookup = {
+            "1小时": {"primary": "1 Hour", "variants": []},
+        }
+
+        results = check_term_hit(
+            row_id=24,
+            original="##1小时##2分钟",
+            translation="##1 hr ##2 min",
+            term_lookup=term_lookup,
+        )
+
+        self.assertEqual(results, [])
+
 
 if __name__ == "__main__":
     unittest.main()

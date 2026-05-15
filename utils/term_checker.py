@@ -127,6 +127,31 @@ def _find_term_in_text(term: str, text: str) -> tuple[bool, str]:
     return False, ''
 
 
+def _source_contains_term(source_term: str, original: str) -> bool:
+    """Match source terms without treating placeholder numbers as plain text.
+
+    For example, the glossary term "1小时" should not match the source
+    "##1小时##2分钟"; that source is using a placeholder, not the literal number 1.
+    """
+    term = str(source_term or '')
+    text = str(original or '')
+    if not term:
+        return False
+    if not re.search(r'[A-Za-z0-9#]', term):
+        return term in text
+
+    pattern = re.compile(re.escape(term))
+    for match in pattern.finditer(text):
+        before = text[match.start() - 1] if match.start() > 0 else ''
+        after = text[match.end()] if match.end() < len(text) else ''
+        if term[0].isalnum() and before and (before.isalnum() or before == '#'):
+            continue
+        if term[-1].isalnum() and after and (after.isalnum() or after == '#'):
+            continue
+        return True
+    return False
+
+
 def _pluralize_word(word: str) -> str:
     if word.endswith('y') and len(word) > 1 and word[-2].lower() not in 'aeiou':
         return word[:-1] + 'ies'
@@ -395,7 +420,7 @@ def check_term_hit(
     results = []
 
     for cn_term, term_entry in term_lookup.items():
-        if cn_term not in original:
+        if not _source_contains_term(cn_term, original):
             continue
 
         primary_term, accepted_terms, enforce_case = _normalize_term_entry(term_entry)

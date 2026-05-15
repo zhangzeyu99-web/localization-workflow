@@ -87,8 +87,8 @@ def is_short_text_candidate(original: str, translation: str) -> bool:
 
 def compute_ui_length_budget(source_length: int, lang: str = "en") -> int:
     if lang == "idn":
-        return min(28, max(9, source_length * 2 + 9))
-    return min(26, max(8, source_length * 2 + 8))
+        return min(34, max(12, source_length * 2 + 15))
+    return min(32, max(10, source_length * 2 + 14))
 
 
 def assess_ui_length(

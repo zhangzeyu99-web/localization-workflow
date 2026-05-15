@@ -297,6 +297,24 @@
       "expected_issues": ["punctuation_corruption"]
     },
     {
+      "id": "bad-middle-dot-downgraded-to-question",
+      "source": "重装·普攻I",
+      "translation": "Tank ? Basic Attack I",
+      "expected_issues": ["punctuation_corruption"]
+    },
+    {
+      "id": "good-natural-question-in-question-source",
+      "source": "开飞机？试试看嘛！",
+      "translation": "Flying a Warplane? Let's try!",
+      "expected_issues": []
+    },
+    {
+      "id": "good-question-key-prompt",
+      "source": "帮助键",
+      "translation": "Press ? for help",
+      "expected_issues": []
+    },
+    {
       "id": "bad-broken-bullet-glyph",
       "source": "◇R5：军团协力积分的10%",
       "translation": "?R5: 10% of Legion Co-op Points",
@@ -337,6 +355,18 @@
       "source": "[size=80][c0]\u81ea\u9009\u4f20\u8bf4\u6280\u80fd[s0][/size]",
       "translation": "[size=80][c0]Select Legendary Skill[s0][/size]",
       "expected_issues": []
+    },
+    {
+      "id": "good-bbcode-color-hex-tag",
+      "source": "[color=#FFFFFF]\u7b7e\u5230\u9001[/color]",
+      "translation": "Day [color=#FFFFFF]Sign-in Gift[/color]",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-html-color-mismatch",
+      "source": "<color=#608F01>##1</color>\u5956\u52b1",
+      "translation": "<color=#FF0000>##1</color> rewards",
+      "expected_issues": ["bbcode_color_mismatch"]
     }
   ]
 }

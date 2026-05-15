@@ -15,15 +15,15 @@ class UILengthCheckerTests(unittest.TestCase):
         self.assertFalse(is_short_text_candidate("这是一整句完整的系统说明文本", "This is a full sentence.",))
 
     def test_budget_for_english_and_indonesian_short_texts(self):
-        self.assertEqual(compute_ui_length_budget(4, lang="en"), 16)
-        self.assertEqual(compute_ui_length_budget(4, lang="idn"), 17)
-        self.assertEqual(compute_ui_length_budget(10, lang="en"), 26)
+        self.assertEqual(compute_ui_length_budget(4, lang="en"), 22)
+        self.assertEqual(compute_ui_length_budget(4, lang="idn"), 23)
+        self.assertEqual(compute_ui_length_budget(10, lang="en"), 32)
 
     def test_ui_rows_use_hard_policy(self):
         assessment = assess_ui_length(
             row_id=1,
             original="消息推送",
-            translation="Push Notifications",
+            translation="Push notifications enabled immediately",
             is_ui=True,
             lang="en",
         )
@@ -36,7 +36,7 @@ class UILengthCheckerTests(unittest.TestCase):
         assessment = assess_ui_length(
             row_id=2,
             original="当前积分奖励",
-            translation="Current Event Point Reward",
+            translation="Current Event Point Reward Available",
             is_ui=False,
             lang="en",
         )
@@ -61,7 +61,7 @@ class UILengthCheckerTests(unittest.TestCase):
         results = check_ui_length(
             row_id=4,
             original="消息推送",
-            translation="Push Notifications",
+            translation="Push notifications enabled immediately",
             is_ui=True,
             lang="en",
         )
@@ -74,7 +74,7 @@ class UILengthCheckerTests(unittest.TestCase):
         results = check_ui_length(
             row_id=5,
             original="当前积分奖励",
-            translation="Current Event Point Reward",
+            translation="Current Event Point Reward Available",
             is_ui=False,
             lang="en",
         )
@@ -110,6 +110,17 @@ class UILengthCheckerTests(unittest.TestCase):
             row_id=6,
             original="消息推送",
             translation="Push Alerts",
+            is_ui=True,
+            lang="en",
+        )
+
+        self.assertEqual(results, [])
+
+    def test_allows_clear_four_character_ui_terms_after_budget_relaxation(self):
+        results = check_ui_length(
+            row_id=9,
+            original="决战蜂后",
+            translation="Showdown With Queen Bee",
             is_ui=True,
             lang="en",
         )
