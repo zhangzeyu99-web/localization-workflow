@@ -121,6 +121,7 @@ localization-workflow-project/
 - [不可读缩写与截断词拦截规则](docs/readability-abbreviation-gate.md)
 - [质量回归 Harness](docs/quality-harness.md)
 - [英语全量翻译 Harness](docs/translation-harness.md)
+- [项目定制 Harness 流程](docs/project-custom-harness.md)
 - [项目管理](docs/project-management.md)
 
 ## 最新更新（2026-05-15）
@@ -148,7 +149,7 @@ python scripts/run_quality_harness.py fixtures/quality_regression.json --workboo
   - response 只允许 `ID + translation`，回填前会拒绝漏 ID、重复 ID、额外 ID、乱序、输入漂移、占位符漂移、标签漂移和换行漂移
   - 目标列为空、近乎全空或大量中文回填时，先把中文作为种子列再全量替换，避免空列流程和 QA 断层
   - 支持 `--style-hint` / `--style-hint-file` 注入项目风格提示，例如“面向美国移动端用户、SLG、简短地道表达”
-  - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用
+  - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用；最终交付前删除缓存，除非仍在连续返修同一批内容
   - 已用真实 63 行中文回填英语表验证完整闭环：机审需确认 `0`，`quality_harness` 对最终 workbook 返回 `passed: True`
 - 通用 workbook QA 扫描增强
   - `run_quality_harness.py` 扫真实 workbook 时会跳过 glossary/术语 sheet 和审计/裁决类辅助 sheet，只对正文和 UI 做通用行级 QA，避免术语词典 Title Case 或返修记录误杀

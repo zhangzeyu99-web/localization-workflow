@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-05-18 - Project-custom harness workflow and delivery cleanup
+
+- 新增 `docs/project-custom-harness.md`，把项目定制 harness 固定为通用 `quality_harness` 之后的项目级增强层，用于沉淀项目术语、风格、交付结构和历史错误拦截。
+- 明确公开仓库边界：只提交通用流程、模板和文档；客户 workbook、参考样本、本地路径、项目专用术语和项目专用 harness 留在私有目录或 `.git/info/exclude` 隔离。
+- 固定项目 harness 执行顺序：先通用最终门禁，再项目定制 QA；需要固定 workbook 结构时才启用 strict structure/reference 对比。
+- 交付目录规则更新：最终版留任务根目录，`result_<lang>.xlsx` 和 `report_<lang>.xlsx` 放入 `qa_<lang>/`；`.translation_cache/` 作为过程缓存，最终交付前默认删除。
+
 ## 2026-05-15 - Color tag and punctuation boundary hardening
 
 - Color tag QA 同时支持 `[color=#...]` 和 `<color=#...>`，翻译前后颜色代码必须一致，并且色值不会再被误判为内部代码。
