@@ -2,6 +2,62 @@
 
 项目定制 harness 是通用 `quality_harness` 之外的项目级增强层，用来沉淀某个游戏项目的术语、风格、交付结构和历史问题。它不替代通用 QA gate；最终交付仍必须通过通用 `quality_harness`。
 
+## Step 0：项目启动信息
+
+项目开始前先建立单项目资料包，用于确定翻译风格和生成翻译提示词。资料包只在该项目私有环境中使用，不进入公开仓库。
+
+必须收集：
+
+- 游戏信息：游戏名、类型、题材、平台、目标市场、目标语言、玩家群体。
+- 玩法信息：核心循环、主要系统、战斗/养成结构、商业化语境、UI 密度限制。
+- 术语信息：强术语、软参考术语、禁用译法、人名/地名/道具/技能名策略。
+- 风格信息：UI、技能描述、系统提示、邮件/剧情、错误提示、大小写策略。
+- 技术约束：变量、占位符、BBCode、HTML 标签、颜色标签、换行、数字单位。
+- 参考材料：术语表、合格交付参考、历史最终版、截图或 UI 上下文。
+
+公开模板：
+
+- `templates/project_profile_template.md`：给人填写和评审的项目资料模板。
+- `templates/project_profile_template.json`：给脚本或项目 harness 读取的结构化 profile 模板。
+- `templates/project_profile_template.yaml`：给偏配置化项目使用的 YAML profile 模板。
+- `templates/translation_prompt_template.txt`：根据项目 profile 生成的翻译提示词模板。
+
+建议私有项目目录：
+
+```text
+<private-project-dir>/
+  project_profile.md
+  project_profile.json
+  project_profile.yaml
+  translation_prompt.txt
+  terms.xlsx
+  references/
+```
+
+## Step 1：风格定标与提示词输出
+
+项目资料确认后，先输出单项目 `translation_prompt.txt`，再进入翻译或 QA。提示词应包含：
+
+- 项目背景和目标用户。
+- 翻译风格：自然度、简短程度、语气、目标市场表达习惯。
+- 术语规则：强术语必须使用，软术语只作参考，禁用译法不得出现。
+- 人名/专名规则：角色、地点、道具、技能和连续编号词条必须一致。
+- 技术规则：占位符、标签、颜色、换行、变量和数字单位必须保持。
+- 输出协议：只输出 `ID + translation`，不输出解释、审计列或额外结构。
+
+英语全量翻译 harness 使用该提示词时，应通过 `--style-hint-file` 注入：
+
+```powershell
+python scripts\run_translation_harness.py `
+  --input <language.xlsx> `
+  --term-base <terms.xlsx> `
+  --lang en `
+  --output-dir <work-dir> `
+  --style-hint-file <private-project-dir>\translation_prompt.txt
+```
+
+项目定制 harness 不强制要求 profile；但如果同项目私有目录中存在 `project_profile.json` 或等价 profile，项目 harness 必须读取并执行其中规则，不能忽略。
+
 ## 适用场景
 
 - 项目有固定术语口径，且通用术语表不足以表达上下文取舍。

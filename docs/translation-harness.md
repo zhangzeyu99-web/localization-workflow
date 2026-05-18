@@ -85,6 +85,8 @@ python scripts\run_translation_harness.py `
   --style-hint-file "C:\path\style-hint.txt"
 ```
 
+项目定制 harness 场景下，`--style-hint-file` 应优先使用单项目私有环境生成的 `translation_prompt.txt`。该提示词由 `templates/project_profile_template.md` / `templates/project_profile_template.json` 中的项目信息、术语、风格和技术约束生成，不要跨项目复用。
+
 提示词会写入 `translation_manifest.json` 的 `style_profile.project_hint`，并复制到 `translation_workpack.jsonl` 的每条 `style_hint`。主 agent 翻译时必须按它调整风格，但不能突破变量、标签、换行、术语和 QA hard gate。
 
 缓存按提示词隔离：同一目录下，提示词不同的旧译文不会作为当前任务的 `cache_hit`，避免“美国移动端 SLG”和其他项目风格互相污染。

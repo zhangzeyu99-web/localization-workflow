@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-05-18 - Project onboarding profile and prompt templates
+
+- 项目定制 harness 流程新增前置阶段：项目开始时先收集游戏信息、游戏类型、目标市场、目标语言、核心玩法、术语、禁用译法、风格和技术约束。
+- 新增 `templates/project_profile_template.md`，用于人工填写和评审单项目资料。
+- 新增 `templates/project_profile_template.json`，用于脚本或项目 harness 读取结构化 profile。
+- 新增 `templates/project_profile_template.yaml`，用于偏配置化项目的结构化 profile。
+- 新增 `templates/translation_prompt_template.txt`，用于根据项目 profile 输出单项目翻译提示词，并通过 `--style-hint-file` 注入英语全量翻译 harness。
+- 明确隔离规则：profile/prompt 只在单项目私有环境使用，不能跨项目复用；项目 harness 不强制 profile，但如果存在 profile 就必须读取并执行。
+
 ## 2026-05-18 - Project-custom harness workflow and delivery cleanup
 
 - 新增 `docs/project-custom-harness.md`，把项目定制 harness 固定为通用 `quality_harness` 之后的项目级增强层，用于沉淀项目术语、风格、交付结构和历史错误拦截。

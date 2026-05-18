@@ -176,3 +176,11 @@
 - `result_<lang>.xlsx` 和 `report_<lang>.xlsx` 必须统一放入 `qa_<lang>/`，不要散落在根目录。
 - `.translation_cache/` 只属于过程缓存，不是交付物；除非正在连续返修同一批内容或用户明确要求保留，否则最终交付前删除。
 - 删除缓存只会损失同目录重跑时的复用速度和少量一致性辅助，不影响最终 workbook、QA 报告或上线使用。
+
+## 项目定制 harness 启动规则
+
+- 新项目开始前，先用 `templates/project_profile_template.md` 和 `templates/project_profile_template.json` 收集项目资料：游戏信息、类型、目标市场、目标语言、核心玩法、术语、禁用译法、风格和技术约束。
+- 项目资料确认后，必须输出单项目 `translation_prompt.txt`，并在全量翻译 harness 中通过 `--style-hint-file` 使用。
+- 项目 profile 和 prompt 只能放在单项目私有环境中，不能跨项目复用，也不能提交公开仓库。
+- 项目定制 harness 不强制依赖 profile；但如果当前项目存在 `project_profile.json`、`project_profile.yaml` 或等价 profile，则必须读取并执行，不能忽略。
+- profile 规则优先级：用户当前明确要求 > 项目 profile/prompt > 项目术语表 > 通用 `quality_harness` 规则 > 历史经验。

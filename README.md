@@ -124,6 +124,13 @@ localization-workflow-project/
 - [项目定制 Harness 流程](docs/project-custom-harness.md)
 - [项目管理](docs/project-management.md)
 
+项目定制 harness 启动模板：
+
+- [项目资料 Markdown 模板](templates/project_profile_template.md)
+- [项目资料 JSON 模板](templates/project_profile_template.json)
+- [项目资料 YAML 模板](templates/project_profile_template.yaml)
+- [翻译提示词模板](templates/translation_prompt_template.txt)
+
 ## 最新更新（2026-05-15）
 
 本次更新把最终交付 gate 收口到 `quality_harness`：术语默认强约束、UI 长度进入最终 workbook 扫描、连续编号词条优先按术语表或首个高质量译法统一，软术语必须显式标记。
