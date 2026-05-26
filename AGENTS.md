@@ -177,6 +177,19 @@
 - `.translation_cache/` 只属于过程缓存，不是交付物；除非正在连续返修同一批内容或用户明确要求保留，否则最终交付前删除。
 - 删除缓存只会损失同目录重跑时的复用速度和少量一致性辅助，不影响最终 workbook、QA 报告或上线使用。
 
+## 公告 DOCX 检索式翻译流程
+
+- 公告 `.docx` 长文本翻译默认走 `scripts/run_announcement_docx_harness.py`，不要逐个 DOCX 自由翻译后手工覆盖。
+- 固定流程是 `inspect -> stage -> prepare -> 用 Codex/ChatGPT 生成 ai_response_<code>.jsonl -> import-ai -> apply -> deliver`。
+- `prepare` 默认从同 stem 术语交付表识别目标语言列；术语表没给的语言不要生成，不要凭空扩展成全语种。
+- `inspect` 只读表头识别原文、术语交付表、参考语言包和目标语言；不要为了识别语言扫描大型语言包全表。
+- 公告 DOCX 初译禁止使用 Google Translate、`deep_translator`、浏览器翻译、在线机翻聚合器或其他外部机器翻译服务；如果本地没有可用模型通道，必须停下说明卡点，不能降级到机翻冒充 AI 译文。
+- `ai_response_<code>.jsonl` 只能由 Codex/ChatGPT/明确的大模型通道生成，格式固定为每行 `{"para_id": "...", "translation": "..."}`，并且必须与 workpack 行数、顺序和 `para_id` 完全一致。
+- `import-ai` 负责把 AI response 严格回填到 `announcement_translation_workbook.xlsx`，回填前会校验漏行、重行、额外行、乱序、中文残留、受保护 token 和术语目标。
+- 术语表必须是同目录内与 DOCX stem 匹配的 `*_announcement_terms_*.xlsx`，不要跨项目猜测术语表。
+- 过程文件只允许放在 `<task_dir>/_work/announcement_docx/`；最终交付目录只保留最终 DOCX 和 `QA摘要.xlsx`。
+- `apply` 的 hard blocker 必须为 0 才能执行 `deliver`。
+
 ## 项目定制 harness 启动规则
 
 - 新项目开始前，先用 `templates/project_profile_template.md` 和 `templates/project_profile_template.json` 收集项目资料：游戏信息、类型、目标市场、目标语言、核心玩法、术语、禁用译法、风格和技术约束。
