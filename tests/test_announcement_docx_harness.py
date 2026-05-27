@@ -129,6 +129,16 @@ def _write_kr_terms(path: Path) -> None:
     wb.save(path)
 
 
+def _write_jp_terms(path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Glossary"
+    ws.append(["ID", "CN", "JP"])
+    ws.append(["term_hero", "\u82f1\u96c4", "\u82f1\u96c4"])
+    ws.append(["term_awaken", "\u89c9\u9192", "\u899a\u9192"])
+    wb.save(path)
+
+
 def _term_targets(term_hits_json: str, lang_header: str) -> str:
     hits = json.loads(term_hits_json)
     return " ".join(hit["targets"][lang_header] for hit in hits if hit["targets"].get(lang_header))
@@ -293,6 +303,29 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["languages"], [{"header": "KR", "code": "ko"}])
 
+    def test_inspect_and_stage_loose_docx_task_infers_jp_from_notice_terms(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp)
+            _write_docx(task_dir / "notice.docx")
+            _write_jp_terms(task_dir / "\u65e5\u672c\u4e3b\u5bb0-\u6e90\u8bed\u8a00\u8868\u516c\u544a\u672f\u8bed-AI\u8865\u5145-\u5df2\u63d0\u53d6-20260527.xlsx")
+            reference = task_dir / "(5.27)y\u8bed\u8a00\u8868.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["ID", "\u4e2d\u6587", "\u7ffb\u8bd1"])
+            ws.append(["x1", "\u82f1\u96c4", "\u82f1\u96c4"])
+            wb.save(reference)
+
+            inspection = inspect_announcement_task_dir(task_dir)
+            staged = stage_announcement_task_dir(task_dir)
+            prepared = prepare_announcement_docx_harness(staged.staging_dir)
+
+            self.assertEqual(inspection.languages, [("JP", "ja")])
+            self.assertEqual([path.name for path in inspection.reference_files], [reference.name])
+            self.assertTrue((staged.staging_dir / "notice.docx").exists())
+            self.assertTrue((staged.staging_dir / "notice_announcement_terms_20260527.xlsx").exists())
+            manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["languages"], [{"header": "JP", "code": "ja"}])
+
     def test_prepare_import_apply_supports_korean_term_column(self):
         with tempfile.TemporaryDirectory() as tmp:
             task_dir = Path(tmp)
@@ -311,6 +344,25 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             self.assertEqual(applied.hard_blockers, 0)
             self.assertEqual(len(applied.output_docx_paths), 1)
             self.assertEqual(applied.output_docx_paths[0].name, "sample_ko.docx")
+
+    def test_prepare_import_apply_supports_japanese_term_column_allows_kanji(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp)
+            doc = Document()
+            doc.add_paragraph("\u82f1\u96c4\u89c9\u9192 2026/5/20")
+            doc.save(task_dir / "sample.docx")
+            _write_jp_terms(task_dir / "sample_announcement_terms_20260526.xlsx")
+
+            prepared = prepare_announcement_docx_harness(task_dir)
+            response_dir = task_dir / "ai_responses"
+            _write_ai_response_files(prepared.work_dir, response_dir, languages=[("JP", "ja")])
+            imported = import_announcement_ai_responses(task_dir, response_dir=response_dir)
+            applied = apply_announcement_translations(task_dir, prepared.translation_workbook)
+
+            self.assertEqual(imported.languages, ["JP"])
+            self.assertEqual(applied.hard_blockers, 0)
+            self.assertEqual(len(applied.output_docx_paths), 1)
+            self.assertEqual(applied.output_docx_paths[0].name, "sample_ja.docx")
 
     def test_prepare_does_not_match_numeric_terms_inside_longer_numbers(self):
         with tempfile.TemporaryDirectory() as tmp:

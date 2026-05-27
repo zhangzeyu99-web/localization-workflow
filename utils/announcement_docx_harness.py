@@ -35,6 +35,8 @@ TARGET_LANGUAGES: tuple[tuple[str, str], ...] = (
 SUPPORTED_LANGUAGES: tuple[tuple[str, str], ...] = (
     *TARGET_LANGUAGES,
     ("KR", "ko"),
+    ("JP", "ja"),
+    ("JA", "ja"),
 )
 
 FIXED_COLUMNS = (
@@ -394,6 +396,8 @@ def inspect_announcement_task_dir(input_dir: str | Path) -> AnnouncementTaskInsp
         except Exception:
             continue
         if not language_specs:
+            if _is_reference_language_workbook(path):
+                reference_files.append(path)
             continue
         if _is_loose_announcement_terms_file(path):
             term_files.append(path)
@@ -804,7 +808,7 @@ def _validate_translation(
     if not translation.strip():
         issues.append({**base, "check_type": "empty_translation", "message": "Translation is empty"})
         return issues
-    if _CJK_RE.search(translation):
+    if lang_code != "ja" and _CJK_RE.search(translation):
         issues.append({**base, "check_type": "chinese_residue", "message": "Chinese residue found"})
 
     for token in protected_tokens:
@@ -952,7 +956,12 @@ def _is_temp_file(path: Path) -> bool:
 
 def _is_loose_announcement_terms_file(path: Path) -> bool:
     stem = path.stem.lower()
-    return "announcement_terms" in stem or "术语译文交付表" in path.stem
+    return "announcement_terms" in stem or "术语译文交付表" in path.stem or "公告术语" in path.stem
+
+
+def _is_reference_language_workbook(path: Path) -> bool:
+    stem = path.stem.lower()
+    return "语言表" in path.stem or "language" in stem
 
 
 def _is_generated_docx(path: Path) -> bool:
