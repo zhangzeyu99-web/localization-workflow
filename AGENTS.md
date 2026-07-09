@@ -10,6 +10,14 @@
 - 优先使用 `workspace_runner.py`、`cli.py`、`process_language.py`。
 - 不要默认退回到旧版 GUI 的人工复制粘贴流程。
 
+## 下游同步关系（Localization Workflow Studio）
+
+- 本仓库是本地化工作流（翻译校对/大文本多语言/公告 DOCX/本地 QA）的**单一维护源**；`D:\codex\localization-workflow-studio\workflow\localization` 是它的只读同步产物，禁止在那边直接改。
+- 本仓库改动提交后，到 studio 仓库根执行：`python scripts/sync_workflow_sources.py localization`（自动镜像 + 哈希读回校验）。
+- 同步后必须在 studio 跑 `python -m pytest workflow/localization/tests -q` 和 `python -m pytest backend/tests -q`：`process_language.py`、`scripts/run_quality_harness.py`、`scripts/run_translation_harness.py` 是 studio 工作台 backend 的 subprocess 运行时依赖（各文件 docstring 有 `Boundary:` 标注），backend 测试不全绿不得声明同步完成。
+- studio backend 的 `app/workflow/large_text.py` 是从本仓库 `utils/large_text_multilingual_gate.py` port 的受控复制；改 gate 规则后要求 studio 侧 `backend/tests/test_large_text_productization.py` parity 测试通过。
+- 同步范围只含代码与测试（`cli.py`、`gui.py`、`process_language.py`、`workspace_runner.py`、`scripts/`、`utils/`、`tests/`、`templates/`、`fixtures/`、`requirements.txt`、`CHANGELOG.md`）；`docs/`、`tools/`、根目录中文文档、样例文件是本仓库私有资产，不同步。
+
 ## 默认执行方式
 
 - 当用户给出语言表文件或项目目录时，不要停在机审阶段。

@@ -1,5 +1,7 @@
 """Game Localization QA Workflow — CLI version.
 
+Boundary: AGENT-ONLY tooling. Not imported or subprocessed by the backend.
+
 Interactive command-line interface with the same two-phase workflow as the GUI:
   Phase 1: Machine review (automatic)
   Phase 2: AI review (clipboard-guided, batch by batch)
@@ -14,7 +16,6 @@ Normal (interactive) mode:
   python cli.py --input language.xlsx --auto-fix --skip-ai
 """
 import argparse
-import os
 import sys
 import webbrowser
 from pathlib import Path
@@ -31,9 +32,11 @@ from process_language import (
 )
 from utils.ai_checker import (
     apply_corrections,
+    collect_recheck_rows as _collect_recheck_rows,
     merge_review_batches,
     parse_ai_response,
     prepare_recheck_batches,
+    reset_review_dir as _reset_review_dir,
     write_response_templates,
     write_review_files,
 )
@@ -118,7 +121,7 @@ def phase2(states, term_lookup, batch_size, lang='en'):
     total_corrections = 0
 
     print(f"\n  共 {total_batches} 个批次, 每批约 {batch_size} 行")
-    print(f"  操作: 复制提示词 → 粘贴到 ChatGPT → 复制回复 → 粘贴结果\n")
+    print("  操作: 复制提示词 → 粘贴到 ChatGPT → 复制回复 → 粘贴结果\n")
 
     current = 0
     while current < total_batches:
@@ -237,51 +240,6 @@ def phase2(states, term_lookup, batch_size, lang='en'):
 
 # ─── Main ─────────────────────────────────────────────────
 
-def _collect_recheck_rows(states, batches):
-    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
-    recheck_rows = []
-    ai_batch_ids = set()
-    for batch in batches:
-        ai_batch_ids.update(batch.row_ids)
-
-    for state in states.values():
-        if state.row_id not in ai_batch_ids:
-            continue
-        has_term_issue = any(getattr(issue, 'check_type', '') in term_error_types for issue in state.issues)
-        if not has_term_issue:
-            continue
-        issue_desc = '; '.join(sorted(set(
-            getattr(issue, 'check_type', '')
-            for issue in state.issues
-            if getattr(issue, 'check_type', '') in term_error_types
-        )))
-        recheck_rows.append(
-            {
-                'id': state.row_id,
-                'original': state.original,
-                'translation': state.fixed_translation,
-                'term_issue': issue_desc,
-            }
-        )
-    return recheck_rows
-
-
-def _reset_review_dir(review_dir: Path):
-    review_dir.mkdir(parents=True, exist_ok=True)
-    for pattern in (
-        'batch_*.txt',
-        'batch_*.json',
-        'batch_*_response.txt',
-        'batch_recheck_*.txt',
-        'batch_recheck_*.json',
-        'batch_recheck_*_response.txt',
-        'review_run_manifest.json',
-        'review_recheck_manifest.json',
-    ):
-        for path in review_dir.glob(pattern):
-            path.unlink()
-
-
 def agent_prepare(args):
     """Non-interactive: machine review + write AI prompt files to disk."""
     _header("Agent 模式: prepare")
@@ -349,9 +307,9 @@ def agent_prepare(args):
     if recheck_rows:
         print(f"  二次审查提示词: {len(recheck_rows)} 行术语漏网")
     print()
-    print(f"  下一步: 读取 batch_N.txt → 发给 LLM → 保存回复为 batch_N_response.txt")
+    print("  下一步: 读取 batch_N.txt → 发给 LLM → 保存回复为 batch_N_response.txt")
     if recheck_rows:
-        print(f"  二次审查: 读取 batch_recheck_N.txt → 发给 LLM → 保存为 batch_recheck_N_response.txt")
+        print("  二次审查: 读取 batch_recheck_N.txt → 发给 LLM → 保存为 batch_recheck_N_response.txt")
     print(f"  然后运行: python cli.py --input {args.input} --auto-fix --agent merge")
     _hr('═')
     print()

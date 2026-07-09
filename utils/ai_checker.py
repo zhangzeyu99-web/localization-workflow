@@ -19,16 +19,36 @@ LANG_NAMES = {
 
 def _make_prompt_header(lang: str = "en") -> str:
     lang_name = language_name(lang)
-    return (
+    neutral = (
         f"You are reviewing {lang_name} game localization.\n"
         "Check each row for meaning errors, missing content, unnatural style, and term compliance.\n"
         "Keep placeholders, variables, BBCode, and line breaks exactly as needed.\n"
+    )
+    if lang == "ja":
+        neutral += (
+            "Japanese may naturally contain Kanji; do not treat Kanji itself as Chinese residue.\n"
+            "Flag obvious Simplified Chinese leftovers, mixed-language mistranslations, and unnatural Japanese UI wording.\n"
+        )
+    elif lang == "ko":
+        neutral += (
+            "Korean output should be natural Korean; flag Hangul-missing translations, obvious Chinese leftovers, and untranslated source fragments.\n"
+        )
+
+    english_rules = ""
+    if lang == "en":
+        english_rules = (
         "Do not invent opaque abbreviations or internal-code style UI text, such as PERR, DTT, IDNE, IJA, or CL##1##2.\n"
         "Do not shorten text by clipping words, dropping vowels, or truncating fragments, such as rewa, obta, coll imme, or tmrw.\n"
         "Do not abbreviate profession, resource, item, skill, shop, search-result, message, mail, capacity, content, contribution, placement, or equipment words into fragments such as Doct, Ener Scie, Stru Expe, Smel Expe, Pts impr esse, Res., No sear resu, Fast Trac Bull, Fina ATK SPD, Repl This mess expi, No unre mess, Hara swip spam mess, Troo capa, Conf spen ##1 diam, Figh modi leve ##1, Offline Rwds, Inte guid, Glor Cont, Cont cann empt, Your cont ##1, Loca cann plac, Wear equi cann rese, No wear equi, or Stro equi Pack.\n"
         "Do not leave romanized Chinese-name residue in English rows when a natural localized name is needed, such as Chef Yifang.\n"
         "Allowed stable game abbreviations include HP, ATK, DEF, DMG, DPS, PVP, PVE, VIP, FPS, SFX, UI, and Lv.\n"
         "Use sentence case by default for English status, error, and prompt text; reserve Title Case for proper names, feature names, headings, and glossary-approved terms.\n"
+        )
+
+    return (
+        neutral
+        + english_rules
+        +
         "\n"
         "Output protocol (mandatory):\n"
         "- Cover every ID in this batch exactly once.\n"
@@ -529,6 +549,53 @@ def _build_batch_manifest(
         "prompt_file": f"{file_stem}.txt",
         "response_file": f"{file_stem}_response.txt",
     }
+
+
+def reset_review_dir(review_dir: Path) -> None:
+    """Remove stale review batch/manifest files before a new review run."""
+    review_dir.mkdir(parents=True, exist_ok=True)
+    for pattern in (
+        'batch_*.txt',
+        'batch_*.json',
+        'batch_*_response.txt',
+        'batch_recheck_*.txt',
+        'batch_recheck_*.json',
+        'batch_recheck_*_response.txt',
+        'review_run_manifest.json',
+        'review_recheck_manifest.json',
+    ):
+        for path in review_dir.glob(pattern):
+            path.unlink()
+
+
+def collect_recheck_rows(states, batches) -> list[dict]:
+    """Collect rows from AI batches that still carry term issues for recheck."""
+    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
+    recheck_rows = []
+    ai_batch_ids = set()
+    for batch in batches:
+        ai_batch_ids.update(batch.row_ids)
+
+    for state in states.values():
+        if state.row_id not in ai_batch_ids:
+            continue
+        has_term_issue = any(getattr(issue, 'check_type', '') in term_error_types for issue in state.issues)
+        if not has_term_issue:
+            continue
+        issue_desc = '; '.join(sorted(set(
+            getattr(issue, 'check_type', '')
+            for issue in state.issues
+            if getattr(issue, 'check_type', '') in term_error_types
+        )))
+        recheck_rows.append(
+            {
+                'id': state.row_id,
+                'original': state.original,
+                'translation': state.fixed_translation,
+                'term_issue': issue_desc,
+            }
+        )
+    return recheck_rows
 
 
 def write_review_files(

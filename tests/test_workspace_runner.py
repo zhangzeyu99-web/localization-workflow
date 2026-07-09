@@ -5,7 +5,6 @@ from pathlib import Path
 
 from workspace_runner import (
     discover_announcement_docx_tasks,
-    WorkspaceTask,
     discover_workspace_tasks,
     merge_term_files,
 )
@@ -140,13 +139,13 @@ class WorkspaceRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for hint in ("english", "thai", "vietnamese", "idn"):
-                (root / f"common_鏈_{hint}.xlsx").write_text(f"common-{hint}", encoding="utf-8")
+                (root / f"common_术_{hint}.xlsx").write_text(f"common-{hint}", encoding="utf-8")
 
             project = root / "project"
             project.mkdir()
             for hint in ("english", "thai", "vietnamese", "idn"):
                 (project / f"project_{hint}_language.xlsx").write_text(f"lang-{hint}", encoding="utf-8")
-                (project / f"project_鏈_{hint}_constraints.xlsx").write_text(f"term-{hint}", encoding="utf-8")
+                (project / f"project_术_{hint}_constraints.xlsx").write_text(f"term-{hint}", encoding="utf-8")
 
             tasks = discover_workspace_tasks(root, lang="auto")
 

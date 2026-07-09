@@ -19,7 +19,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from process_language import run_machine_review, write_outputs, prepare_ai_review, RowState
+from process_language import run_machine_review, write_outputs, prepare_ai_review
 from utils.ai_checker import parse_ai_response, apply_corrections, BatchInfo, prepare_recheck_batches
 
 # ─── Style ────────────────────────────────────────────────

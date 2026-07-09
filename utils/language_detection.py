@@ -30,6 +30,12 @@ def detect_text_language(texts: list[str]) -> str:
     if not joined.strip():
         return 'unknown'
 
+    if re.search(r'[\uac00-\ud7af]', joined):
+        return 'ko'
+
+    if re.search(r'[\u3040-\u30ff]', joined):
+        return 'ja'
+
     if re.search(r'[\u4e00-\u9fff]', joined):
         return 'zh'
     if re.search(r'[\u0e00-\u0e7f]', joined):

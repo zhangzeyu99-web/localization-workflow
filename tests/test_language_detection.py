@@ -44,6 +44,20 @@ class LanguageDetectionTests(unittest.TestCase):
         ])
         self.assertEqual(lang, "zh")
 
+    def test_detects_japanese_text_with_kana_and_kanji(self):
+        lang = detect_text_language([
+            "報酬を受け取る",
+            "ゲームを開始してください",
+        ])
+        self.assertEqual(lang, "ja")
+
+    def test_detects_korean_text_with_hangul(self):
+        lang = detect_text_language([
+            "보상을 받으세요",
+            "게임을 시작하세요",
+        ])
+        self.assertEqual(lang, "ko")
+
     def test_inspects_language_file_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "demo.xlsx"
@@ -81,6 +95,51 @@ class LanguageDetectionTests(unittest.TestCase):
             self.assertEqual(term_lookup["升级"]["primary"], "Tingkatkan")
             self.assertIn("Meningkatkan", term_lookup["升级"]["variants"])
 
+    def test_load_term_base_uses_japanese_and_korean_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "terms.xlsx"
+            df = pd.DataFrame(
+                {
+                    "CN": ["领取奖励", "战机"],
+                    "JA": ["報酬を受け取る", "戦闘機"],
+                    "JA2": ["報酬受取", ""],
+                    "KO": ["보상 받기", "전투기"],
+                    "KO2": ["보상 수령", ""],
+                }
+            )
+            df.to_excel(path, index=False)
+
+            ja_terms = _load_term_base(str(path), lang="ja")
+            ko_terms = _load_term_base(str(path), lang="ko")
+
+            self.assertEqual(ja_terms["领取奖励"]["primary"], "報酬を受け取る")
+            self.assertIn("報酬受取", ja_terms["领取奖励"]["variants"])
+            self.assertEqual(ko_terms["战机"]["primary"], "전투기")
+            self.assertIn("보상 수령", ko_terms["领取奖励"]["variants"])
+
+    def test_load_term_base_uses_jp_and_kr_column_aliases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "terms.xlsx"
+            df = pd.DataFrame(
+                {
+                    "CN": ["领取奖励", "战机"],
+                    "JP": ["報酬を受け取る", "戦闘機"],
+                    "JP2": ["報酬受取", ""],
+                    "KR": ["보상 받기", "전투기"],
+                    "KR2": ["보상 수령", ""],
+                }
+            )
+            df.to_excel(path, index=False)
+
+            ja_terms = _load_term_base(str(path), lang="ja")
+            ko_terms = _load_term_base(str(path), lang="ko")
+
+            self.assertEqual(ja_terms["战机"]["primary"], "戦闘機")
+            self.assertIn("報酬受取", ja_terms["领取奖励"]["variants"])
+            self.assertEqual(ko_terms["战机"]["primary"], "전투기")
+            self.assertIn("보상 수령", ko_terms["领取奖励"]["variants"])
+
+
     def test_load_term_base_uses_requested_multilingual_columns(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "terms.xlsx"
@@ -107,6 +166,41 @@ class LanguageDetectionTests(unittest.TestCase):
             self.assertIn("รับ", th_terms["领取奖励"]["variants"])
             self.assertEqual(vi_terms["求生之路"]["primary"], "Con Đường Sinh Tồn")
             self.assertEqual(idn_terms["求生之路"]["primary"], "Jalan Bertahan Hidup")
+
+    def test_load_term_base_uses_supported_visible_language_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "terms.xlsx"
+            df = pd.DataFrame(
+                {
+                    "CN": ["HeroSource"],
+                    "FR": ["HeroFR"],
+                    "DE": ["HeroDE"],
+                    "RU": ["HeroRU"],
+                    "IT": ["HeroIT"],
+                    "ES": ["HeroES"],
+                    "PT": ["HeroPT"],
+                    "TR": ["HeroTR"],
+                    "TH": ["HeroTH"],
+                    "AR": ["HeroAR"],
+                }
+            )
+            df.to_excel(path, index=False)
+
+            expected = {
+                "fr": "HeroFR",
+                "de": "HeroDE",
+                "ru": "HeroRU",
+                "it": "HeroIT",
+                "es": "HeroES",
+                "pt": "HeroPT",
+                "tr": "HeroTR",
+                "th": "HeroTH",
+                "ar": "HeroAR",
+            }
+            for lang, target in expected.items():
+                with self.subTest(lang=lang):
+                    term_lookup = _load_term_base(str(path), lang=lang)
+                    self.assertEqual(term_lookup["HeroSource"]["primary"], target)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-09 - Studio 演化合流与单一维护源确立
+
+- 双向合并：吸收 studio 侧 `workflow/localization` 一个月的演化——large-text 多语言三件套（runner/gate/retro + 测试）、三个千行模块的职责拆分（announcement_docx_common/terms/prepare/apply、quality_harness_rules/terms、process_language_terms/review/outputs，原模块保留 re-export facade 和 `Boundary:` 标注）、AI review 辅助函数去重进 `utils/ai_checker.py`。
+- 保留并接线本地未发布重构：`utils/language_config.py` 语言配置中心化（7 个模块统一导入）、`utils/term_rewrite_checker.py`、术语别名扩充（obtain/heal/dmg rate/dmg bonus/dmg reduction/spell def/crit res）、`text_normalize` 富文本宏保护、越南语/泰语支持并入拆分后结构（`TARGET_LANGUAGES` 新增 VI）。
+- 确立本仓库为单一维护源：studio `workflow/localization` 降级为同步产物，经 `sync_workflow_sources.py` 镜像 + 哈希读回校验；同步门禁为 studio 的 workflow 测试与 backend 全量测试。
+- 修复：`tests/test_workspace_runner.py` 文件名乱码（`鏈`→`术`）、`gui.py` 未用导入；新增与 studio 一致的 ruff 配置（`pyproject.toml`，select E9/F）。
+- 回归基线：`python -m pytest -q` 174 passed + 25 subtests，ruff 0 error。
+
 ## 2026-05-18 - Project onboarding profile and prompt templates
 
 - 项目定制 harness 流程新增前置阶段：项目开始时先收集游戏信息、游戏类型、目标市场、目标语言、核心玩法、术语、禁用译法、风格和技术约束。

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Iterable
 
 
-SUPPORTED_TRANSLATION_LANGUAGES = ("en", "th", "vi", "idn")
+SUPPORTED_TRANSLATION_LANGUAGES = ("en", "th", "vi", "idn", "ko", "ja")
 
 LANGUAGE_NAMES = {
     "en": "English",
@@ -89,6 +89,7 @@ SOURCE_HEADERS = (
     "cn",
     "zh",
     "\u4e2d\u6587",
+    "\u7b80\u4f53\u4e2d\u6587",
     "\u4e2d\u6587\u672f\u8bed",
     "\u539f\u6587",
     "source",

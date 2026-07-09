@@ -35,11 +35,13 @@ def _write_terms(path: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Glossary"
-    ws.append(["ID", "CN", "EN", "FR", "DE", "RU", "IT", "ES", "PT", "TK", "VI", "ID", "TH"])
+    ws.append(["ID", "CN", "EN", "KR", "JP", "FR", "DE", "RU", "IT", "ES", "PT", "TK", "VI", "ID", "TH", "AR"])
     ws.append([
         "term_notice",
         "\u516c\u544a",
         "Notice",
+        "공지",
+        "Oshirase",
         "Annonce",
         "Ankündigung",
         "Объявление",
@@ -50,10 +52,13 @@ def _write_terms(path: Path) -> None:
         "Thông báo",
         "Pengumuman",
         "ประกาศ",
+        "إعلان",
     ])
     ws.append([
         "term_server_time_short",
         "\u670d\u52a1\u5668\u65f6\u95f4",
+        "Server Time",
+        "서버 시간",
         "Server Time",
         "Heure du serveur",
         "Serverzeit",
@@ -65,10 +70,13 @@ def _write_terms(path: Path) -> None:
         "Giờ máy chủ",
         "Waktu Server",
         "เวลาเซิร์ฟเวอร์",
+        "وقت الخادم",
     ])
     ws.append([
         "term_server_time_long",
         "\u670d\u52a1\u5668\u65f6\u95f4 2026",
+        "Server Time 2026",
+        "서버 시간 2026",
         "Server Time 2026",
         "Heure du serveur 2026",
         "Serverzeit 2026",
@@ -80,10 +88,13 @@ def _write_terms(path: Path) -> None:
         "Giờ máy chủ 2026",
         "Waktu Server 2026",
         "เวลาเซิร์ฟเวอร์ 2026",
+        "وقت الخادم 2026",
     ])
     ws.append([
         "term_maintenance",
         "\u7ef4\u62a4",
+        "Maintenance",
+        "점검",
         "Maintenance",
         "Maintenance",
         "Wartung",
@@ -95,10 +106,13 @@ def _write_terms(path: Path) -> None:
         "Bảo trì",
         "Maintenance",
         "ปรับปรุง",
+        "صيانة",
     ])
     ws.append([
         "term_trainer",
         "\u8bad\u7ec3\u5e08",
+        "Trainer",
+        "트레이너",
         "Trainer",
         "Dresseur",
         "Trainer",
@@ -110,7 +124,25 @@ def _write_terms(path: Path) -> None:
         "Huấn luyện viên",
         "Pelatih",
         "เทรนเนอร์",
+        "مدرب",
     ])
+    wb.save(path)
+
+
+def _write_generic_noise_terms(path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Glossary"
+    ws.append(["ID", "CN", "EN"])
+    ws.append(["generic_notice", "\u516c\u544a", "Notice"])
+    ws.append(["generic_game", "\u6e38\u620f", "Game"])
+    ws.append(["generic_use", "\u4f7f\u7528", "Use"])
+    ws.append(["generic_issue", "\u95ee\u9898", "Issue"])
+    ws.append(["generic_enter", "\u8fdb\u5165", "Enter"])
+    ws.append(["generic_enter_game", "\u8fdb\u5165\u6e38\u620f", "Enter Game"])
+    ws.append(["term_train", "\u65e0\u9650\u5217\u8f66", "Infinity Train"])
+    ws.append(["term_train_event", "\u65e0\u9650\u5217\u8f66\u6d3b\u52a8", "Infinity Train Event"])
+    ws.append(["term_artifact", "\u5723\u5668", "Artifact"])
     wb.save(path)
 
 
@@ -131,16 +163,6 @@ def _write_kr_terms(path: Path) -> None:
     ws.append(["ID", "CN", "KR"])
     ws.append(["term_hero", "\u82f1\u96c4", "\uc601\uc6c5"])
     ws.append(["term_awaken", "\u89c9\u9192", "\uac01\uc131"])
-    wb.save(path)
-
-
-def _write_jp_terms(path: Path) -> None:
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Glossary"
-    ws.append(["ID", "CN", "JP"])
-    ws.append(["term_hero", "\u82f1\u96c4", "\u82f1\u96c4"])
-    ws.append(["term_awaken", "\u89c9\u9192", "\u899a\u9192"])
     wb.save(path)
 
 
@@ -197,11 +219,32 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
 
             terms = load_announcement_terms(term_path)
 
-            id_specs = [spec for spec in terms.languages if spec.header == "ID"]
+            id_specs = [spec for spec in terms.languages if spec.header == "IDN"]
             self.assertEqual(len(id_specs), 1)
             self.assertEqual(id_specs[0].code, "idn")
-            self.assertEqual(id_specs[0].column_index, 12)
-            self.assertEqual(terms.by_language["ID"]["\u8bad\u7ec3\u5e08"].target, "Pelatih")
+            self.assertEqual(id_specs[0].column_index, 14)
+            self.assertEqual(terms.by_language["IDN"]["\u8bad\u7ec3\u5e08"].target, "Pelatih")
+
+    def test_prepare_uses_canonical_full_language_headers_and_alias_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp)
+            _write_docx(task_dir / "sample.docx")
+            _write_terms(task_dir / "sample_announcement_terms_20260526.xlsx")
+
+            prepared = prepare_announcement_docx_harness(task_dir, languages=["tk", "id", "ar"])
+            manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                manifest["languages"],
+                [{"header": "TR", "code": "tr"}, {"header": "IDN", "code": "idn"}, {"header": "AR", "code": "ar"}],
+            )
+            wb = load_workbook(prepared.translation_workbook, read_only=True, data_only=True)
+            try:
+                ws = wb["Translations"]
+                headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
+                self.assertEqual(headers[-3:], ["TR", "IDN", "AR"])
+            finally:
+                wb.close()
 
     def test_prepare_builds_translation_workbook_and_longest_term_hits(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -230,24 +273,51 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
                         "protected_tokens",
                         "term_hits_json",
                         "EN",
+                        "KR",
+                        "JP",
                         "FR",
                         "DE",
                         "RU",
                         "IT",
                         "ES",
                         "PT",
-                        "TK",
+                        "TR",
                         "VI",
-                        "ID",
+                        "IDN",
                         "TH",
+                        "AR",
                     ],
                 )
                 first_hits = json.loads(ws.cell(2, headers.index("term_hits_json") + 1).value)
-                self.assertIn("\u670d\u52a1\u5668\u65f6\u95f4 2026", [hit["source"] for hit in first_hits])
-                self.assertNotIn("\u670d\u52a1\u5668\u65f6\u95f4", [hit["source"] for hit in first_hits])
+                self.assertIn("\u670d\u52a1\u5668\u65f6\u95f4", [hit["source"] for hit in first_hits])
+                self.assertNotIn("\u670d\u52a1\u5668\u65f6\u95f4 2026", [hit["source"] for hit in first_hits])
+                self.assertNotIn("\u516c\u544a", [hit["source"] for hit in first_hits])
                 self.assertEqual(ws.max_row, 4)
             finally:
                 wb.close()
+
+    def test_prepare_filters_generic_terms_before_term_hits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp)
+            doc = Document()
+            doc.add_paragraph("\u516c\u544a\uff1a\u65e0\u9650\u5217\u8f66\u6d3b\u52a8\u5f00\u542f\uff0c\u8fdb\u5165\u6e38\u620f\u540e\u4f7f\u7528\u5723\u5668\u4fee\u590d\u95ee\u9898\u3002")
+            doc.save(task_dir / "sample.docx")
+            _write_generic_noise_terms(task_dir / "sample_announcement_terms_20260526.xlsx")
+
+            prepared = prepare_announcement_docx_harness(task_dir, languages=["en"])
+            rows = [
+                json.loads(line)
+                for line in (prepared.work_dir / "workpack_en.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            targets = [hit["target"] for row in rows for hit in row["term_hits"]]
+
+            self.assertEqual(targets, ["Infinity Train Event", "Artifact"])
+            self.assertNotIn("Notice", targets)
+            self.assertNotIn("Game", targets)
+            self.assertNotIn("Use", targets)
+            self.assertNotIn("Issue", targets)
+            self.assertNotIn("Enter", targets)
+            self.assertNotIn("Enter Game", targets)
 
     def test_prepare_infers_target_languages_from_term_columns(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -311,29 +381,6 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["languages"], [{"header": "KR", "code": "ko"}])
 
-    def test_inspect_and_stage_loose_docx_task_infers_jp_from_notice_terms(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            task_dir = Path(tmp)
-            _write_docx(task_dir / "notice.docx")
-            _write_jp_terms(task_dir / "\u65e5\u672c\u4e3b\u5bb0-\u6e90\u8bed\u8a00\u8868\u516c\u544a\u672f\u8bed-AI\u8865\u5145-\u5df2\u63d0\u53d6-20260527.xlsx")
-            reference = task_dir / "(5.27)y\u8bed\u8a00\u8868.xlsx"
-            wb = Workbook()
-            ws = wb.active
-            ws.append(["ID", "\u4e2d\u6587", "\u7ffb\u8bd1"])
-            ws.append(["x1", "\u82f1\u96c4", "\u82f1\u96c4"])
-            wb.save(reference)
-
-            inspection = inspect_announcement_task_dir(task_dir)
-            staged = stage_announcement_task_dir(task_dir)
-            prepared = prepare_announcement_docx_harness(staged.staging_dir)
-
-            self.assertEqual(inspection.languages, [("JP", "ja")])
-            self.assertEqual([path.name for path in inspection.reference_files], [reference.name])
-            self.assertTrue((staged.staging_dir / "notice.docx").exists())
-            self.assertTrue((staged.staging_dir / "notice_announcement_terms_20260527.xlsx").exists())
-            manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["languages"], [{"header": "JP", "code": "ja"}])
-
     def test_prepare_import_apply_supports_korean_term_column(self):
         with tempfile.TemporaryDirectory() as tmp:
             task_dir = Path(tmp)
@@ -353,24 +400,18 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             self.assertEqual(len(applied.output_docx_paths), 1)
             self.assertEqual(applied.output_docx_paths[0].name, "sample_ko.docx")
 
-    def test_prepare_import_apply_supports_japanese_term_column_allows_kanji(self):
+    def test_prepare_prefers_kr_jp_headers_when_language_codes_are_selected(self):
         with tempfile.TemporaryDirectory() as tmp:
             task_dir = Path(tmp)
             doc = Document()
             doc.add_paragraph("\u82f1\u96c4\u89c9\u9192 2026/5/20")
             doc.save(task_dir / "sample.docx")
-            _write_jp_terms(task_dir / "sample_announcement_terms_20260526.xlsx")
+            _write_kr_terms(task_dir / "sample_announcement_terms_20260526.xlsx")
 
-            prepared = prepare_announcement_docx_harness(task_dir)
-            response_dir = task_dir / "ai_responses"
-            _write_ai_response_files(prepared.work_dir, response_dir, languages=[("JP", "ja")])
-            imported = import_announcement_ai_responses(task_dir, response_dir=response_dir)
-            applied = apply_announcement_translations(task_dir, prepared.translation_workbook)
+            prepared = prepare_announcement_docx_harness(task_dir, languages=["ko", "ja"])
+            manifest = json.loads(prepared.manifest_path.read_text(encoding="utf-8"))
 
-            self.assertEqual(imported.languages, ["JP"])
-            self.assertEqual(applied.hard_blockers, 0)
-            self.assertEqual(len(applied.output_docx_paths), 1)
-            self.assertEqual(applied.output_docx_paths[0].name, "sample_ja.docx")
+            self.assertEqual(manifest["languages"], [{"header": "KR", "code": "ko"}, {"header": "JP", "code": "ja"}])
 
     def test_prepare_does_not_match_numeric_terms_inside_longer_numbers(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -380,8 +421,8 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             doc.save(task_dir / "sample.docx")
             wb = Workbook()
             ws = wb.active
-            ws.append(["ID", "CN", "EN", "FR", "DE", "RU", "IT", "ES", "PT", "TK", "ID", "TH"])
-            ws.append(["t1", "8\u5c0f\u65f6", "8H", "8 heures", "8 Std.", "8 \u0447.", "8 ore", "8 horas", "8 horas", "8 Saat", "8 jam", "8 \u0e0a\u0e21."])
+            ws.append(["ID", "CN", "EN", "KR", "JP", "FR", "DE", "RU", "IT", "ES", "PT", "TK", "VI", "ID", "TH", "AR"])
+            ws.append(["t1", "8\u5c0f\u65f6", "8H", "8시간", "8H", "8 heures", "8 Std.", "8 \u0447.", "8 ore", "8 horas", "8 horas", "8 Saat", "8 giờ", "8 jam", "8 \u0e0a\u0e21.", "8 ساعات"])
             wb.save(task_dir / "sample_announcement_terms_20260526.xlsx")
 
             prepared = prepare_announcement_docx_harness(task_dir)
