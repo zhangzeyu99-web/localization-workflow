@@ -37,9 +37,9 @@
 - 任一批次 ID 覆盖、顺序、输入指纹不一致，必须拒绝 merge。
 - 主批次外可以生成 `batch_recheck_N.*` 做术语二次复查。
 
-## 英语全量翻译 Harness
+## 多语言全量翻译 Harness
 
-适用于英语目标列为空、近乎全空，或大量中文回填的情况。入口是 `scripts/run_translation_harness.py`，实现是 `utils/translation_harness.py`。
+适用于目标列为空、近乎全空，或大量中文回填的情况。当前支持 `en`、`th`、`vi`、`idn`。入口是 `scripts/run_translation_harness.py`，实现是 `utils/translation_harness.py`。
 
 准备工作包：
 
@@ -73,10 +73,10 @@ python scripts\run_translation_harness.py --input <language.xlsx> --term-base <t
 
 硬规则：
 
-- v1 只负责英语生成；其他语言可由 `quality_harness` 做 QA，但不由该 harness 生成译文。
+- v1 支持 `en`、`th`、`vi`、`idn`；只处理任务目录/术语表实际给出的语言，不凭空补未提供语言。
 - response 必须覆盖全部 ID，不能漏、重、乱序或额外 ID。
 - 输入漂移、占位符漂移、标签漂移、换行形态漂移必须拒绝写回。
-- `.translation_cache/en.jsonl` 只在同项目目录内使用，并按项目提示词隔离；最终交付默认清理缓存。
+- `.translation_cache/<lang>.jsonl` 只在同项目目录内使用，并按项目提示词隔离；最终交付默认清理缓存。
 
 ## 项目定制 Harness
 
@@ -159,7 +159,7 @@ python scripts\run_quality_harness.py fixtures\quality_regression.json
 ## 关键文件
 
 - `AGENTS.md`：仓库级执行规则。
-- `docs/translation-harness.md`：英语全量翻译 harness 文档。
+- `docs/translation-harness.md`：多语言全量翻译 harness 文档。
 - `docs/quality-harness.md`：质量回归 harness 文档。
 - `docs/project-custom-harness.md`：项目定制 harness 流程。
 - `scripts/run_translation_harness.py`：翻译 workpack/回填入口。

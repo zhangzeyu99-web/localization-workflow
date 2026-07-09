@@ -9,9 +9,9 @@
 
 最终交付以本 harness 为统一 gate。`process_language.py` 可以继续负责机审、自动修复和报告生成，但不能单独作为最终放行依据。
 
-## 当前沉淀的问题库
+## 当前回归问题库
 
-来自本轮和前序交付中反复出现的问题：
+用于固定以下质量回归类型：
 
 - 占位符损坏：`[v0]` 被改成 `0`。
 - HTML 实体泄漏：`Rare&#39;s`。
@@ -59,11 +59,11 @@ Workbook 扫描必须真实命中语言表行。`rows_scanned=0` 会被视为失
 
 QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表；只有自动发现失败或需要覆盖时才补 `--term-base "C:\path\to\terms.xlsx"`。
 
-术语默认是强约束。术语表里未显式标记为软参考的条目，正文命中中文术语时必须使用标准译法；例如 `战机 -> Warplane` 不能输出为 `Fighter`。只有 `分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 的条目才降为软提示，统计但不阻断。
+术语默认是强约束。术语表里未显式标记为软参考的条目，正文命中中文术语时必须使用标准译法；例如 `战机 -> Warplane` 不能输出为 `Fighter`。`分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 的条目会降为软提示；当术语表没有分类列时，`获得`、`需要`、`成功` 这类明显泛词也会自动降为软提示，统计但不阻断。
 
 如果自动发现或 `--term-base` 指定的术语表里存在 `分类` 含 `人名`、`角色`、`person`、`character`、`name` 的条目，harness 会把这些条目作为人名强约束。正文命中中文人名时，目标译文必须使用术语表里的英文名；例如 `艾莉娅 -> Aria` 不能输出为 `Arya`。
 
-短 UI 长度也在 workbook 扫描中执行。`ui_length_overflow` 是 hard gate，`short_text_length_watch` 是软提示。当前 hard 预算：英语 `min(32, max(10, source*2+14))`，印尼语 `min(34, max(12, source*2+15))`。支持的 QA 语言代码包括 `en`、`idn`、`fr`、`de`、`tr`、`es`、`pt`、`ru`；这不代表全量翻译 harness 已支持所有语言。
+短 UI 长度也在 workbook 扫描中执行。`ui_length_overflow` 是 hard gate，`short_text_length_watch` 是软提示。当前 hard 预算：英语/泰语 `min(32, max(10, source*2+14))`，越南语/印尼语 `min(34, max(12, source*2+15))`。支持的 QA 语言代码包括 `en`、`th`、`vi`、`idn`、`fr`、`de`、`tr`、`es`、`pt`、`ru`；全量翻译 harness v1 支持 `en`、`th`、`vi`、`idn`。
 
 输出 JSON：
 
@@ -126,7 +126,7 @@ Workbook 扫描默认把以下问题当阻断项：
 
 ## 当前回归结果
 
-最近一次验证命令：
+验证命令：
 
 ```powershell
 python scripts\run_quality_harness.py fixtures\quality_regression.json
@@ -134,7 +134,7 @@ python scripts\run_quality_harness.py fixtures\quality_regression.json
 
 结果：
 
-- fixture cases：58
+- fixture cases：61
 - passed：True
 
 说明：`issue_counts` 里仍会统计 fixture 里的故意坏例；只要 `passed=True` 且没有 `workbook_issues`，就表示 workbook 通过当前 harness。Workbook 扫描的空扫描失败和 glossary sheet 跳过逻辑由 `tests/test_quality_harness.py` 覆盖。

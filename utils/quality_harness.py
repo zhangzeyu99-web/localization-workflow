@@ -18,6 +18,14 @@ from openpyxl import load_workbook
 
 from utils.readability_checker import check_readability
 from utils.term_checker import check_chinese_residue, check_term_hit
+from utils.language_config import (
+    SOURCE_HEADERS,
+    all_language_target_headers,
+    normalize_language_code,
+    target_header_candidates,
+    variant_header_candidates,
+)
+from utils.text_normalize import strip_tags_and_vars
 from utils.ui_detector import is_ui_text
 from utils.ui_length_checker import check_ui_length
 from utils.variable_checker import CheckResult, check_all as check_variables
@@ -46,13 +54,137 @@ SUPPORT_SHEET_NAME_KEYWORDS = {
     '裁决',
     '审计',
     '返修',
+    '需确认',
+    '总览',
+    '错误模式',
+    '学习笔记',
+    '详细记录',
+    '术语行筛选',
+    'review',
+    'summary',
+    'overview',
+    'details',
     'audit',
     'decision',
     'review log',
     'fix log',
 }
+LEGAL_TERM_CHECK_SKIP_MARKERS = {'隐私政策', '用户协议'}
+LEGAL_TERM_CHECK_MIN_LENGTH = 1000
 PERSON_NAME_CATEGORY_MARKERS = {'人名', '角色', 'person', 'name', 'character'}
 SOFT_TERM_CATEGORY_MARKERS = {'soft', 'generic', 'common', '参考', '泛词', '通用词'}
+AUTO_SOFT_SOURCE_TERMS = {
+    '使用',
+    '激活',
+    '领取',
+    '解锁',
+    '购买',
+    '重置',
+    '刷新',
+    '失败',
+    '可领取',
+    '普通',
+    '增加',
+    '随机',
+    '提升',
+    '额外',
+    '唯一',
+    '时间',
+    '开启',
+    '自动',
+    '注意',
+    '选择',
+    '完成',
+    '通过',
+    '通关',
+    '成功',
+    '基础',
+    '击杀',
+    '发送',
+    '可获',
+    '数量',
+    '同时',
+    '需要',
+    '已领取',
+    '获得',
+    '获得了',
+    '任务',
+    '当前',
+    '操作',
+    '申请',
+    '达到',
+    '玩家',
+    '未解锁',
+    '创建',
+    '最大',
+    '匹配',
+    '分解',
+    '已有',
+    '加入',
+    '未开启',
+    '进阶',
+    '输出',
+    '提交',
+    '设置',
+    '跟随',
+    '穿戴',
+    '星级',
+    '属性',
+    '接取',
+    '冷却',
+    '全服',
+    '分钟',
+    '道具',
+    '邮件',
+    '主角',
+    '排名',
+    '每日',
+    '赠送',
+    '获取',
+    '兑换',
+    '取消',
+    '提示',
+    '其他',
+    '直接',
+    '团队',
+    '奖励',
+    '补偿',
+}
+AUTO_SOFT_TARGET_WORDS = {
+    'additional',
+    'amount',
+    'at',
+    'auto',
+    'available',
+    'base',
+    'basic',
+    'buy',
+    'claim',
+    'claimable',
+    'claimed',
+    'clear',
+    'complete',
+    'completed',
+    'death',
+    'extra',
+    'failed',
+    'kill',
+    'notice',
+    'obtain',
+    'open',
+    'random',
+    'refresh',
+    'required',
+    'reset',
+    'select',
+    'send',
+    'stage',
+    'success',
+    'time',
+    'unique',
+    'unlock',
+    'use',
+}
 GENERIC_ROLE_TARGETS = {
     'ally',
     'base',
@@ -188,6 +320,7 @@ def scan_workbook(
     The scanner expects either headers containing ID/CN/EN-like names or a
     simple first-three-column layout: ID, source, target.
     """
+    lang = normalize_language_code(lang)
     fail_set = set(fail_on or DEFAULT_HARD_ISSUES)
     result = HarnessResult(passed=True)
     workbook_path = Path(path)
@@ -195,14 +328,14 @@ def scan_workbook(
 
     try:
         term_sources = _resolve_term_base_paths(workbook_path, term_base, auto_discover_terms)
-        term_context = _collect_term_context(wb, term_sources)
+        term_context = _collect_term_context(wb, term_sources, lang=lang)
         strong_term_lookup = term_context['strong']
         soft_term_lookup = term_context['soft']
         person_name_terms = term_context['person_names']
         for ws in wb.worksheets:
             if _is_glossary_sheet(ws) or _is_support_sheet(ws):
                 continue
-            id_col, src_col, tgt_col = _detect_columns(ws)
+            id_col, src_col, tgt_col = _detect_columns(ws, lang=lang)
             if src_col is None or tgt_col is None:
                 continue
             max_col = max(c for c in (id_col, src_col, tgt_col) if c is not None) + 1
@@ -228,9 +361,10 @@ def scan_workbook(
                 })
                 row_issues = check_row(row_id, source, target, lang=lang)
                 row_issues.extend(_check_ui_length(row_id, source, target, lang=lang))
-                row_issues.extend(_check_terms(row_id, source, target, strong_term_lookup))
-                row_issues.extend(_check_terms(row_id, source, target, soft_term_lookup, soft=True))
-                row_issues.extend(_check_person_name_terms(row_id, source, target, person_name_terms))
+                if not _should_skip_term_checks(source):
+                    row_issues.extend(_check_terms(row_id, source, target, strong_term_lookup))
+                    row_issues.extend(_check_terms(row_id, source, target, soft_term_lookup, soft=True))
+                    row_issues.extend(_check_person_name_terms(row_id, source, target, person_name_terms))
                 for issue in row_issues:
                     result.issue_counts[issue.check_type] += 1
                     if issue.check_type in fail_set:
@@ -274,7 +408,9 @@ def scan_workbook(
 def _collect_term_context(
     workbook,
     term_base: str | Path | Sequence[str | Path] | None,
+    lang: str = 'en',
 ) -> dict[str, object]:
+    lang = normalize_language_code(lang)
     strong_terms: dict[str, dict] = {}
     soft_terms: dict[str, dict] = {}
     person_name_terms: list[tuple[str, str]] = []
@@ -302,10 +438,10 @@ def _collect_term_context(
                 seen_person_names.add(key)
                 person_name_terms.append(key)
             return
-        bucket = soft_terms if _is_soft_term_category(category) else strong_terms
+        bucket = soft_terms if _is_soft_term_category(category) or _is_auto_soft_term(cn, target, category) else strong_terms
         _add_term_lookup_entry(bucket, cn, target, variants, enforce_case)
 
-    _collect_terms_from_workbook(workbook, add)
+    _collect_terms_from_workbook(workbook, add, lang=lang)
 
     for path in _iter_term_base_paths(term_base):
         term_path = Path(path)
@@ -316,7 +452,7 @@ def _collect_term_context(
             continue
         term_wb = load_workbook(term_path, read_only=False, data_only=True)
         try:
-            _collect_terms_from_workbook(term_wb, add, all_sheets=True)
+            _collect_terms_from_workbook(term_wb, add, all_sheets=True, lang=lang)
         finally:
             term_wb.close()
 
@@ -333,20 +469,28 @@ def _collect_term_context(
     }
 
 
-def _collect_terms_from_workbook(workbook, add, all_sheets: bool = False) -> None:
+def _collect_terms_from_workbook(workbook, add, all_sheets: bool = False, lang: str = 'en') -> None:
+    target_candidates = target_header_candidates(lang, include_generic=True)
+    variant_candidates = variant_header_candidates(lang)
+    language_headers = all_language_target_headers()
     for ws in workbook.worksheets:
         is_glossary_sheet = _is_glossary_sheet(ws)
         header = [str(value or '').strip().lower() for value in next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())]
-        cn_idx = _find_header(header, {'cn', 'zh', '中文', '中文术语', '原文', 'source', 'original'})
-        target_idx = _find_header(header, {'en', 'english', '英文', '英语', '译文', 'translation', 'target'})
-        variant_idx = _find_header(header, {'en2', '英语2', '英文2', 'variant', 'variants', 'alternate', 'alternates'})
+        cn_idx = _find_header(header, set(SOURCE_HEADERS))
+        target_idx = _find_header(header, target_candidates)
+        variant_idx = _find_header(header, variant_candidates)
         category_idx = _find_header(header, {'分类', '类别', 'category', 'type', 'tag', 'tags'})
         enforce_idx = _find_header(header, {'enforce_case', '大小写', '大小写约束'})
+        has_language_header = _has_explicit_language_header(header, language_headers)
 
         if is_glossary_sheet:
             cn_idx = cn_idx if cn_idx is not None else _fallback_index(header, 0)
-            target_idx = target_idx if target_idx is not None else _fallback_index(header, 1)
-            variant_idx = variant_idx if variant_idx is not None else _fallback_index(header, 2)
+            if target_idx is None:
+                if has_language_header:
+                    continue
+                target_idx = _fallback_index(header, 1)
+            if variant_idx is None and not has_language_header:
+                variant_idx = _fallback_index(header, 2)
             category_idx = category_idx if category_idx is not None else _fallback_index(header, 3)
         elif not all_sheets:
             continue
@@ -422,6 +566,14 @@ def _clean_term_cell(value) -> str:
     return '' if text.lower() == 'nan' else text
 
 
+def _should_skip_term_checks(source: str) -> bool:
+    text = str(source or '')
+    return (
+        len(text) >= LEGAL_TERM_CHECK_MIN_LENGTH
+        and any(marker in text for marker in LEGAL_TERM_CHECK_SKIP_MARKERS)
+    )
+
+
 def _truthy_cell(value) -> bool:
     text = _clean_term_cell(value).lower()
     return text in {'1', 'true', 'yes', 'y', '是', '强制'}
@@ -430,6 +582,28 @@ def _truthy_cell(value) -> bool:
 def _is_soft_term_category(category: str) -> bool:
     text = str(category or '').strip().lower()
     return any(marker in text for marker in SOFT_TERM_CATEGORY_MARKERS)
+
+
+def _is_auto_soft_term(cn: str, target: str, category: str = '') -> bool:
+    """Downgrade obvious generic words when the glossary has no category.
+
+    Project glossaries often mix real domain terms with rows like
+    "获得 -> Obtain" and "成功 -> Success". When no category is present,
+    those rows should guide wording, not block delivery.
+    """
+    if _clean_term_cell(category):
+        return False
+    source_term = _clean_term_cell(cn)
+    if source_term in AUTO_SOFT_SOURCE_TERMS:
+        return True
+    if len(source_term) > 3:
+        return False
+    target_words = {
+        word
+        for word in re.findall(r'[A-Za-z]+', _clean_term_cell(target).lower())
+        if word not in {'a', 'an', 'the', 'to', 'of', 'for', 'in', 'on'}
+    }
+    return bool(target_words) and target_words.issubset(AUTO_SOFT_TARGET_WORDS)
 
 
 def _check_ui_length(row_id, source: str, translation: str, lang: str) -> list[CheckResult]:
@@ -677,10 +851,11 @@ def _resolve_term_base_paths(
         seen.add(key)
         paths.append(candidate)
 
-    for path in _iter_term_base_paths(term_base):
+    explicit_paths = _iter_term_base_paths(term_base)
+    for path in explicit_paths:
         add(path)
 
-    if auto_discover_terms:
+    if auto_discover_terms and not explicit_paths:
         for path in _discover_term_base_paths(workbook_path):
             add(path)
 
@@ -866,20 +1041,31 @@ def _check_surface_regressions(row_id, source: str, translation: str) -> list[Ch
     return results
 
 
-def _detect_columns(ws) -> tuple[int | None, int | None, int | None]:
+def _detect_columns(ws, lang: str = 'en') -> tuple[int | None, int | None, int | None]:
     first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())
     headers = [str(v or '').strip().lower() for v in first]
 
-    def pick(candidates: set[str], fallback: int | None) -> int | None:
+    def pick(candidates: set[str], fallback: int | None = None) -> int | None:
         for idx, header in enumerate(headers):
             if header in candidates:
                 return idx
         return fallback if fallback is None or fallback < len(headers) else None
 
     id_col = pick({'id', 'key'}, 0)
-    src_col = pick({'cn', 'zh', '中文', '原文', 'source', 'original'}, 1)
-    tgt_col = pick({'en', 'english', '译文', 'translation', 'target'}, 2)
+    src_col = pick(set(SOURCE_HEADERS), 1)
+    tgt_col = pick(target_header_candidates(lang, include_generic=True))
+    if tgt_col is None and _has_explicit_language_header(headers, all_language_target_headers()):
+        return id_col, src_col, None
+    if tgt_col is None:
+        tgt_col = 2 if len(headers) > 2 else None
     return id_col, src_col, tgt_col
+
+
+def _has_explicit_language_header(headers: Sequence[str], language_headers: set[str]) -> bool:
+    return any(
+        header in language_headers and not (idx == 0 and header == 'id')
+        for idx, header in enumerate(headers)
+    )
 
 
 def _is_glossary_sheet(ws) -> bool:
@@ -929,7 +1115,7 @@ def _looks_like_allowed_runtime_code(token: str, source: str) -> bool:
 def _visible_start(text: str) -> str:
     stripped = str(text)
     token_pattern = re.compile(
-        r'^\s*(?:\\n|\n|<[^>]+>|\{[^}]+\}|##\d+|'
+        r'^\s*(?:\\n|\n|<[^>]+>|#\{[^,{}]+,\{[^}]+\}\}|#\{[^,{}]+,[^}]*\}|#L\{[^}]*\}|\{[^}]+\}|##\d+|'
         r'\[(?:/?size(?:=\d+)?|/?color(?:=[^\]]+)?|[A-Za-z]+\d+|\d+)\])+',
         re.IGNORECASE,
     )
@@ -947,6 +1133,9 @@ def _has_leading_lowercase(source: str, translation: str) -> bool:
         return False
     if _starts_with_runtime_payload(translation):
         return False
+    visible_words = strip_tags_and_vars(translation).replace('\\n', ' ')
+    if not WORD_START_PATTERN.search(visible_words):
+        return False
     visible = _visible_start(translation)
     match = WORD_START_PATTERN.search(visible)
     if not match:
@@ -960,7 +1149,7 @@ def _has_leading_lowercase(source: str, translation: str) -> bool:
 
 def _starts_with_runtime_payload(text: str) -> bool:
     return bool(re.match(
-        r'^\s*(?:<[^>]+>\s*)*(?:##\d+|\{[^}]+\}|\[[A-Za-z]+\d+\])',
+        r'^\s*(?:<[^>]+>\s*)*(?:##\d+|#\{[^,{}]+,\{[^}]+\}\}|#\{[^,{}]+,[^}]*\}|#L\{[^}]*\}|\{[^}]+\}|\[[A-Za-z]+\d+\])',
         str(text),
     ))
 

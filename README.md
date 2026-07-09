@@ -53,9 +53,9 @@ python process_language.py --input sample-language.xlsx --lang en
 | 优先级 | 语言 |
 |--------|------|
 | P0 | 英语 |
-| P1 | 印尼语、法语、德语、土耳其语、西班牙语、葡萄牙语、俄语 |
+| P1 | 泰语、越南语、印尼语、法语、德语、土耳其语、西班牙语、葡萄牙语、俄语 |
 
-说明：通用 QA harness 支持上述语言代码；英语全量翻译 harness v1 仍只支持 `en`。
+说明：通用 QA harness 支持上述语言代码；全量翻译 harness v1 支持 `en`、`th`、`vi`、`idn`。
 
 ## 安装
 
@@ -75,7 +75,7 @@ python gui.py
 # 处理单个语言
 python process_language.py --input <excel_file> --lang en
 
-# 英语全量翻译 harness：目标列为空或中文回填时先准备 workpack
+# 全量翻译 harness：目标列为空或中文回填时先准备 workpack
 python scripts/run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --style-hint "US mobile SLG; concise, idiomatic wording"
 
 # 主 agent 写完 translation_response.jsonl 后，严格按 ID 回填并进入 QA
@@ -120,7 +120,7 @@ localization-workflow-project/
 - [工作流设计文档](workflow-design.md)
 - [不可读缩写与截断词拦截规则](docs/readability-abbreviation-gate.md)
 - [质量回归 Harness](docs/quality-harness.md)
-- [英语全量翻译 Harness](docs/translation-harness.md)
+- [多语言全量翻译 Harness](docs/translation-harness.md)
 - [项目定制 Harness 流程](docs/project-custom-harness.md)
 - [项目管理](docs/project-management.md)
 
@@ -131,11 +131,9 @@ localization-workflow-project/
 - [项目资料 YAML 模板](templates/project_profile_template.yaml)
 - [翻译提示词模板](templates/translation_prompt_template.txt)
 
-## 最新更新（2026-05-15）
+## 当前规则权威
 
-本次更新把最终交付 gate 收口到 `quality_harness`：术语默认强约束、UI 长度进入最终 workbook 扫描、连续编号词条优先按术语表或首个高质量译法统一，软术语必须显式标记。
-
-### 规则权威
+最终交付 gate 收口到 `quality_harness`：术语默认强约束、UI 长度进入最终 workbook 扫描、连续编号词条优先按术语表或首个高质量译法统一，显式 soft 术语和无分类泛词不阻断。
 
 - `AGENTS.md` 和 `scripts/run_quality_harness.py` 是当前权威规则来源。
 - `README.md`、`docs/使用说明书.md` 只保留摘要和历史入口说明，不作为最终放行标准。
@@ -145,24 +143,23 @@ localization-workflow-project/
 python scripts/run_quality_harness.py fixtures/quality_regression.json --workbook <final.xlsx>
 ```
 
-## 2026-05-12 更新
+## 当前 Harness 能力
 
-本次更新把英语目标列为空或中文回填时的“全量翻译 -> 严格回填 -> QA 收口”固定成 agent-operated harness。脚本不调用 API，也不自动操作 ChatGPT 网页；主 agent 负责生成译文，脚本负责抽取、协议校验、按 ID 回填、隐藏缓存和后半 QA。
+英语目标列为空或中文回填时，按“全量翻译 -> 严格回填 -> QA 收口”的 agent-operated harness 处理。脚本不调用 API，也不自动操作 ChatGPT 网页；主 agent 负责生成译文，脚本负责抽取、协议校验、按 ID 回填、隐藏缓存和后半 QA。
 
-### 已合入改动
+### 通用能力
 
-- 英语全量翻译 harness
+- 多语言全量翻译 harness
   - `scripts/run_translation_harness.py` 可生成 `translation_workpack.jsonl`、`translation_manifest.json` 和 `translation_response.jsonl`
   - response 只允许 `ID + translation`，回填前会拒绝漏 ID、重复 ID、额外 ID、乱序、输入漂移、占位符漂移、标签漂移和换行漂移
   - 目标列为空、近乎全空或大量中文回填时，先把中文作为种子列再全量替换，避免空列流程和 QA 断层
   - 支持 `--style-hint` / `--style-hint-file` 注入项目风格提示，例如“面向美国移动端用户、SLG、简短地道表达”
   - 同项目翻译记忆只写入输入目录下的 `.translation_cache/<lang>.jsonl`，默认不跨项目复用；最终交付前删除缓存，除非仍在连续返修同一批内容
-  - 已用真实 63 行中文回填英语表验证完整闭环：机审需确认 `0`，`quality_harness` 对最终 workbook 返回 `passed: True`
 - 通用 workbook QA 扫描增强
   - `run_quality_harness.py` 扫真实 workbook 时会跳过 glossary/术语 sheet 和审计/裁决类辅助 sheet，只对正文和 UI 做通用行级 QA，避免术语词典 Title Case 或返修记录误杀
   - `run_quality_harness.py` workbook 扫描改为非只读读取，且 `rows_scanned=0` 会失败，避免假通过
   - `run_quality_harness.py --workbook <最终版.xlsx>` 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表；`--term-base` 仅作为覆盖/补充入口
-  - 术语表默认强约束；显式标记 `soft/generic/common/参考/泛词/通用词` 的术语作为软提示
+  - 术语表默认强约束；显式标记 `soft/generic/common/参考/泛词/通用词` 的术语作为软提示；无分类术语表中的明显泛词（如 `获得`、`需要`、`成功`）也自动降为软提示
   - 自动发现的术语表中，`分类` 含 `人名`、`角色`、`person`、`character`、`name` 的术语会作为硬门槛；正文命中中文名时必须使用对应英文名
 - 严格 AI 审核链路
   - `prepare / merge` 以 manifest 和 fingerprint 绑定批次，避免输入输出词条错配
@@ -186,7 +183,7 @@ python scripts/run_quality_harness.py fixtures/quality_regression.json --workboo
   - 错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`
   - Title Case 只保留给专名、功能名、标题、商店项和术语表明确要求的名称
 - 质量回归 Harness
-  - `fixtures/quality_regression.json` 固化历史坏例和好例，防止旧问题回归或误杀合理译文
+  - `fixtures/quality_regression.json` 固化坏例和好例，防止旧问题回归或误杀合理译文
   - `scripts/run_quality_harness.py` 可同时跑 fixture 和真实 workbook 扫描
 
 ### 典型适用场景
@@ -246,7 +243,7 @@ python scripts/run_quality_harness.py fixtures/quality_regression.json --workboo
 ### 8. 术语 hard gate 与软术语分开看
 
 - 未标记为软参考的术语默认强约束，`term_missing`、`term_partial_hit`、`term_capitalization` 都会阻断最终交付
-- 如果某个术语只是泛词参考，请在术语表 `分类/category/type` 中显式写 `soft`、`generic`、`common`、`参考`、`泛词` 或 `通用词`
+- 如果某个术语只是泛词参考，优先在术语表 `分类/category/type` 中显式写 `soft`、`generic`、`common`、`参考`、`泛词` 或 `通用词`；没有分类列时，`获得`、`需要`、`成功` 这类内置泛词会自动按软提示处理
 - 交付判断先看 hard gate：变量、标签、换行、中文残留、乱码、坏缩写、截断词、明显大小写问题必须清零
 - 人名/角色名不属于可保留软提示；如果术语表标了人名，`person_name_term_mismatch` 必须清零后才能交付
 - 软术语问题会以 `term_soft_*` 统计，不阻断最终交付
@@ -257,7 +254,7 @@ MIT
 
 ## Announcement DOCX Harness
 
-??? DOCX ?????????????????????? DOCX ???????? `scripts/run_announcement_docx_harness.py`?
+公告类 DOCX 长文本翻译默认走检索式中转表流程，不直接逐个 DOCX 自由翻译。入口是 `scripts/run_announcement_docx_harness.py`：
 
 ```bash
 python scripts/run_announcement_docx_harness.py prepare --input-dir <task_dir>
@@ -266,15 +263,15 @@ python scripts/run_announcement_docx_harness.py apply --input-dir <task_dir> --t
 python scripts/run_announcement_docx_harness.py deliver --input-dir <task_dir>
 ```
 
-?????????? `inspect` ??????????? `stage` ???? harness ????
+原始任务目录可先运行 `inspect` 识别文件和语言，再运行 `stage` 自动生成 harness 输入包：
 
 ```bash
 python scripts/run_announcement_docx_harness.py inspect --input-dir <raw_task_dir>
 python scripts/run_announcement_docx_harness.py stage --input-dir <raw_task_dir>
 ```
 
-??? `docx ???? -> ??????? -> workpack -> ????? ai_response_<code>.jsonl -> import-ai ????? -> QA -> ????? docx -> ??????`?
+流程为 `docx 段落抽取 -> 术语表检索命中 -> workpack -> 大模型生成 ai_response_<code>.jsonl -> import-ai 回填中转表 -> QA -> 回填同格式 docx -> 干净交付目录`。
 
-`prepare` ?????????????????????????????????????? `ID/CN/EN/FR` ??? EN/FR?`ID/CN/KR` ??? KR/ko?????????? `--lang`?
+`prepare` 默认从匹配的术语交付表语言列推断目标语种，只生成术语表实际提供的目标列；例如 `ID/CN/EN/FR` 只生成 EN/FR，`ID/CN/KR` 只生成 KR/ko。需要覆盖时才显式传 `--lang`。
 
-?? DOCX ?????? Google Translate?`deep_translator`????????????????????????? `<task_dir>/_work/announcement_docx/`?????????? DOCX ? `QA??.xlsx`?
+公告 DOCX 初译禁止使用 Google Translate、`deep_translator`、浏览器翻译或其他外部机器翻译服务。过程文件只写入 `<task_dir>/_work/announcement_docx/`，交付目录只保留最终 DOCX 和 `QA摘要.xlsx`。

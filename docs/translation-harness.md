@@ -1,8 +1,8 @@
-# 英语全量翻译 Harness v1
+# 多语言全量翻译 Harness v1
 
 ## 目标
 
-把“目标列为空、近乎全空、或目标列大面积中文回填”的英语全量翻译变成可验证流程。该 harness 不调用 API，也不自动操作 ChatGPT 网页；它由主 agent 操作模型生成译文，脚本负责打包、校验、按 ID 回填和缓存。
+把“目标列为空、近乎全空、或目标列大面积中文回填”的全量翻译变成可验证流程。当前支持 `en`、`th`、`vi`、`idn`。该 harness 不调用 API，也不自动操作 ChatGPT 网页；它由主 agent 操作模型生成译文，脚本负责打包、校验、按 ID 回填和缓存。
 
 ## 使用方式
 
@@ -57,7 +57,7 @@ python scripts\run_translation_harness.py `
 - `translation_workpack.jsonl`：主 agent 需要翻译的行级输入。
 - `translation_manifest.json`：输入指纹、ID 列表、语言、文本类型抽样和协议。
 - `translation_response.jsonl`：主 agent 写入的译文。
-- `.translation_cache/en.jsonl`：同项目隐藏翻译记忆，位于输入语言表所在目录；它是过程缓存，不是最终交付物。
+- `.translation_cache/<lang>.jsonl`：同项目隐藏翻译记忆，位于输入语言表所在目录；它是过程缓存，不是最终交付物。
 - `<原文件名>_最终版.xlsx`：按 ID 回填后的最终 workbook。
 
 ## 项目提示词
@@ -108,11 +108,11 @@ python scripts\run_translation_harness.py `
 
 ## 质量约束
 
-- 只支持英语全量翻译 v1。多语言 QA 可以由 `quality_harness` 扫描，但本 harness 不负责生成印尼语、法语、德语、土耳其语、西班牙语、葡萄牙语或俄语译文。
+- 支持 `en`、`th`、`vi`、`idn` 全量翻译；未提供目标语言列或术语列时不要凭空生成该语言。
 - 回填严格按 ID，不按行顺序猜。
 - response 必须覆盖全部 ID，不能漏 ID、重复 ID、额外 ID、乱序。
 - 占位符、变量、BBCode、富文本标签和换行结构必须与原文一致，否则拒绝写回。
-- 术语默认强约束；只有术语表显式标记 `soft/generic/common/参考/泛词/通用词` 的条目才作为软参考。
+- 术语默认强约束；术语表显式标记 `soft/generic/common/参考/泛词/通用词` 的条目作为软参考；无分类术语表中的明显泛词（如 `获得`、`需要`、`成功`）也按软参考处理。
 - 后半 QA 不变，最终仍需跑 `scripts/run_quality_harness.py`。
 
 ## 主 agent 翻译原则

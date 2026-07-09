@@ -1,8 +1,8 @@
 # 可读性、缩写与大小写拦截规则
 
-## 2026-05-11 补充坏例
+## 典型坏例
 
-以下新发现的过度压缩也属于最终版阻断错误：
+以下过度压缩属于最终版阻断错误：
 
 - 职业/人名：`Chef Yifang`、`Ener Scie Owen`、`Stru Expe Ethan`、`Smel Expe Kevin`
 - 道具/资源：`10 Pts impr esse`、`100 elec ener`、`1K hero expe`

@@ -35,7 +35,7 @@ def _write_terms(path: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Glossary"
-    ws.append(["ID", "CN", "EN", "FR", "DE", "RU", "IT", "ES", "PT", "TK", "ID", "TH"])
+    ws.append(["ID", "CN", "EN", "FR", "DE", "RU", "IT", "ES", "PT", "TK", "VI", "ID", "TH"])
     ws.append([
         "term_notice",
         "\u516c\u544a",
@@ -47,6 +47,7 @@ def _write_terms(path: Path) -> None:
         "Anuncio",
         "Anúncio",
         "Duyuru",
+        "Thông báo",
         "Pengumuman",
         "ประกาศ",
     ])
@@ -61,6 +62,7 @@ def _write_terms(path: Path) -> None:
         "Hora del servidor",
         "Horário de servidor",
         "Sunucu Saati",
+        "Giờ máy chủ",
         "Waktu Server",
         "เวลาเซิร์ฟเวอร์",
     ])
@@ -75,6 +77,7 @@ def _write_terms(path: Path) -> None:
         "Hora del servidor 2026",
         "Horário de servidor 2026",
         "Sunucu Saati 2026",
+        "Giờ máy chủ 2026",
         "Waktu Server 2026",
         "เวลาเซิร์ฟเวอร์ 2026",
     ])
@@ -89,6 +92,7 @@ def _write_terms(path: Path) -> None:
         "Mantenimiento",
         "Manutenção",
         "Bakım",
+        "Bảo trì",
         "Maintenance",
         "ปรับปรุง",
     ])
@@ -103,6 +107,7 @@ def _write_terms(path: Path) -> None:
         "Entrenador",
         "Treinador",
         "Eğitmen",
+        "Huấn luyện viên",
         "Pelatih",
         "เทรนเนอร์",
     ])
@@ -195,7 +200,7 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             id_specs = [spec for spec in terms.languages if spec.header == "ID"]
             self.assertEqual(len(id_specs), 1)
             self.assertEqual(id_specs[0].code, "idn")
-            self.assertEqual(id_specs[0].column_index, 11)
+            self.assertEqual(id_specs[0].column_index, 12)
             self.assertEqual(terms.by_language["ID"]["\u8bad\u7ec3\u5e08"].target, "Pelatih")
 
     def test_prepare_builds_translation_workbook_and_longest_term_hits(self):
@@ -211,35 +216,38 @@ class AnnouncementDocxHarnessTests(unittest.TestCase):
             self.assertTrue((prepared.work_dir / "workpack_en.jsonl").exists())
 
             wb = load_workbook(prepared.translation_workbook, read_only=True, data_only=True)
-            ws = wb["Translations"]
-            headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
-            self.assertEqual(
-                headers,
-                [
-                    "source_file",
-                    "para_id",
-                    "para_index",
-                    "style",
-                    "CN",
-                    "protected_tokens",
-                    "term_hits_json",
-                    "EN",
-                    "FR",
-                    "DE",
-                    "RU",
-                    "IT",
-                    "ES",
-                    "PT",
-                    "TK",
-                    "ID",
-                    "TH",
-                ],
-            )
-            first_hits = json.loads(ws.cell(2, headers.index("term_hits_json") + 1).value)
-            self.assertIn("\u670d\u52a1\u5668\u65f6\u95f4 2026", [hit["source"] for hit in first_hits])
-            self.assertNotIn("\u670d\u52a1\u5668\u65f6\u95f4", [hit["source"] for hit in first_hits])
-            self.assertEqual(ws.max_row, 4)
-            wb.close()
+            try:
+                ws = wb["Translations"]
+                headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
+                self.assertEqual(
+                    headers,
+                    [
+                        "source_file",
+                        "para_id",
+                        "para_index",
+                        "style",
+                        "CN",
+                        "protected_tokens",
+                        "term_hits_json",
+                        "EN",
+                        "FR",
+                        "DE",
+                        "RU",
+                        "IT",
+                        "ES",
+                        "PT",
+                        "TK",
+                        "VI",
+                        "ID",
+                        "TH",
+                    ],
+                )
+                first_hits = json.loads(ws.cell(2, headers.index("term_hits_json") + 1).value)
+                self.assertIn("\u670d\u52a1\u5668\u65f6\u95f4 2026", [hit["source"] for hit in first_hits])
+                self.assertNotIn("\u670d\u52a1\u5668\u65f6\u95f4", [hit["source"] for hit in first_hits])
+                self.assertEqual(ws.max_row, 4)
+            finally:
+                wb.close()
 
     def test_prepare_infers_target_languages_from_term_columns(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,6 +28,38 @@ from utils.ai_checker import prepare_all_batches, apply_corrections
 from utils.text_normalize import repair_translation_surface
 from utils.ui_length_checker import assess_ui_length, check_ui_length
 from utils.readability_checker import check_readability
+from utils.quality_harness import scan_workbook
+from utils.language_config import (
+    all_language_target_headers,
+    normalize_language_code,
+    target_header_candidates,
+    variant_header_candidates,
+)
+
+FINAL_BLOCKING_CHECK_TYPES = {
+    'variable_missing',
+    'variable_extra',
+    'variable_order',
+    'bbcode_open_mismatch',
+    'bbcode_close_mismatch',
+    'bbcode_unclosed',
+    'bbcode_color_mismatch',
+    'newline_mismatch',
+    'chinese_residue',
+    'html_entity_leak',
+    'internal_token_leak',
+    'punctuation_corruption',
+    'orphan_leading_clitic',
+    'leading_lowercase',
+    'ui_length_overflow',
+    'opaque_abbreviation',
+    'clipped_word',
+    'hash_code_abbreviation',
+    'placeholder_compaction',
+    'placeholder_word_glue',
+    'fullwidth_punctuation',
+    'workbook_scan_empty',
+}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -129,6 +161,14 @@ LANG_TERM_PATTERNS = {
         'primary': [r'印尼语', r'印度尼西亚语', r'indonesian', r'bahasa indonesia'],
         'variant': [r'印尼语2', r'印度尼西亚语2', r'补充形式', r'另一词性', r'动词译法'],
     },
+    'th': {
+        'primary': [r'泰语', r'泰文', r'thai', r'^th$'],
+        'variant': [r'泰语2', r'泰文2', r'thai2', r'^th2$', r'补充形式', r'另一词性', r'动词译法'],
+    },
+    'vi': {
+        'primary': [r'越南语', r'越南文', r'vietnamese', r'^vi$', r'^vie$'],
+        'variant': [r'越南语2', r'越南文2', r'vietnamese2', r'^vi2$', r'^vie2$', r'补充形式', r'另一词性', r'动词译法'],
+    },
 }
 
 
@@ -138,6 +178,7 @@ def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
     Excel format: same as language table — ID / 原文 / 译文.
     JSON format:  {"lookup": {"中文": "English"}} or flat {"中文": "English"}.
     """
+    lang = normalize_language_code(lang)
     if not path or not Path(path).exists():
         return merge_builtin_name_terms({}, lang)
 
@@ -147,18 +188,40 @@ def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
         cols = [str(c).strip() for c in df.columns]
         col_map = {str(c).strip(): c for c in df.columns}
 
-        def _pick(patterns: list[str]) -> str | None:
-            for c in cols:
+        def _pick(patterns: list[str], *, skip_first_id: bool = False) -> str | None:
+            for idx, c in enumerate(cols):
                 lc = c.lower()
+                if skip_first_id and idx == 0 and lc == 'id':
+                    continue
                 for p in patterns:
                     if re.search(p, lc):
                         return col_map[c]
             return None
 
-        cn_col = _pick([r'中文术语', r'原文', r'中文', r'source', r'original'])
-        lang_patterns = LANG_TERM_PATTERNS.get(lang, LANG_TERM_PATTERNS['en'])
-        target_col = _pick(lang_patterns['primary']) or _pick([r'译文', r'翻译', r'translation', r'target'])
-        alt_col = _pick(lang_patterns['variant']) or _pick([r'variant', r'variants', r'alternate'])
+        def _literal_patterns(headers: set[str]) -> list[str]:
+            patterns = []
+            for header in sorted(headers, key=len, reverse=True):
+                escaped = re.escape(header)
+                if header == 'id':
+                    patterns.append(r'^id(?:\.\d+)?$')
+                else:
+                    patterns.append(rf'^{escaped}$')
+            return patterns
+
+        cn_col = _pick([r'^cn$', r'^zh$', r'中文术语', r'原文', r'中文', r'source', r'original'])
+        lang_patterns = LANG_TERM_PATTERNS.get(lang, {'primary': [], 'variant': []})
+        language_target_patterns = _literal_patterns(target_header_candidates(lang))
+        language_variant_patterns = _literal_patterns(variant_header_candidates(lang))
+        target_col = (
+            _pick([*language_target_patterns, *lang_patterns['primary']], skip_first_id=True)
+            or _pick([r'译文', r'翻译', r'translation', r'target'], skip_first_id=True)
+        )
+        alt_col = (
+            _pick([*language_variant_patterns, *lang_patterns['variant']], skip_first_id=True)
+            or _pick([r'variant', r'variants', r'alternate'])
+        )
+        if target_col is None and any(c.lower() in all_language_target_headers() for c in cols):
+            return merge_builtin_name_terms({}, lang)
         constraint_col = _pick([r'约束', r'constraint'])
 
         from utils.text_normalize import strip_tags_and_vars
@@ -369,6 +432,70 @@ def _run_readability_checks(states: dict[int, RowState], lang: str):
             state.human_review_reason = issue.message
             state.ai_suggestion = state.fixed_translation
             state.review_confidence = issue.confidence
+
+
+def rerun_quality_review(
+    states: dict[int, RowState],
+    *,
+    term_lookup: dict | None,
+    lang: str,
+) -> tuple[dict[int, RowState], list]:
+    """Re-run machine QA after AI merge so reports reflect final translations."""
+
+    refreshed: dict[int, RowState] = {}
+    for row_id, state in states.items():
+        new_state = RowState(row_id, state.original, state.fixed_translation)
+        new_state.fixed_translation = state.fixed_translation
+        new_state.notes = list(state.notes)
+        refreshed[row_id] = new_state
+
+    _run_surface_fixes(refreshed, auto_fix=True, lang=lang)
+    _run_variable_checks(refreshed, auto_fix=False)
+    _run_term_checks(refreshed, term_lookup or {}, auto_fix=False)
+    groups = _run_pattern_checks(refreshed, auto_fix=False)
+    _run_chinese_residue_checks(refreshed)
+    _run_ui_detection(refreshed)
+    _run_ui_length_checks(refreshed, lang)
+    _run_readability_checks(refreshed, lang)
+    return refreshed, groups
+
+
+def ensure_final_delivery_ready(
+    states: dict[int, RowState],
+    *,
+    result_path: str | None = None,
+    term_base_path: str | None = None,
+    lang: str = 'en',
+) -> None:
+    """Block delivery when final structural/readability gates still have issues."""
+
+    blockers: dict[str, list[str]] = defaultdict(list)
+    for state in states.values():
+        for issue in state.issues:
+            check_type = getattr(issue, 'check_type', '')
+            if check_type in FINAL_BLOCKING_CHECK_TYPES and len(blockers[check_type]) < 5:
+                blockers[check_type].append(str(state.row_id))
+
+    if result_path:
+        harness_result = scan_workbook(
+            result_path,
+            lang=lang,
+            fail_on=FINAL_BLOCKING_CHECK_TYPES,
+            term_base=term_base_path,
+        )
+        for issue in harness_result.issues:
+            check_type = str(issue.get('check_type', ''))
+            if check_type in FINAL_BLOCKING_CHECK_TYPES and len(blockers[check_type]) < 5:
+                blockers[check_type].append(str(issue.get('id', '')))
+
+    if not blockers:
+        return
+
+    parts = []
+    for check_type in sorted(blockers):
+        examples = ','.join(blockers[check_type])
+        parts.append(f"{check_type} (example IDs: {examples})")
+    raise ValueError("Final delivery blocked by hard gate issues: " + "; ".join(parts))
 
 
 def prepare_ai_review(

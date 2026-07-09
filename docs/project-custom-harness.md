@@ -45,7 +45,7 @@
 - 技术规则：占位符、标签、颜色、换行、变量和数字单位必须保持。
 - 输出协议：只输出 `ID + translation`，不输出解释、审计列或额外结构。
 
-英语全量翻译 harness 使用该提示词时，应通过 `--style-hint-file` 注入：
+全量翻译 harness 使用该提示词时，应通过 `--style-hint-file` 注入：
 
 ```powershell
 python scripts\run_translation_harness.py `

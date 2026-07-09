@@ -19,3 +19,8 @@ Thumbs.db
 
 # Output (may contain large generated files)
 # output/
+
+# Local task/process artifacts
+tmp/
+.tmp/
+.translation_cache/

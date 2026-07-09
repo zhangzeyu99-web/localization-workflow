@@ -1,4 +1,4 @@
-"""Agent-operated full translation harness for English language tables.
+"""Agent-operated full translation harness for language tables.
 
 The harness does not call any model API. It prepares row-level workpacks for the
 main agent, validates the agent-written response, and writes translations back
@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from process_language import _load_term_base
 from utils.excel_reader import get_text_pairs, read_language_file
+from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES, normalize_language_code
 from utils.text_normalize import extract_vars, strip_tags_and_vars
 from utils.ui_detector import is_ui_text
 from utils.ui_length_checker import assess_ui_length, is_short_text_candidate
@@ -109,8 +110,7 @@ def prepare_translation_harness(
     style_hint: str = "",
 ) -> PreparedTranslationHarness:
     """Prepare a translation workpack and strict manifest."""
-    if lang != "en":
-        raise ValueError("translation harness v1 only supports lang='en'")
+    lang = _require_supported_translation_lang(lang)
 
     input_path = Path(input_path)
     output_dir = Path(output_dir) if output_dir else input_path.parent / "translation_harness"
@@ -132,7 +132,7 @@ def prepare_translation_harness(
         current_target = _seed_target(source, str(pair["translation"]), target_status)
         cached_translation = cache.get(source, "")
         text_type = classify_text(source, current_target)
-        ui_meta = _build_ui_length_meta(row_id, source, current_target)
+        ui_meta = _build_ui_length_meta(row_id, source, current_target, lang)
         rows.append(
             {
                 "id": row_id,
@@ -190,8 +190,7 @@ def apply_translation_response(
     lang: str = "en",
 ) -> AppliedTranslationHarness:
     """Validate a translation response and write a final workbook by ID."""
-    if lang != "en":
-        raise ValueError("translation harness v1 only supports lang='en'")
+    lang = _require_supported_translation_lang(lang)
 
     input_path = Path(input_path)
     manifest_path = Path(manifest_path)
@@ -200,6 +199,9 @@ def apply_translation_response(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_lang = _require_supported_translation_lang(manifest.get("language", lang))
+    if lang != manifest_lang:
+        raise ValueError(f"language mismatch: response apply requested {lang}, manifest is {manifest_lang}")
     if _sha256_file(input_path) != manifest.get("input_sha256"):
         raise ValueError("input drift detected before applying translation response")
 
@@ -324,9 +326,9 @@ def _seed_target(source: str, target: str, status: TargetColumnStatus) -> str:
     return target
 
 
-def _build_ui_length_meta(row_id: int, source: str, target: str) -> dict[str, Any] | None:
+def _build_ui_length_meta(row_id: int, source: str, target: str, lang: str) -> dict[str, Any] | None:
     is_ui, _, _ = is_ui_text(source, target)
-    assessment = assess_ui_length(row_id, source, target, is_ui=is_ui, lang="en")
+    assessment = assess_ui_length(row_id, source, target, is_ui=is_ui, lang=lang)
     if not assessment:
         return None
     return {
@@ -487,6 +489,14 @@ def _update_translation_cache(
 def _normalize_style_hint(style_hint: Any) -> str:
     text = str(style_hint or "").strip()
     return re.sub(r"\s+", " ", text)
+
+
+def _require_supported_translation_lang(lang: str | None) -> str:
+    code = normalize_language_code(lang)
+    if code not in SUPPORTED_TRANSLATION_LANGUAGES:
+        supported = ", ".join(SUPPORTED_TRANSLATION_LANGUAGES)
+        raise ValueError(f"translation harness supports only: {supported}")
+    return code
 
 
 def _coerce_row_id(value: Any) -> int | None:
