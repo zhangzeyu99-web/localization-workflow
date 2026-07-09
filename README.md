@@ -46,7 +46,6 @@ python process_language.py --input sample-language.xlsx --lang en
 | **术语一致性** | 基于术语库检查关键术语翻译是否一致；人名/角色名和连续编号词条批内一致性作为 hard gate |
 | **格式模式检测** | 检测数字格式、标点、空格等模式问题 |
 | **AI 审查** | 调用 LLM 对可疑条目进行二次审查 |
-| **GUI 界面** | 可视化操作界面，支持拖放 Excel 文件 |
 
 ## 支持语言
 
@@ -69,9 +68,6 @@ pip install -r requirements.txt
 # CLI 模式
 python cli.py --input <excel_file> --language en
 
-# GUI 模式
-python gui.py
-
 # 处理单个语言
 python process_language.py --input <excel_file> --lang en
 
@@ -88,7 +84,6 @@ python scripts/run_translation_harness.py --input <excel_file> --term-base <term
 ```text
 localization-workflow-project/
 ├── cli.py                  # 命令行入口
-├── gui.py                  # GUI 入口（Tkinter）
 ├── process_language.py     # 语言处理主逻辑
 ├── requirements.txt        # Python 依赖
 ├── utils/                  # 工具模块
