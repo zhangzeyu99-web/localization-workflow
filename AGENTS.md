@@ -9,6 +9,7 @@
 - 本目录是游戏本地化处理的主工作流根目录。
 - 优先使用 `workspace_runner.py`、`cli.py`、`process_language.py`。
 - 旧版 Tkinter GUI（`gui.py`）已于 2026-07-09 移除；不要重建 GUI 或人工复制粘贴流程。
+- 新线程接手执行任务时，先读 `docs/workflow-execution-thread-handoff.md`，其中记录仓库边界、用户常见任务给法、任务路由、QA/深校/飞书回填和交付规则。
 
 ## 下游同步关系（Localization Workflow Studio）
 
@@ -50,15 +51,9 @@
 ## 输入假设
 
 - 当前主支持场景是：中文原文 -> 目标语言列。
-- 当前已稳定或可用的目标语言包括：
-  - `en`
-  - `idn`
-  - `fr`
-  - `de`
-  - `tr`
-  - `es`
-  - `pt`
-  - `ru`
+- 当前支持的目标语言以 `utils/language_config.py` 的 `SUPPORTED_TRANSLATION_LANGUAGES` 为准：
+  `en`、`ko`、`ja`、`th`、`vi`、`idn`、`fr`、`de`、`ru`、`it`、`es`、`pt`、`tr`、`ar`
+- 该清单覆盖历史交付需求过的全部语言（土拨鼠 8 语、明日2 全语种、勇者西葡、公告阿语等）；新增语言时只改 `language_config.py` 的注册表（SUPPORTED/NAMES/ALIASES/FILE_HINTS/OUTPUT_SUFFIX/TARGET_HEADERS 六处齐全），列检测、术语查找、工作区自动发现会自动生效。
 - 如果同目录或工作区里存在术语表，默认一起使用。
 - 如果没有术语表，则按无术语模式继续处理，不要因此停住。
 - 最终交付判定以 `scripts/run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx>` 为准；`process_language.py` 负责机审和自动修复，但不能作为唯一放行依据。
