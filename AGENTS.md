@@ -1,5 +1,13 @@
 # AGENTS.md
 
+## 大文本多语言 V2
+
+- 大文本、多 workbook 或 5 个以上目标语言优先使用 `scripts/run_large_text_multilingual_runner.py run`，详细契约见 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
+- 先按历史交付和精确术语复用，再对唯一文本调用中转 API；禁止把 API 返回直接写进 workbook。
+- API 批次必须落 checkpoint 并支持续跑；manifest 和日志不得保存 API key。
+- 深校建议必须经过主控二次审计，最终缓存 `cache-lint` hard blocker 为 0 后才允许精确写回。
+- 写回必须核对源文件、sheet、行号和源文，并在交付后普通打开、校验样式索引、执行 `readback-gate`。
+
 ## 语言
 
 - 始终使用简体中文回复。
