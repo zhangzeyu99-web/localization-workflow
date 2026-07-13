@@ -99,7 +99,7 @@ git log -1 --date=iso --pretty=format:"%h %ad %s"
 | 普通 `xlsx/csv` 语言表 | `workspace_runner.py`、`process_language.py`、`scripts/run_translation_harness.py`、`scripts/run_quality_harness.py` | 用于语言表、UI 表、系统提示表、邮件表、问卷表 |
 | 目标列为空或近乎全空 | `scripts/run_translation_harness.py` | 先生成 workpack，主 agent 用 AI 模型能力填 response，再严格回填和 QA |
 | 公告 DOCX | `scripts/run_announcement_docx_harness.py` | 固定走 `inspect/stage/prepare/import-ai/apply/deliver` 检索式中转表流程 |
-| 大文本多语言包 | `scripts/run_large_text_multilingual_runner.py`、`scripts/run_large_text_multilingual_gate.py`、`scripts/run_large_text_multilingual_retro.py` | 先 manifest，再 `cache-lint`、`apply-dry-run`、`readback-gate`，最后 retro |
+| 大文本多语言包 V2 | `scripts/run_large_text_multilingual_runner.py run` | 一键执行只读分包、历史复用、唯一文本 API 翻译、缓存 QA、可选深校审计、精确写回、读回和 retro |
 | 术语表翻译/校对 | 本仓库术语 QA 规则和质量 harness | 只保留主译，不写 `A / B`；正文允许按语境用自然变体 |
 | 飞书回填 | `lark-cli` | 先解析真实 sheet token，写入后必须 readback |
 
@@ -167,32 +167,66 @@ python scripts\run_announcement_docx_harness.py deliver --input-dir <task_dir>
 - 最终交付目录只保留最终 DOCX 和 `QA摘要.xlsx`。
 - 不逐个 DOCX 自由翻译后手工覆盖。
 
-## 大文本多语言包执行流程
+## 大文本多语言包 V2 执行流程
 
-触发条件：
+命中任一条件即使用 V2：
 
-- 唯一文本超过 5,000 条。
 - 目标语言超过 4 个。
-- 用户要求全量逐句校对。
 - 多 workbook 交付。
+- 唯一文本超过 5,000 条。
+- 用户明确要求全量逐句校对、深度校对或完整多语言审校。
 
-默认流程：
+执行前必须读取 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`，并确认当前分支包含 `docs/WORKFLOW_OPTIMIZATION_LOG.md` 中对应的 `validated` 版本。
+
+### 一键执行入口
 
 ```powershell
-python scripts\run_large_text_multilingual_runner.py prepare <args>
-python scripts\run_large_text_multilingual_gate.py preflight <args>
-python scripts\run_large_text_multilingual_gate.py cache-lint <args>
-python scripts\run_large_text_multilingual_gate.py apply-dry-run <args>
-python scripts\run_large_text_multilingual_gate.py readback-gate <args>
-python scripts\run_large_text_multilingual_retro.py <args>
+python scripts\run_large_text_multilingual_runner.py run `
+  --input "<语言表.xlsx>" `
+  --input "<UI表.xlsx>" `
+  --term-base "<术语表.xlsx>" `
+  --history-dir "<历史已验收交付目录>" `
+  --target-langs "EN,IDN,DE,FR,ES,PT,RU,IT,TR,TH" `
+  --task-dir "<任务目录>" `
+  --relay-config "<relay-api-config.json>" `
+  --proofread-mode full
 ```
 
-执行要求：
+`--input` 和 `--history-dir` 可以重复传入。未明确要求逐句/深度校对时使用 `--proofread-mode basic`；明确要求时使用 `full`，不得把基础 QA 说成逐句审校。
 
-- 先创建 runner manifest，再按 manifest 的 critical path 执行。
-- `cache-lint` 和 `apply-dry-run` 通过后才写回大文件。
-- 交付后必须跑 `readback-gate`。
-- 大 JSON、issue 明细、模型建议写入日志或报告文件，终端只汇报 hard/warn、修改量、文件数、耗时和交付路径。
+只做只读抽取和规模预检、不调用 API：
+
+```powershell
+python scripts\run_large_text_multilingual_runner.py prepare-pack `
+  --input "<语言表.xlsx>" `
+  --input "<UI表.xlsx>" `
+  --term-base "<术语表.xlsx>" `
+  --target-langs "EN,IDN,DE,FR,ES,PT,RU,IT,TR,TH" `
+  --work-dir "<任务目录>\_work\large_text_multilingual"
+```
+
+### V2 阶段契约
+
+1. **只读分包**：顺序读取源 workbook，核对目标列为空，生成稳定 `file + sheet + ID + row` 键。
+2. **复用与去重**：先复用当前项目历史已验收交付和精确术语，再按“源文、语境、术语约束”去重；API 只处理剩余唯一文本。
+3. **API 初译**：只使用配置的 OpenAI-compatible 中转 API 或当前模型能力，不使用 Google/外部机翻；先小批 smoke，再按行数和字符预算并发。失败批次重试后自动拆分。
+4. **断点续跑**：翻译 checkpoint 按模型、供应端、目标语言和 prompt 版本隔离；审校 checkpoint 按 reviewer/auditor 身份隔离。重跑复用成功批次，不整包重译。
+5. **缓存级 QA**：写 workbook 前必须执行 `cache-lint`，空译文、中文残留、未请求语言、占位符/标签/数字丢失和强术语遗漏的 hard blocker 必须为 0。
+6. **深校审计**：只有用户明确触发时执行。API/subagent 只输出 `KEEP/FIX` 建议，不能直接写 workbook；主控二次审计后生成最终缓存，并再次执行 `cache-lint`。
+7. **精确写回**：`apply-dry-run` 通过后，只修改目标单元格；写回必须同时核对文件、sheet、ID/key、行号和源文，保留原 worksheet 命名空间和样式。
+8. **交付读回**：普通模式打开成品、检查样式索引，再把每个目标单元格与最终缓存逐格比对；不能只检查“非空”。最后生成 retro 指标。
+
+### 文件与安全边界
+
+- 过程文件统一放在 `<task_dir>\_work\large_text_multilingual\`，包括 manifest、JSONL、checkpoint、门禁结果和 retro。
+- API key 只在请求时从 relay 配置读取，不得写入 manifest、缓存、日志、QA 摘要或 Git。
+- 最终交付目录只保留成品 workbook 和 `QA摘要.xlsx`；输入文件不得使用 `QA摘要.xlsx` / `qa_summary.xlsx` 保留名。
+- 中断后优先使用相同 `task-dir`、输入、语言和 relay 配置重新执行，以复用 checkpoint；不得删除 `_work` 后声称是续跑。
+- 终端保持安静输出，只汇报 source rows、unique items、API batches、修改量、hard/warn、文件数、总耗时和交付路径。
+
+### 完成汇报
+
+最终必须区分基础结构 QA 与深度逐句校对是否完成，并报告：源行数、唯一文本数、目标语言、模型/API 批次数、checkpoint 复用量、深校建议数、审计回退数、最终修改数、hard blocker、交付文件数和路径。
 
 ## 飞书回填规则
 
