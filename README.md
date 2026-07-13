@@ -243,6 +243,16 @@ python scripts/run_quality_harness.py fixtures/quality_regression.json --workboo
 - 人名/角色名不属于可保留软提示；如果术语表标了人名，`person_name_term_mismatch` 必须清零后才能交付
 - 软术语问题会以 `term_soft_*` 统计，不阻断最终交付
 
+## Large Text Multilingual V2
+
+For multi-workbook or 5+ language packs, use the resumable pipeline instead of repeated manual workbook saves:
+
+```powershell
+python scripts\run_large_text_multilingual_runner.py run --input <xlsx> --target-langs EN,IDN,DE,FR,ES,PT,RU,IT,TR,TH --task-dir <task_dir> --relay-config <relay.json> --proofread-mode full
+```
+
+The pipeline deduplicates source text, reuses approved history, checkpoints API batches, lints the cache before writeback, applies audited proofreading suggestions, performs precise target-cell writeback, and reads final workbooks back. See `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`.
+
 ## License
 
 MIT
