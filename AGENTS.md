@@ -1,5 +1,14 @@
 # AGENTS.md
 
+## 新任务必读与优化落档
+
+- 每个新线程进入本仓库后必须先读 `docs/workflow-execution-thread-handoff.md` 和 `docs/WORKFLOW_OPTIMIZATION_LOG.md`，不得只依赖线程 handoff、聊天上下文或旧提示词。
+- 命中专项任务时再读对应规范；大文本多语言任务必须额外读 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
+- 工作流优化只有在回归测试和真实任务/等价端到端证据都通过后，才允许标记为有效并追加到 `docs/WORKFLOW_OPTIMIZATION_LOG.md`。
+- 每条有效优化必须记录触发问题、实施改动、验收证据、生效范围、回滚边界、剩余风险和代码版本；不得只在当前线程口头总结。
+- 优化改变默认入口、任务路由、质量门禁或 subagent/API 边界时，必须同步更新 `AGENTS.md`、`docs/workflow-execution-thread-handoff.md` 和对应专项文档，确保其他线程按仓库文件即可执行。
+- 新线程执行任务前必须检查优化档案最新 `validated` 条目是否已进入当前分支；未进入时不得假定新流程可用。
+
 ## 大文本多语言 V2
 
 - 大文本、多 workbook 或 5 个以上目标语言优先使用 `scripts/run_large_text_multilingual_runner.py run`，详细契约见 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
