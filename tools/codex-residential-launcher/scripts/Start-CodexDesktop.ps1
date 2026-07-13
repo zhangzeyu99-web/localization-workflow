@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   启动 Clash Verge（如未运行）→ 等待本地 mixed-port → 为子进程设置 HTTP 代理 → 启动 Codex Desktop。
 
@@ -40,7 +40,7 @@ if (-not $Port) { $Port = 7897 }
 
 $CodexDesktop = $env:CODEX_DESKTOP_EXE
 if (-not $CodexDesktop) {
-    $CodexDesktop = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\CodexDesktop\Codex.exe"
+    $CodexDesktop = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\CodexDesktop\ChatGPT.exe"
 }
 
 if (-not (Test-Path $ClashExe)) {
@@ -71,7 +71,7 @@ if (-not $cv) {
 }
 
 if ($KillExisting) {
-    Get-Process -Name "Codex" -ErrorAction SilentlyContinue |
+    Get-Process -Name "ChatGPT" -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -like "*CodexDesktop*" } |
         Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
