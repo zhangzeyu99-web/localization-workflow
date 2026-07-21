@@ -143,10 +143,26 @@ git log -1 --date=iso --pretty=format:"%h %ad %s"
 深校规则：
 
 - 深校必须检查漏译、误译、术语漂移、游戏/UI 语境、自然度、数字/日期/单位/范围保留和同类句式一致性。
-- 如启用 subagent，subagent 只能输出审校建议，不直接写最终 workbook/docx。
-- 主 agent 负责合并建议、二次纠偏、回填、复跑结构 QA。
+- 用户明确触发深校后，默认按目标语言分配 reviewer subagent；无需用户再次单独说明“使用 subagent”。
+- subagent 只能输出审校建议，不直接写最终 workbook/docx，不得多个 agent 同时写同一交付文件。
+- 主 agent 负责合并建议、二次纠偏、回填、复跑结构 QA，并记录建议数、纠偏回退数和最终保留修改数。
 - 有实质修改时，最终汇报修改数量；必要时输出修改清单或 QA 备注表。
 - 未做深校时，最终回复只能说完成基础 QA，不能声称“逐句校对完成”。
+
+### 检索优先与唯一文本审校契约
+
+无论任务最终走普通 translation harness 还是大文本 V2，翻译和深校都遵循以下顺序：
+
+1. 先检索当前项目内最新术语表和已验收历史交付；精确历史译文优先于精确术语，精确术语优先于模型补译。
+2. 历史译文和术语主译只是初始约束，深校时仍要检查语义、语境和自然度，不得因“已有译文”跳过审校。
+3. 按 `源文 + 参考文本 + 必要语境` 生成唯一文本；重复行只审校一次，主线程按稳定键扩展回全部源行，并检查重复项最终译文一致。
+4. reviewer subagent 按语言输出建议；主线程逐项接受、调整或回退，禁止把模型建议未经审计直接写入 workbook。
+5. `QA摘要.xlsx` 至少记录源行数、唯一文本数、填入单元格数、各语言审校数、模型建议数、纠偏回退数、最终修改数、各语言修改数和 hard blocker 数。
+6. 最终读回不仅检查非空，还要检查源列未改、品牌/数字/占位符保留、中文残留、重复项冲突和交付目录内容；可用 Excel 原生只读打开再做一次客户端可用性验证。
+
+真实匿名任务验收：单 workbook、2 个目标语言、257 个源行、104 条唯一文本、514 个目标单元格；49 条由精确术语/历史复用，55 条由模型补译；逐语言审校提出 40 项建议，主控回退 3 项并补充 3 项纠偏，最终保留 40 项修改。空译文、中文残留、重复冲突和 hard blocker 均为 0，Excel 原生只读打开成功。
+
+该验收只证明上述执行契约有效，不把任务目录中的临时脚本当作仓库公共入口，也不改变大文本 V2 的现有路由条件。
 
 ## 公告 DOCX 执行流程
 
@@ -166,6 +182,15 @@ python scripts\run_announcement_docx_harness.py deliver --input-dir <task_dir>
 - 过程文件只放在 `<task_dir>\_work\announcement_docx\`。
 - 最终交付目录只保留最终 DOCX 和 `QA摘要.xlsx`。
 - 不逐个 DOCX 自由翻译后手工覆盖。
+
+新版公告术语表规则：
+
+1. `Glossary` 是词级主译；可选的 `SentenceTemplates` 是句子级术语适配，不是可直接复制的历史句库。
+2. `official_exact` 优先级最高，先匹配 `AnnouncementCN`，再用 `OfficialCNTemplate` 中的 `<@数字>` 作为动态占位符匹配；覆盖范围内允许采用官方整句里的自然词形，不做词级机械误报。
+3. `official_similar` 只提供当前句命中的官方表达和术语用法，模型必须按当前原文重写，不得带入示例中的无关语义、数字或玩法信息。
+4. `workpack_<code>.jsonl` 的 `sentence_adaptations` 已按优先级排序；模型输出协议仍只允许 `para_id, translation`，不改变 import/apply/deliver 主链路。
+5. `QA摘要.xlsx` 必须读回核对 `sentence_adaptation_hit_rows`、`official_exact_sentence_hits`、`official_similar_sentence_hits` 和 hard blocker；全半角括号、月份名称本地化及术语连字符差异按等价形式检查。
+6. `import-ai` 失败时直接读取错误信息中的 `qa_report` 路径并按明细修复，不再临时编写诊断脚本；报告只留在 `_work`，不进入交付目录。
 
 ## 大文本多语言包 V2 执行流程
 

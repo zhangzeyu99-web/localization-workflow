@@ -50,12 +50,14 @@
 
 ## Subagent 规则
 
-- 除非用户明确要求，否则禁止使用 `subagent`。
-- 默认由主 agent 直接执行完整工作流。
+- 基础 QA 默认由主 agent 直接执行，不为了并行而启用 `subagent`。
+- 用户明确说“深校、逐句校对、逐行校对、完整校对、全量审校、LQA”时，视为已授权按目标语言启用 reviewer subagent，无需再次要求“使用 subagent”。
 - 主 agent 负责总控、`prepare / merge`、最终回填和最终导出。
 - 不要为了并行而拆分同一语言表的严格批次映射。
 - 不允许多个 agent 同时写同一个输出文件。
-- 如果用户明确要求启用 `subagent`，只允许按“语言”或“项目”拆分，不允许按同一语言表的批次拆分。
+- reviewer subagent 只输出审校建议，不直接写 workbook/docx；主 agent 必须逐项二次纠偏后再回填。
+- subagent 只允许按“语言”或“项目”拆分，不允许按同一语言表的批次拆分。
+- 深校结果必须记录建议数、纠偏回退数、最终保留修改数和各语言修改数。
 
 ## 稳定性优先
 
@@ -202,10 +204,15 @@
 - 公告 `.docx` 长文本翻译默认走 `scripts/run_announcement_docx_harness.py`，不要逐个 DOCX 自由翻译后手工覆盖。
 - 固定流程是 `inspect -> stage -> prepare -> 用 Codex/ChatGPT 生成 ai_response_<code>.jsonl -> import-ai -> apply -> deliver`。
 - `prepare` 默认从同 stem 术语交付表识别目标语言列；术语表没给的语言不要生成，不要凭空扩展成全语种。
+- 公告术语表支持旧版单 Sheet 和新版双 Sheet：`Glossary` 提供词级主译，选填的 `SentenceTemplates` 提供句子级术语适配；不得把后者当作普通词条或无条件整句复制。
+- `SentenceTemplates` 仅接受 `official_exact` 和 `official_similar`：前者优先匹配 `AnnouncementCN`，并支持用 `OfficialCNTemplate` 的 `<@数字>` 占位符匹配动态值；后者只在当前句命中 `AnnouncementCN` 线索时提供官方表达参考。
+- 句子级适配优先级高于词级机械命中：`official_exact` 覆盖范围内允许使用官方整句中的自然词形，不能因未逐字包含 `Glossary` 主译而误报；`official_similar` 仍需结合当前句重新翻译，禁止带入无关内容。
 - `inspect` 只读表头识别原文、术语交付表、参考语言包和目标语言；不要为了识别语言扫描大型语言包全表。
 - 公告 DOCX 初译禁止使用 Google Translate、`deep_translator`、浏览器翻译、在线机翻聚合器或其他外部机器翻译服务；如果本地没有可用模型通道，必须停下说明卡点，不能降级到机翻冒充 AI 译文。
 - `ai_response_<code>.jsonl` 只能由 Codex/ChatGPT/明确的大模型通道生成，格式固定为每行 `{"para_id": "...", "translation": "..."}`，并且必须与 workpack 行数、顺序和 `para_id` 完全一致。
 - `import-ai` 负责把 AI response 严格回填到 `announcement_translation_workbook.xlsx`，回填前会校验漏行、重行、额外行、乱序、中文残留、受保护 token 和术语目标。
+- `import-ai` 的译文 QA 失败时必须读取 `_work/announcement_docx/ai_response_qa_<code>.json` 逐项修复，不要只根据 issue 数量猜测；该报告在同语言下次通过前会先清理旧版本。
+- 受保护 token 比较必须兼容全角/半角括号和 Unicode 等价形式；中文日期中的月份数字允许按目标语言写成月份名称，但日期和服龄等其余关键数字仍须保留。
 - 术语表必须是同目录内与 DOCX stem 匹配的 `*_announcement_terms_*.xlsx`，不要跨项目猜测术语表。
 - 过程文件只允许放在 `<task_dir>/_work/announcement_docx/`；最终交付目录只保留最终 DOCX 和 `QA摘要.xlsx`。
 - `apply` 的 hard blocker 必须为 0 才能执行 `deliver`。

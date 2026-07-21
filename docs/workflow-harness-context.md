@@ -199,19 +199,24 @@ python scripts\run_announcement_docx_harness.py apply --input-dir <task_dir> --t
 python scripts\run_announcement_docx_harness.py deliver --input-dir <task_dir>
 ```
 
-中转表固定基础列：`source_file, para_id, para_index, style, CN, protected_tokens, term_hits_json`。目标语言列默认从匹配术语交付表中识别，只生成术语表实际提供的目标列；例如 `ID/CN/EN/FR` 只生成 EN/FR，`ID/CN/KR` 只生成 KR/ko。只有显式传 `--lang` 时才覆盖该推断。
+中转表固定基础列：`source_file, para_id, para_index, style, CN, protected_tokens, term_hits_json, sentence_adaptations_json`。旧版已准备的中转表没有 `sentence_adaptations_json` 时仍可读取。目标语言列默认从匹配术语交付表中识别，只生成术语表实际提供的目标列；例如 `ID/CN/EN/FR` 只生成 EN/FR，`ID/CN/KR` 只生成 KR/ko。只有显式传 `--lang` 时才覆盖该推断。
 
 规则：
 
 - 术语表按列位置识别语言；第 1 列 `ID` 是词条 ID，第 11 列 `ID` 才是印尼语，内部码为 `idn`。
+- 术语表优先读取 `Glossary`；若存在 `SentenceTemplates`，必须包含 `Priority, MatchType, ID, AnnouncementCN, OfficialCNTemplate` 和 `Glossary` 中全部目标语言列。`MatchType` 只允许 `official_exact`、`official_similar`，缺列、空目标译文或非法类型直接中止 prepare。
+- `official_exact` 同时支持 `AnnouncementCN` 规范化精确片段匹配和 `OfficialCNTemplate` 的 `<@数字>` 动态占位符匹配；`official_similar` 只按 `AnnouncementCN` 线索检索。命中结果按优先级、精确优先、线索长度排序后写入 workpack。
+- 模型使用顺序固定为：精确句子适配 > 词级术语主译 > 相似句子参考 > 自然翻译。精确适配覆盖的词允许使用官方整句中的自然词形；相似适配不得复制与当前原文无关的历史内容。
 - 不为术语交付表未提供的目标语种生成 workpack、ai_response 或最终 DOCX，避免凭空扩展任务范围。
 - 原始目录里的中文命名 `术语译文交付表`、`.txt` 公告原文和参考语言包先由 `inspect`/`stage` 标准化；`inspect` 只读表头，不扫描大型语言包全表。
 - `prepare` 只生成 `_work/announcement_docx/announcement_translation_workbook.xlsx`、manifest、workpack 和日志类过程文件。
 - 二次翻译必须由 Codex/ChatGPT/明确的大模型通道读取 `workpack_<code>.jsonl` 后写 `ai_response_<code>.jsonl`；禁止用 Google Translate、`deep_translator`、浏览器翻译、在线机翻聚合器或其他外部机器翻译服务产出初译。
 - `ai_response_<code>.jsonl` 固定为 JSONL，每行只允许 `para_id` 和 `translation` 两个字段，行数、顺序和 `para_id` 必须与对应 workpack 完全一致。
-- `import-ai` 负责把 AI response 回填到中转表目标语言列；回填前会校验漏行、重行、额外行、乱序、中文残留、受保护 token、括号形态和术语目标命中。
-- 不直接手工改 `source_file`、`para_id`、`CN`、`protected_tokens` 和 `term_hits_json`。
+- `import-ai` 负责把 AI response 回填到中转表目标语言列；回填前会校验漏行、重行、额外行、乱序、中文残留、受保护 token、括号形态和术语目标命中。全半角括号、Unicode 等价形式和术语中的空格/连字符差异按等价形式比较；中文月份数字可本地化为月份名称。
+- `import-ai` 的译文 QA 失败时会写 `_work/announcement_docx/ai_response_qa_<code>.json`，包含逐项类型、原文、译文和位置；同语言重新导入前会删除旧报告，避免把历史问题当作当前问题。
+- 不直接手工改 `source_file`、`para_id`、`CN`、`protected_tokens`、`term_hits_json` 和 `sentence_adaptations_json`。
 - `apply` 必须先通过 QA，拦截空译文、中文残留、受保护数字/日期/时间范围/括号 token 漂移、强命中术语缺失、缺段落、重复段落、额外段落和源 DOCX hash 漂移。
+- `QA摘要.xlsx` 记录词级命中行、句子级适配命中行、`official_exact` 命中数和 `official_similar` 命中数，便于复盘检索覆盖率。
 - `deliver` 只复制通过 QA 的最终 DOCX 和 `QA摘要.xlsx`，不把 `_work/`、jsonl、manifest 或日志放进交付目录。
 - v1 只替换段落文本并保留段落样式；表格、图片、文本框等复杂结构不重建，只记录 unsupported warning。
 

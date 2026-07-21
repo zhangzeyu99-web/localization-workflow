@@ -41,3 +41,26 @@
 - 回滚边界：普通单语言小表继续使用原 translation/quality harness；如 V2 runner 失败，不允许跳过缓存门禁后手工覆盖 workbook，只能保留 `_work` checkpoint 后修复或回到原小表工作流重新执行。
 - 剩余风险：当前提交尚未合并到 `main`、尚未推送，也未同步到下游 studio；其他线程必须确认当前分支或后续合并版本包含本条记录后再使用 V2。
 - 必读文档：`docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`
+
+## 2026-07-14 检索优先的唯一文本逐语言深校契约
+
+- 状态：`validated`
+- 代码版本：文档基线 `3ace84a`；本次为执行契约更新，无生产代码改动。
+- 触发问题：小型多语言表存在大量重复行；如果逐行重复翻译/审校会浪费时间，而直接复用历史译文又可能保留旧语病。原 `AGENTS.md` 还要求用户另行明确授权 subagent，与“用户明确触发深校后按语言审校”的 handoff 约定不一致。
+- 实施改动：固定为“精确历史复用 -> 精确术语复用 -> 模型补译 -> 唯一文本去重 -> 按语言 reviewer 建议 -> 主控二次纠偏 -> 稳定键扩展写回 -> 结构与客户端读回”；明确深校触发即授权按语言 reviewer subagent，且 subagent 不得直接写交付文件。
+- 验收证据：真实匿名单 workbook 任务共 257 个源行、104 条唯一文本、2 个目标语言、514 个目标单元格；49 条复用精确术语/历史，55 条模型补译；两语完整审校提出 40 项建议，主控回退 3 项并补充 3 项纠偏，最终保留 40 项修改。最终空译文 0、中文残留 0、重复冲突 0、hard blocker 0，源列未改，交付目录仅含成品和 `QA摘要.xlsx`，Excel 原生只读打开成功。本次无生产代码改动，因此未新增代码回归测试。
+- 生效范围：所有需要术语/历史检索的 workbook 翻译任务；用户明确触发深校时，普通 harness 和大文本 V2 都必须采用相同的“建议与最终写回分离”审计契约。
+- 回滚边界：没有精确历史或术语时允许直接进入模型补译，但仍须唯一文本去重、逐语言审校和主控纠偏；不得回退为按重复源行多次调用模型或让 subagent 直接写 workbook。
+- 剩余风险：短分类名可能缺少上下文，主控仍需结合英文参考、项目 brief 和相邻内容判断；本次任务目录中的临时脚本不是公共 API，不得跨项目复制为正式 harness。
+- 必读文档：`docs/workflow-execution-thread-handoff.md`
+
+## 2026-07-21 公告双 Sheet 句子级术语适配
+
+- 状态：`validated`
+- 触发问题：公告术语交付表新增 `Glossary + SentenceTemplates` 格式，旧 harness 只读活动 Sheet，句子级官方表达完全不进入 workpack；同时真实译文回放暴露中文月份数字、全半角括号和术语空格/连字符的 8 个误报。
+- 实施改动：新增可选 `SentenceTemplates` 严格解析、`official_exact/official_similar` 分级检索、`<@数字>` 动态占位符匹配、`sentence_adaptations_json` 中转列和逐语言 workpack 证据；精确句覆盖范围可采用官方自然词形，相似句只作参考。受保护 token 改为 Unicode/括号等价比较，中文月份数字允许月份名称本地化，术语空格和连字符按等价形式比较；`import-ai` 失败会生成逐项 QA JSON 并在重试前清理旧报告。
+- 验收证据：单元测试先出现 5 个预期失败，再实现通过；真实匿名公告回放为 23 个非空段落、4 个目标语言、92 个译文，词级命中 17 行、句子级适配命中 16 行、`official_exact` 1 次、`official_similar` 25 次。完整执行 `prepare -> import-ai -> apply -> deliver`，hard blocker 0，生成 4 个 DOCX 和 1 个 `QA摘要.xlsx`，交付目录无过程文件。
+- 生效范围：所有通过 `scripts/run_announcement_docx_harness.py` 执行的公告 `.docx/.txt` 任务；旧单 Sheet 术语表和旧中转表继续兼容。
+- 回滚边界：删除 `SentenceTemplates` 可回到纯词级检索；不得回退为把 `official_similar` 示例整句复制到当前公告，也不得恢复月份数字、全半角括号和连字符的机械误报。
+- 剩余风险：句子级语义一致性仍由模型翻译和人工/深校判断，机器 QA 只验证结构、受保护内容和可确定的术语约束；不把任何客户术语表或任务目录脚本提交公共仓库。
+- 必读文档：`docs/workflow-harness-context.md`、`docs/workflow-execution-thread-handoff.md`
