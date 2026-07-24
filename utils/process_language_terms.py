@@ -29,6 +29,7 @@ def _normalize_term_lookup(data: dict) -> dict[str, dict]:
         primary = ''
         variants: list[str] = []
         enforce_case = False
+        exact_match = False
         category = ''
         name_type = ''
 
@@ -46,6 +47,7 @@ def _normalize_term_lookup(data: dict) -> dict[str, dict]:
                 raw_vars = [raw_vars]
             variants = [str(x).strip() for x in raw_vars if str(x).strip()]
             enforce_case = bool(value.get('enforce_case', False))
+            exact_match = bool(value.get('exact_match', False))
             category = str(value.get('category', '') or value.get('type', '')).strip()
             name_type = str(value.get('name_type', '')).strip() or classify_name_type(category)
 
@@ -71,6 +73,7 @@ def _normalize_term_lookup(data: dict) -> dict[str, dict]:
                 'primary': primary,
                 'variants': dedup_variants,
                 'enforce_case': enforce_case,
+                'exact_match': exact_match,
                 'constraint': constraint,
                 'category': category,
                 'name_type': name_type,
@@ -223,6 +226,7 @@ def _load_term_base(path: str | None, lang: str = 'en') -> dict[str, dict]:
                         'primary': '',
                         'variants': [],
                         'enforce_case': False,
+                        'exact_match': False,
                         'constraint': '',
                         'category': '',
                         'name_type': '',
