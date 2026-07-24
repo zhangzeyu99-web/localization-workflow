@@ -44,6 +44,8 @@ python process_language.py --input sample-language.xlsx --lang en
 | **变量检测** | 检查翻译中变量占位符（`{0}`, `%s` 等）是否完整 |
 | **UI 标记检测** | 检查 UI 控件标记（`<color>`, `<size>` 等）是否匹配 |
 | **术语一致性** | 基于术语库检查关键术语翻译是否一致；人名/角色名和连续编号词条批内一致性作为 hard gate |
+| **UI 专名策略** | 术语表显式分类的技能名执行英语两词优先，地名执行两个核心词优先，并检查不同专名撞名 |
+| **中英双源** | 非英语任务支持中文主源+英语参考，或显式英语主源+中文回查；源模式进入缓存和审校指纹 |
 | **格式模式检测** | 检测数字格式、标点、空格等模式问题 |
 | **AI 审查** | 调用 LLM 对可疑条目进行二次审查 |
 
@@ -125,10 +127,16 @@ localization-workflow-project/
 - [项目资料 JSON 模板](templates/project_profile_template.json)
 - [项目资料 YAML 模板](templates/project_profile_template.yaml)
 - [翻译提示词模板](templates/translation_prompt_template.txt)
+- [技能名与地名翻译规范](docs/UI_NAME_TRANSLATION_STANDARD.md)
+- [中英双源翻译与校对](docs/BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md)
 
 ## 当前规则权威
 
 最终交付 gate 收口到 `quality_harness`：术语默认强约束、UI 长度进入最终 workbook 扫描、连续编号词条优先按术语表或首个高质量译法统一，显式 soft 术语和无分类泛词不阻断。
+
+术语表 `分类/category/type` 明确为技能名或地名时，workpack、AI 审校和 workbook 扫描会启用专名策略。英语技能名优先 2 个可读词 / 24 字符，地名优先 2 个核心词 / 28 字符；这些是需要语义复核的软预算，不会机械截断或覆盖自然专名。
+
+非英语目标语言可通过 `--source-mode cn+en` 使用“中文主源 + 已校对英语参考”；只有英语完整可靠并明确作为主源时使用 `--source-mode en`。模式、英语参考和覆盖状态会写入 workpack/manifest，并参与 AI 审校输入漂移和缓存隔离。
 
 - `AGENTS.md` 和 `scripts/run_quality_harness.py` 是当前权威规则来源。
 - `README.md`、`docs/使用说明书.md` 只保留摘要和历史入口说明，不作为最终放行标准。
@@ -248,7 +256,7 @@ python scripts/run_quality_harness.py fixtures/quality_regression.json --workboo
 For multi-workbook or 5+ language packs, use the resumable pipeline instead of repeated manual workbook saves:
 
 ```powershell
-python scripts\run_large_text_multilingual_runner.py run --input <xlsx> --target-langs EN,IDN,DE,FR,ES,PT,RU,IT,TR,TH --task-dir <task_dir> --relay-config <relay.json> --proofread-mode full
+python scripts\run_large_text_multilingual_runner.py run --input <xlsx> --target-langs IDN,DE,FR,ES,PT,RU,IT,TR,TH --source-mode cn+en --task-dir <task_dir> --relay-config <relay.json> --proofread-mode full
 ```
 
 The pipeline deduplicates source text, reuses approved history, checkpoints API batches, lints the cache before writeback, applies audited proofreading suggestions, performs precise target-cell writeback, and reads final workbooks back. See `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`.

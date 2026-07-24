@@ -70,6 +70,10 @@
 ## 输入假设
 
 - 当前主支持场景是：中文原文 -> 目标语言列。
+- 非英语任务需要参考已校对英语时，按 `docs/BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md` 显式选择 `--source-mode cn+en`；中文仍是语义主源，英语只辅助术语、专名、语气和歧义判断。
+- 只有用户明确要求按英语翻译、且英语逐行完整可靠时才使用 `--source-mode en`；该模式仍用中文回查漏译、玩法条件、数字、占位符和术语。
+- `cn+en` 允许个别英语缺失并逐行回退中文；`en` 要求英语覆盖率 100%，否则 prepare 必须中止。目标语言为英语时只允许 `cn`。
+- 不允许自动检测到英语列后静默切换语义主源；源模式必须进入 workpack/manifest、AI 审校指纹和缓存键。
 - 当前支持的目标语言以 `utils/language_config.py` 的 `SUPPORTED_TRANSLATION_LANGUAGES` 为准：
   `en`、`ko`、`ja`、`th`、`vi`、`idn`、`fr`、`de`、`ru`、`it`、`es`、`pt`、`tr`、`ar`
 - 该清单覆盖历史交付需求过的全部语言（土拨鼠 8 语、明日2 全语种、勇者西葡、公告阿语等）；新增语言时只改 `language_config.py` 的注册表（SUPPORTED/NAMES/ALIASES/FILE_HINTS/OUTPUT_SUFFIX/TARGET_HEADERS 六处齐全），列检测、术语查找、工作区自动发现会自动生效。
@@ -107,6 +111,7 @@
 - 准备阶段运行：`python scripts\run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --style-hint "<项目级短提示词>"`。
 - `--style-hint` 用于项目风格约束，例如“面向美国移动端用户；SLG；简短地道表达”；也可用 `--style-hint-file <txt>` 从 UTF-8 文本读取。
 - 主 agent 读取 `translation_workpack.jsonl`，只写 `translation_response.jsonl`，每行格式为 `{"id": 1001, "translation": "Claim Reward"}`。
+- 翻译非英语语言时可加 `--source-mode cn+en` 或 `--source-mode en`；workpack 会提供 `translation_source`、`reference_en` 和逐行参考状态。
 - 应用阶段运行：`python scripts\run_translation_harness.py --input <excel_file> --term-base <terms.xlsx> --lang en --output-dir <output_dir> --response <output_dir>\translation_response.jsonl --run-qa`。
 - 该 harness 不调用 API、不自动操作 ChatGPT 网页、不启用 subagent；模型翻译由主 agent 直接完成。
 - 回填严格按 ID 和 manifest 校验，漏 ID、重复 ID、额外 ID、乱序、输入漂移、占位符/标签/换行漂移都必须拒绝写回。
@@ -132,6 +137,10 @@
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
 - 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。
 - Title Case 只用于合理范围：专名、功能名、标题、商店项、术语表明确要求的名称。
+- 术语表 `分类/category/type` 明确为技能名时，按移动端 UI 专名处理：英语优先不超过 2 个可读词 / 24 字符；明确为地名、地点名、地图名、区域名或场景名时，英语优先不超过 2 个核心词 / 28 字符，冠词和介词不计核心词。详细规则见 `docs/UI_NAME_TRANSLATION_STANDARD.md`。
+- 技能名/地名压缩只由术语表显式分类触发，不根据中文长度猜测；`技能描述`、`技能效果`、`地图说明`、`地点描述` 不得套用。
+- 两词/字符预算是软约束：核心含义、自然度、既有专名和名称唯一性优先；禁止机械截断、坏缩写或把不同中文专名压成同一译名。
+- `skill_name_word_count_watch`、`location_name_compactness_watch`、`name_translation_collision_watch` 必须进入 AI/人工复核，但不作为无条件自动改写或 hard blocker。
 - 颜色标签必须翻译前后保持一致，`[color=#...]` 和 `<color=#...>` 的数量、开闭和色值都不能漂移。
 - 不允许非问句中把分隔符污染成 `?`，例如源文 `重装·普攻I` 不能译成 `Tank ? Basic Attack I`；真实问号键提示如 `Press ? for help` 不按分隔符污染处理。
 - 人名/角色名一致性是所有项目的硬门槛：术语表中 `分类` 含 `人名`、`角色`、`person`、`character`、`name` 的条目，正文命中中文名时必须使用术语表英文名，不能把 `Aria` 写成 `Arya`、`Leon` 写成 `Lyon` 这类近似名。

@@ -65,6 +65,8 @@ QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见�
 
 短 UI 长度也在 workbook 扫描中执行。`ui_length_overflow` 是 hard gate，`short_text_length_watch` 是软提示。当前 hard 预算：英语/泰语 `min(32, max(10, source*2+14))`，越南语/印尼语 `min(34, max(12, source*2+15))`。支持的 QA 语言代码包括 `en`、`th`、`vi`、`idn`、`fr`、`de`、`tr`、`es`、`pt`、`ru`；全量翻译 harness v1 支持 `en`、`th`、`vi`、`idn`。
 
+术语表明确分类为技能名或地名时，workbook 扫描会统计 `skill_name_word_count_watch`、`location_name_compactness_watch` 和 `name_translation_collision_watch`。三者默认是软预警：用于把英语超两词技能名、超两个核心词地名和不同中文专名撞名送入 AI/人工复核，不直接机械修改，也不因合理的自然专名阻断交付。详细规则见 `UI_NAME_TRANSLATION_STANDARD.md`。
+
 输出 JSON：
 
 ```powershell

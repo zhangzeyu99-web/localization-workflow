@@ -2,7 +2,9 @@
 
 ## 目标
 
-把“目标列为空、近乎全空、或目标列大面积中文回填”的全量翻译变成可验证流程。当前支持 `en`、`th`、`vi`、`idn`。该 harness 不调用 API，也不自动操作 ChatGPT 网页；它由主 agent 操作模型生成译文，脚本负责打包、校验、按 ID 回填和缓存。
+把“目标列为空、近乎全空、或目标列大面积中文回填”的全量翻译变成可验证流程。目标语言以 `utils/language_config.py` 注册表为准。该 harness 不调用 API，也不自动操作 ChatGPT 网页；它由主 agent 操作模型生成译文，脚本负责打包、校验、按 ID 回填和缓存。
+
+非英语目标语言支持 `--source-mode cn|cn+en|en`。默认 `cn` 保持原流程；`cn+en` 使用中文主源和英语参考；`en` 使用完整英语主源并以中文回查。详情见 `BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md`。
 
 ## 使用方式
 

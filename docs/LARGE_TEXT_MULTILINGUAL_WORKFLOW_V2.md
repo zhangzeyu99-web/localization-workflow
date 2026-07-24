@@ -18,6 +18,8 @@ python scripts\run_large_text_multilingual_runner.py run `
   --proofread-mode full
 ```
 
+若非英语目标语言需要参考已校对英语，加 `--source-mode cn+en`；只有英语逐行完整并明确作为主源时才用 `--source-mode en`。英语参考会进入唯一文本签名、API 请求、checkpoint 和深校请求，英语变化后不会复用旧缓存。完整契约见 `BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md`。
+
 只准备分包、不调用 API：
 
 ```powershell

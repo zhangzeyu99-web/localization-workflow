@@ -64,3 +64,27 @@
 - 回滚边界：删除 `SentenceTemplates` 可回到纯词级检索；不得回退为把 `official_similar` 示例整句复制到当前公告，也不得恢复月份数字、全半角括号和连字符的机械误报。
 - 剩余风险：句子级语义一致性仍由模型翻译和人工/深校判断，机器 QA 只验证结构、受保护内容和可确定的术语约束；不把任何客户术语表或任务目录脚本提交公共仓库。
 - 必读文档：`docs/workflow-harness-context.md`、`docs/workflow-execution-thread-handoff.md`
+
+## 2026-07-24 技能名与地名 UI 专名策略
+
+- 状态：`validated`
+- 代码版本：本次提交（基于 `main` 的 `51cf374`）
+- 触发问题：真实移动端 UI 技能名筛选中，63 条候选有 25 条需要从三词以上压缩为两词以内；原流程只有通用短文本预算，不能区分技能名、地名和描述句，也不能发现不同中文专名被压成同一目标译名。
+- 实施改动：术语加载保留 `分类/category/type` 并派生 `name_type`；只有显式技能名/地名类别才启用策略。workpack 和 AI 审校提示新增 `NAME` 元数据；英语技能名采用两词 / 24 字符软预算，地名采用两个核心词 / 28 字符软预算，其他语言按约两个核心语义单位自然表达。机审和最终 workbook 扫描新增超长与撞名预警，不做机械截断或自动覆盖。
+- 验收证据：先运行定向测试确认 `utils.name_policy` 缺失、workpack 无专名字段、AI prompt 无规则共 3 类预期失败；实现后定向 8 项通过。`python -m unittest discover -s tests` 共 226 项通过；`python scripts\run_quality_harness.py fixtures\quality_regression.json` 共 67 个 fixture 全部通过，含技能名/地名好坏例和两条撞名回归；语法编译检查通过。
+- 生效范围：普通 translation harness、`process_language` 基础/深度审校、最终 `quality_harness` workbook 扫描，以及项目提示词模板。
+- 回滚边界：删除或不填写术语表专名分类即可保持原通用短文本流程；不得改成根据中文长度自动猜技能名/地名，也不得把软预算升级为无例外 hard blocker。
+- 剩余风险：机器只能检查英文表面长度和重复目标名，不能自动判断意象、玩法差异或世界观专名是否保留；超预算项和撞名项仍需模型结合项目 brief、上下文和既有术语逐项裁决。
+- 必读文档：`docs/UI_NAME_TRANSLATION_STANDARD.md`、`docs/workflow-execution-thread-handoff.md`
+
+## 2026-07-24 中英双源翻译与校对
+
+- 状态：`validated`
+- 代码版本：本次提交（基于 `main` 的 `51cf374`）
+- 触发问题：多语言正文和技能/地名翻译需要利用已校对英语稳定术语与表达，但旧标准 harness、AI 审校和大文本 V2 只传中文；如果直接把英语替换成原文，又会丢失中文条件、数字、占位符和术语回查，并可能跨来源误用旧缓存。
+- 实施改动：新增显式 `cn / cn+en / en` 三种源模式。`cn+en` 以中文为主、英语为参考，缺失英语逐行回退中文；`en` 以英语为主并用中文回查，要求英语 100% 可用。标准 workpack、AI prompt、严格审校指纹、翻译缓存、workspace runner、大文本分包、API 唯一文本签名、checkpoint 和深校请求统一携带 `translation_source/source_mode/reference_en/reference_en_status`。
+- 验收证据：测试先确认标准 prepare 不接受 `source_mode`、RowState 无参考字段、AI prompt 无双源规则，以及大文本未按英语参考区分唯一请求等预期失败；实现后相关模块回归通过。`python -m unittest discover -s tests` 共 239 项通过；`python scripts\run_quality_harness.py fixtures\quality_regression.json` 共 67 个 fixture 通过；标准小表与大文本等价端到端测试均覆盖英语完整、部分缺失、英语主源拒绝、缓存隔离、英语参考内容变化失效、英语参考漂移和 API 请求签名；CLI help 与语法编译检查通过。
+- 生效范围：非英语标准全量翻译、已有译文 AI 审校、workspace runner 和大文本多语言 V2；默认 `cn` 行为保持不变。
+- 回滚边界：不传 `--source-mode` 即回到中文单源；不得改成发现英语列后自动切换，也不得允许 `en` 模式在英语不完整时静默回退。
+- 剩余风险：机器只能判断英语非空且无中文种子，不能证明英语语义已经人工验收；选择 `en` 前仍需项目负责人确认英语质量。中英实质冲突仍需模型结合 brief、术语表和上下文裁决。
+- 必读文档：`docs/BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md`、`docs/workflow-execution-thread-handoff.md`、`docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`
