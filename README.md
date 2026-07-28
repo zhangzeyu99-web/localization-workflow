@@ -127,14 +127,14 @@ localization-workflow-project/
 - [项目资料 JSON 模板](templates/project_profile_template.json)
 - [项目资料 YAML 模板](templates/project_profile_template.yaml)
 - [翻译提示词模板](templates/translation_prompt_template.txt)
-- [技能名与地名翻译规范](docs/UI_NAME_TRANSLATION_STANDARD.md)
+- [技能名、地名与建筑名翻译规范](docs/UI_NAME_TRANSLATION_STANDARD.md)
 - [中英双源翻译与校对](docs/BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md)
 
 ## 当前规则权威
 
 最终交付 gate 收口到 `quality_harness`：术语默认强约束、UI 长度进入最终 workbook 扫描、连续编号词条优先按术语表或首个高质量译法统一，显式 soft 术语和无分类泛词不阻断。
 
-术语表 `分类/category/type` 明确为技能名或地名时，workpack、AI 审校和 workbook 扫描会启用专名策略。英语技能名优先 2 个可读词 / 24 字符，地名优先 2 个核心词 / 28 字符；这些是需要语义复核的软预算，不会机械截断或覆盖自然专名。
+术语表 `分类/category/type` 明确为技能名、地名或建筑名时，workpack、AI 审校和 workbook 扫描会启用专名策略。英语技能名优先 2 个可读词 / 24 字符，地名优先 2 个核心词 / 28 字符，建筑正式名优先 2 个核心词 / 18 字符；有独立地图标签时建筑短标签目标不超过 14 字符。这些是需要语义复核的软预算，不会机械截断或覆盖自然专名。
 
 非英语目标语言可通过 `--source-mode cn+en` 使用“中文主源 + 已校对英语参考”；只有英语完整可靠并明确作为主源时使用 `--source-mode en`。模式、英语参考和覆盖状态会写入 workpack/manifest，并参与 AI 审校输入漂移和缓存隔离。
 

@@ -28,6 +28,18 @@
 - 必读文档：<相关文档路径>
 ```
 
+## 2026-07-28 建筑名移动端地图 UI 精简策略
+
+- 状态：validated
+- 代码版本：工作区待提交
+- 触发问题：真实移动端 SLG 建筑名复核中，76 条英语正式名平均 15.33 字符，建筑标签与等级、阶级同时挤在主城地图上；普通术语流程没有建筑名类型，较长功能短语不会进入专名复核。
+- 实施改动：新增显式 `ui_building_name` 分类；英语正式名采用 2 个核心词 / 18 字符软预算，有独立地图标签时目标为 14 字符；等级和阶级优先拆成 UI 徽标。超预算生成 `building_name_compactness_watch`，交给 AI/人工按语义复核，不机械截词。
+- 验收证据：真实任务 76 条提案的正式名平均降至 12.14 字符、地图标签平均 9.55 字符；`python -m unittest discover -s tests` 共 256 项通过，`python scripts\run_quality_harness.py fixtures\quality_regression.json --json` 共 69 个 fixture 通过，含建筑名好坏例；语法编译与 `git diff --check` 通过。
+- 生效范围：术语表 `分类/category/type` 明确为建筑名或设施名的移动端地图、主城和建筑列表 UI；其他语言参考英语功能结构和简洁度自然重组。
+- 回滚边界：删除或不填写建筑名/设施名分类即可保持普通术语流程；不得根据中文长度自动猜建筑名，也不得把软预算升级为无例外 hard blocker。
+- 剩余风险：正式名与地图短标签仍依赖产品提供独立字段；没有独立字段时只能在语义完整、自然和紧凑之间人工取舍。
+- 必读文档：`docs/UI_NAME_TRANSLATION_STANDARD.md`、`docs/quality-harness.md`
+
 ## 2026-07-13 大文本多语言工作流 V2
 
 - 状态：`validated`

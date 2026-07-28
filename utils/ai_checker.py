@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from utils.term_checker import TERM_REVIEW_ISSUE_TYPES
+
 from utils.language_config import LANGUAGE_NAMES, language_name
 
 REVIEW_PROTOCOL_VERSION = 3
@@ -104,6 +106,20 @@ def _make_name_policy_section(batch_rows: list[dict], lang: str = "en") -> str:
             lines.append(
                 "Place-name rule: keep the geographic head and core image compact in natural target-language grammar; "
                 "do not impose an English surface-word count."
+            )
+    if "ui_building_name" in name_types:
+        if lang == "en":
+            lines.append(
+                "Building-name rule: treat the name as mobile map UI; prefer no more than 2 readable "
+                "content words and 18 characters for the official name. When the product supports a "
+                "separate map label, target 14 characters and move Lv./I-V tier information to UI badges. "
+                "Do not replace an established building term with an opaque abbreviation."
+            )
+        else:
+            lines.append(
+                "Building-name rule: keep the functional head and distinguishing resource or troop type "
+                "compact in natural target-language grammar; move level/tier information to UI badges when "
+                "the product supports it, and do not impose an English surface-word count."
             )
     return "\n".join(lines) + "\n\n"
 
@@ -315,6 +331,12 @@ def format_batch_prompt(
                     meta.append(
                         f"NAME:{name_type},content_words<={policy.get('preferred_content_words')},"
                         f"chars<={policy.get('max_characters')}"
+                    )
+                elif name_type == "ui_building_name" and "preferred_content_words" in policy:
+                    meta.append(
+                        f"NAME:{name_type},content_words<={policy.get('preferred_content_words')},"
+                        f"chars<={policy.get('max_characters')},"
+                        f"map_chars<={policy.get('map_label_max_characters')}"
                     )
                 else:
                     meta.append(f"NAME:{name_type}")
@@ -715,7 +737,6 @@ def reset_review_dir(review_dir: Path) -> None:
 
 def collect_recheck_rows(states, batches) -> list[dict]:
     """Collect rows from AI batches that still carry term issues for recheck."""
-    term_error_types = {'term_missing', 'term_partial_hit', 'term_capitalization'}
     recheck_rows = []
     ai_batch_ids = set()
     for batch in batches:
@@ -724,13 +745,16 @@ def collect_recheck_rows(states, batches) -> list[dict]:
     for state in states.values():
         if state.row_id not in ai_batch_ids:
             continue
-        has_term_issue = any(getattr(issue, 'check_type', '') in term_error_types for issue in state.issues)
+        has_term_issue = any(
+            getattr(issue, 'check_type', '') in TERM_REVIEW_ISSUE_TYPES
+            for issue in state.issues
+        )
         if not has_term_issue:
             continue
         issue_desc = '; '.join(sorted(set(
             getattr(issue, 'check_type', '')
             for issue in state.issues
-            if getattr(issue, 'check_type', '') in term_error_types
+            if getattr(issue, 'check_type', '') in TERM_REVIEW_ISSUE_TYPES
         )))
         recheck_rows.append(
             {

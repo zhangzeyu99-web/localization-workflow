@@ -397,6 +397,20 @@
       "expected_issues": []
     },
     {
+      "id": "bad-building-name-too-long",
+      "source": "载具组件工厂",
+      "translation": "Support Aircraft Parts Factory",
+      "name_type": "ui_building_name",
+      "expected_issues": ["building_name_compactness_watch"]
+    },
+    {
+      "id": "good-building-name-compact",
+      "source": "载具中心",
+      "translation": "Vehicle Center",
+      "name_type": "ui_building_name",
+      "expected_issues": []
+    },
+    {
       "id": "bad-skill-name-collision-a",
       "source": "烈焰斩",
       "translation": "Flame Strike",

@@ -137,14 +137,16 @@
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
 - 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。
 - Title Case 只用于合理范围：专名、功能名、标题、商店项、术语表明确要求的名称。
-- 术语表 `分类/category/type` 明确为技能名时，按移动端 UI 专名处理：英语优先不超过 2 个可读词 / 24 字符；明确为地名、地点名、地图名、区域名或场景名时，英语优先不超过 2 个核心词 / 28 字符，冠词和介词不计核心词。详细规则见 `docs/UI_NAME_TRANSLATION_STANDARD.md`。
-- 技能名/地名压缩只由术语表显式分类触发，不根据中文长度猜测；`技能描述`、`技能效果`、`地图说明`、`地点描述` 不得套用。
+- 术语表 `分类/category/type` 明确为技能名时，按移动端 UI 专名处理：英语优先不超过 2 个可读词 / 24 字符；明确为地名、地点名、地图名、区域名或场景名时，英语优先不超过 2 个核心词 / 28 字符，冠词和介词不计核心词；明确为建筑名或设施名时，英语正式名优先不超过 2 个核心词 / 18 字符，产品支持独立地图标签时目标不超过 14 字符。详细规则见 `docs/UI_NAME_TRANSLATION_STANDARD.md`。
+- 技能名/地名/建筑名压缩只由术语表显式分类触发，不根据中文长度猜测；`技能描述`、`技能效果`、`地图说明`、`地点描述`、`建筑说明`、`建筑效果` 不得套用。
+- 建筑名用于地图或主城 UI 时，优先保留功能中心词和关键区分词；`Lv.`、`I-V` 等等级/阶级信息在产品支持时拆成 UI 徽标。正式名与地图短标签分开管理，禁止用坏缩写或机械截词压长度。
 - 两词/字符预算是软约束：核心含义、自然度、既有专名和名称唯一性优先；禁止机械截断、坏缩写或把不同中文专名压成同一译名。
-- `skill_name_word_count_watch`、`location_name_compactness_watch`、`name_translation_collision_watch` 必须进入 AI/人工复核，但不作为无条件自动改写或 hard blocker。
+- `skill_name_word_count_watch`、`location_name_compactness_watch`、`building_name_compactness_watch`、`name_translation_collision_watch` 必须进入 AI/人工复核，但不作为无条件自动改写或 hard blocker。
 - 颜色标签必须翻译前后保持一致，`[color=#...]` 和 `<color=#...>` 的数量、开闭和色值都不能漂移。
 - 不允许非问句中把分隔符污染成 `?`，例如源文 `重装·普攻I` 不能译成 `Tank ? Basic Attack I`；真实问号键提示如 `Press ? for help` 不按分隔符污染处理。
 - 人名/角色名一致性是所有项目的硬门槛：术语表中 `分类` 含 `人名`、`角色`、`person`、`character`、`name` 的条目，正文命中中文名时必须使用术语表英文名，不能把 `Aria` 写成 `Arya`、`Leon` 写成 `Lyon` 这类近似名。
 - 术语表默认是强约束；只有 `分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 时才作为软提示，不阻断最终交付。
+- 引号或结构化名称段不能只因“包含主译”就判定通过；主译周围若残留额外修饰词，必须作为 `term_superstring_drift_candidate` 送入 AI 语境复核，不做机械删除。
 - 连续编号词条必须临时沉淀批内术语：同一中文词根反复出现为 `词根-数字` 时，目标译文前缀、大小写和连字符格式必须一致，例如 `消灭怪物-74` 到 `消灭怪物-238` 不能混用 `Kill Monsters` / `Destroy monsters` / `Kill monsters`。
 - 新增任何质量规则时，必须同步补 `fixtures/quality_regression.json`：坏例要被拦住，好例不能被误杀。
 

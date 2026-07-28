@@ -16,7 +16,7 @@
 
 1. 发现输入：识别语言表、目标语言列、术语表、项目目录结构。
 2. 预检：确认源列/目标列、语言代码、术语表列、可处理 sheet。
-3. 机审：检查变量、占位符、BBCode/HTML 标签、换行、中文残留、术语、句式一致性、UI 文本、短文本长度，以及术语表显式分类的技能名/地名紧凑度和撞名。
+3. 机审：检查变量、占位符、BBCode/HTML 标签、换行、中文残留、术语、句式一致性、UI 文本、短文本长度，以及术语表显式分类的技能名/地名/建筑名紧凑度和撞名。
 4. 自动修复：只修高置信问题，不破坏变量、标签、换行和结构。
 5. AI 或人工收口：只针对仍需判断的行做语义修订。
 6. 严格回填：按 ID、manifest 和指纹回填，禁止靠行顺序猜。
@@ -49,7 +49,7 @@ python scripts\run_translation_harness.py --input <language.xlsx> --term-base <t
 
 输出：
 
-- `translation_workpack.jsonl`：逐行翻译输入，包含 ID、源文、占位符、标签、换行形态、术语命中、文本类型、UI 长度信息、技能名/地名专名策略和项目风格提示。
+- `translation_workpack.jsonl`：逐行翻译输入，包含 ID、源文、占位符、标签、换行形态、术语命中、文本类型、UI 长度信息、技能名/地名/建筑名专名策略和项目风格提示。
 - 非英语任务可通过 `--source-mode cn+en|en` 增加 `translation_source/reference_en/reference_en_status`；默认 `cn` 行为不变。`cn+en` 逐行缺失回退中文，`en` 要求英语 100% 可用。
 - `translation_manifest.json`：输入指纹、ID 列表、语言、目标列状态和协议。
 - `translation_response.jsonl`：主 agent 写译文的响应文件。

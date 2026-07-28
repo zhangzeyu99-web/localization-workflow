@@ -61,11 +61,13 @@ QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见�
 
 术语默认是强约束。术语表里未显式标记为软参考的条目，正文命中中文术语时必须使用标准译法；例如 `战机 -> Warplane` 不能输出为 `Fighter`。`分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 的条目会降为软提示；当术语表没有分类列时，`获得`、`需要`、`成功` 这类明显泛词也会自动降为软提示，统计但不阻断。
 
+术语命中不能只做子串包含判断。中文术语处于引号或 `术语·标签`、`术语 - 标签` 等结构化名称段时，目标语名称段包含主译但还带有额外修饰词，会生成 `term_superstring_drift_candidate` 并送入 AI 语境复核。例如主译为 `Scorpion Lair` 时，`Venom Scorpion Lair - Difficulty` 需要复核，`Scorpion Lair - Difficulty` 正常通过。该检查不机械删词，必须由审校判断额外文字是旧译残留还是必要语义。
+
 如果自动发现或 `--term-base` 指定的术语表里存在 `分类` 含 `人名`、`角色`、`person`、`character`、`name` 的条目，harness 会把这些条目作为人名强约束。正文命中中文人名时，目标译文必须使用术语表里的英文名；例如 `艾莉娅 -> Aria` 不能输出为 `Arya`。
 
 短 UI 长度也在 workbook 扫描中执行。`ui_length_overflow` 是 hard gate，`short_text_length_watch` 是软提示。当前 hard 预算：英语/泰语 `min(32, max(10, source*2+14))`，越南语/印尼语 `min(34, max(12, source*2+15))`。支持的 QA 语言代码包括 `en`、`th`、`vi`、`idn`、`fr`、`de`、`tr`、`es`、`pt`、`ru`；全量翻译 harness v1 支持 `en`、`th`、`vi`、`idn`。
 
-术语表明确分类为技能名或地名时，workbook 扫描会统计 `skill_name_word_count_watch`、`location_name_compactness_watch` 和 `name_translation_collision_watch`。三者默认是软预警：用于把英语超两词技能名、超两个核心词地名和不同中文专名撞名送入 AI/人工复核，不直接机械修改，也不因合理的自然专名阻断交付。详细规则见 `UI_NAME_TRANSLATION_STANDARD.md`。
+术语表明确分类为技能名、地名或建筑名时，workbook 扫描会统计 `skill_name_word_count_watch`、`location_name_compactness_watch`、`building_name_compactness_watch` 和 `name_translation_collision_watch`。这些检查默认是软预警：用于把英语超两词技能名、超两个核心词地名、未适配移动端地图 UI 的建筑名及不同中文专名撞名送入 AI/人工复核，不直接机械修改，也不因合理的自然专名阻断交付。建筑正式名优先不超过 2 个核心词 / 18 字符；有独立地图标签时目标不超过 14 字符，等级和阶级优先拆成 UI 徽标。详细规则见 `UI_NAME_TRANSLATION_STANDARD.md`。
 
 输出 JSON：
 
@@ -113,6 +115,7 @@ Workbook 扫描默认把以下问题当阻断项：
 - `term_soft_missing`
 - `term_soft_partial_hit`
 - `term_soft_capitalization`
+- `term_superstring_drift_candidate`
 
 ## 维护规则
 
