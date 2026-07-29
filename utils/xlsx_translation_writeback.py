@@ -225,7 +225,7 @@ def write_translation_workbooks(
     invalid_style_refs = 0
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, source in inputs_by_name.items():
-        workbook = load_workbook(source, read_only=True, data_only=False)
+        workbook = load_workbook(source, read_only=False, data_only=False)
         changes_by_sheet: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
         try:
             columns_by_sheet: dict[str, tuple[int | None, int, dict[str, int]]] = {}
@@ -310,7 +310,7 @@ def verify_translation_cache(
                 if not path.exists():
                     issues.append({"type": "output_file_missing", "key": name, "lang": ""})
                     continue
-                workbooks[name] = load_workbook(path, read_only=True, data_only=False)
+                workbooks[name] = load_workbook(path, read_only=False, data_only=False)
             workbook = workbooks.get(name)
             if workbook is None:
                 continue

@@ -28,6 +28,18 @@
 - 必读文档：<相关文档路径>
 ```
 
+## 2026-07-29 飞书长表离线优先与深校断点加速
+
+- 状态：`validated`
+- 代码版本：工作区待提交，基于 `main`
+- 触发问题：真实飞书前端长表任务包含 3,372 行、7 个目标语言和 23,604 个深校单元。初译耗时 3,964.734 秒；旧深校批次同时承载多语言，响应易截断，且只按整批复用 checkpoint，调整批大小会重审。现场还发现 5 个重复审校进程共享同一 checkpoint，造成重复调用；飞书导出的 XLSX worksheet dimension 错标为 `A1`，`openpyxl` 只读模式误判缺少语言列。
+- 实施改动：飞书长表固定为“整表导出并记录 revision/hash -> 本地翻译/深校/QA/成品读回 -> 写前 revision 门禁 -> 指定范围分块回填 -> 在线逐格读回”；深校改为单语言小批、受控并发，翻译与深校新增独立 `batch-size/workers` 参数；review checkpoint 按 `review_key + lang` 复用，改变批大小只补缺失单元；增加单任务 `proofread.lock`，拒绝重复主进程；二次审计同样按 worker 并发；reviewer 返回 `KEEP` 但省略重复译文时使用当前译文补齐，`FIX` 为空仍阻断；XLSX 精确写回和读回改用普通加载，兼容 underreported worksheet dimension。
+- 验收证据：金手指真实任务最终深校建议 3,713 项、审计回退 65 项、保留修改 3,539 个单元；缓存 hard blocker 0，本地成品与缓存逐格一致；飞书 revision 438 -> 450，在线读回 3,372 行、30,348 个 A:I 单元格，不一致 0。地狱 SLG 真实任务 491 行、380 条唯一文本，43 行复用历史译文、222 行命中术语，深校保留 78 个单元修改，处理 17 个占用英语列的合并区域；飞书 revision 387 -> 410，在线读回 1,964 个 A/B/C/E 单元格，不一致 0。新增回归覆盖单语言批次、跨批大小单元续跑、重复进程拦截、并发审计、`KEEP` 空 suggested 补齐和 worksheet dimension 异常；全量 `python -m unittest discover -s tests -p 'test_*.py'` 共 262 项通过，语法编译、CLI help 和 `git diff --check` 通过。
+- 生效范围：飞书/在线表格中的大文本、多语言、全量逐行深校任务，以及所有使用大文本 V2 精确 XLSX 写回的任务。
+- 回滚边界：本地文件小任务可继续直接使用原入口；关闭深校时不启动 proofread 阶段。不得回滚为边翻译边写飞书、跳过 revision 门禁、多个进程共享同一任务目录，或仅检查在线单元格非空。
+- 剩余风险：API 总耗时仍受模型延迟和供应端限流影响；默认 `30 × 8 workers` 是稳定起点，不保证所有供应端都适用。在线表在最终回填期间仍可能被他人修改，因此每批必须记录 revision，发现非本任务漂移立即停止。
+- 必读文档：`docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`、`docs/workflow-execution-thread-handoff.md`
+
 ## 2026-07-28 建筑名移动端地图 UI 精简策略
 
 - 状态：validated

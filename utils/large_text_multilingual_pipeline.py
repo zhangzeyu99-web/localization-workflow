@@ -107,6 +107,8 @@ def run_pipeline(
     delivery_dir: Path | None = None,
     batch_size: int = 60,
     workers: int = 4,
+    proofread_batch_size: int | None = None,
+    proofread_workers: int | None = None,
     source_mode: str = "cn",
 ) -> PipelineResult:
     started = time.perf_counter()
@@ -170,7 +172,8 @@ def run_pipeline(
             initial_cache=translation.cache_jsonl,
             reviewer=effective_reviewer,  # type: ignore[arg-type]
             auditor=effective_auditor,  # type: ignore[arg-type]
-            batch_size=batch_size,
+            batch_size=proofread_batch_size or batch_size,
+            workers=proofread_workers or workers,
         )
         final_cache = proof_summary.final_cache
         final_lint_path = work_dir / "final_cache_lint.json"

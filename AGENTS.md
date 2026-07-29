@@ -14,8 +14,12 @@
 - 大文本、多 workbook 或 5 个以上目标语言优先使用 `scripts/run_large_text_multilingual_runner.py run`，详细契约见 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
 - 先按历史交付和精确术语复用，再对唯一文本调用中转 API；禁止把 API 返回直接写进 workbook。
 - API 批次必须落 checkpoint 并支持续跑；manifest 和日志不得保存 API key。
+- 深校默认按单一目标语言分批，翻译与深校分别使用 `--batch-size/--workers` 和 `--proofread-batch-size/--proofread-workers`；深校 checkpoint 按 `review_key + lang` 复用，改变批大小不得重审已完成单元。
+- reviewer 返回 `KEEP` 但省略 `suggested` 时，使用当前译文补齐审校记录；`FIX` 的 `suggested` 为空仍是 hard failure，不得当作通过。
+- 同一任务目录同时只允许一个深校主进程；命中 `proofread.lock` 时必须停止重复启动，不得让多个进程共享 checkpoint。
 - 深校建议必须经过主控二次审计，最终缓存 `cache-lint` hard blocker 为 0 后才允许精确写回。
 - 写回必须核对源文件、sheet、行号和源文，并在交付后普通打开、校验样式索引、执行 `readback-gate`。
+- 飞书长表任务必须先整表导出到本地任务目录，记录在线 revision 和源文件哈希后再翻译/深校；本地 hard blocker 为 0 后核对 revision，最后分块回填并在线读回，不得边翻译边写飞书。
 
 ## 语言
 

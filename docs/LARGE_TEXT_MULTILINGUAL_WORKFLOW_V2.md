@@ -15,6 +15,10 @@ python scripts\run_large_text_multilingual_runner.py run `
   --target-langs "EN,IDN,DE,FR,ES,PT,RU,IT,TR,TH" `
   --task-dir "<任务目录>" `
   --relay-config "<relay-api-config.json>" `
+  --batch-size 60 `
+  --workers 4 `
+  --proofread-batch-size 30 `
+  --proofread-workers 8 `
   --proofread-mode full
 ```
 
@@ -33,7 +37,8 @@ python scripts\run_large_text_multilingual_runner.py prepare-pack `
 
 ```mermaid
 flowchart LR
-  A[只读抽取源表] --> B[历史交付与精确术语复用]
+  Z[飞书长表整表导出、revision 与哈希留档] --> A[只读抽取本地源表]
+  A --> B[历史交付与精确术语复用]
   B --> C[唯一文本去重分包]
   C --> D[API 并发翻译与批次断点]
   D --> E[缓存级确定性 QA]
@@ -45,16 +50,29 @@ flowchart LR
   I --> J[精确 XLSX 目标单元格写回]
   J --> K[普通打开、样式索引和交付读回]
   K --> L[QA 摘要与复盘指标]
+  L --> M[核对 revision、分块回填飞书并在线读回]
 ```
 
 ## 性能策略
 
 - 分包只顺序读取一次 workbook；源行和唯一文本分开记录。
 - API 只处理历史交付、精确术语未覆盖的唯一内容。
-- 批次按请求键落盘；重跑复用成功 checkpoint，不重复调用模型。
-- 翻译和深校批次允许并发；XLSX 只在最终缓存 hard blocker 为 0 后写一次。
+- 翻译批次与深校批次独立配置。默认初译 `60 × 4 workers`，深校 `30 × 8 workers`；根据模型限流调整，不用放大多语言响应换取表面上的少批次。
+- 深校按单一目标语言分批，避免一个响应同时承载多语言结果而截断；review checkpoint 按 `review_key + lang` 复用，改变批大小后只补缺失单元。
+- reviewer 对 `KEEP` 省略重复译文时，以当前译文补齐 `suggested`；`FIX` 缺少新译文仍立即失败，不能降低审校覆盖门禁。
+- 同一任务目录只允许一个深校主进程；`proofread.lock` 拒绝重复进程，防止共享 checkpoint 时重复调用。
+- 翻译、深校建议和二次审计允许受控并发；XLSX 只在最终缓存 hard blocker 为 0 后写一次。
 - 深校建议不能直接修改 workbook。subagent 或 API 只输出建议，主控审计后才进入最终缓存。
 - 过程 JSONL、checkpoint、manifest、日志和复盘指标都留在 `_work`；交付目录只包含成品 workbook 和 `QA摘要.xlsx`。
+
+## 飞书长表离线优先
+
+1. 解析 Wiki 到真实 sheet token，读取当前 revision。
+2. 整个 workbook 导出到 `<task_dir>\_source\`，文件名或审计 JSON 记录 revision、下载时间和 SHA256。
+3. 后续抽取、翻译、深校、缓存 QA、精确 XLSX 写回和本地读回都只基于该归档副本；处理中不写飞书。
+4. 本地 `cache-lint`、成品逐格读回和交付目录检查全部通过后，再读取在线 revision；与基线不一致时停止并重新比对，不盲目覆盖。
+5. 只写用户指定 sheet、行列范围，分块记录每次写入后的 revision；完成后在线读取源列和目标列，与本地最终缓存逐格比较。
+6. “本地成品完成”和“飞书回填读回完成”是两个独立验收点，任一失败都不得声明完整交付。
 
 ## 验收门禁
 
