@@ -329,8 +329,17 @@ def run_deep_proofread(
             job: tuple[list[dict[str, object]], str, Path],
         ) -> list[dict[str, Any]]:
             batch, lang, checkpoint = job
-            batch_suggestions = reviewer.review_batch(batch, [lang])
-            validated_batch = _validate_suggestions(batch, batch_suggestions, [lang])
+            validation_error: ValueError | None = None
+            for _ in range(3):
+                batch_suggestions = reviewer.review_batch(batch, [lang])
+                try:
+                    validated_batch = _validate_suggestions(batch, batch_suggestions, [lang])
+                    break
+                except ValueError as exc:
+                    validation_error = exc
+            else:
+                assert validation_error is not None
+                raise validation_error
             _write_jsonl(checkpoint, validated_batch)
             return validated_batch
 
@@ -390,8 +399,17 @@ def run_deep_proofread(
             job: tuple[list[dict[str, Any]], Path],
         ) -> list[dict[str, object]]:
             batch, checkpoint = job
-            batch_decisions = auditor.audit_batch(batch)
-            _validate_audit(batch, batch_decisions)
+            validation_error: ValueError | None = None
+            for _ in range(3):
+                batch_decisions = auditor.audit_batch(batch)
+                try:
+                    _validate_audit(batch, batch_decisions)
+                    break
+                except ValueError as exc:
+                    validation_error = exc
+            else:
+                assert validation_error is not None
+                raise validation_error
             _write_jsonl(checkpoint, batch_decisions)
             return batch_decisions
 

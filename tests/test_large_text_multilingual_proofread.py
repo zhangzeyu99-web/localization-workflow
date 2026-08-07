@@ -80,6 +80,48 @@ class FailingAuditor:
 
 
 class LargeTextMultilingualProofreadTests(unittest.TestCase):
+    def test_review_retries_transient_coverage_mismatch(self) -> None:
+        class FlakyReviewer(Reviewer):
+            checkpoint_identity = "flaky-reviewer-v1"
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def review_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
+                self.calls += 1
+                suggestions = super().review_batch(rows, target_langs)
+                if self.calls == 1:
+                    suggestions[0]["review_key"] += "bad"
+                return suggestions
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = root / "items.jsonl"
+            initial = root / "initial.jsonl"
+            rows = [{"key": "1", "cn": "Attack", "context": "ui", "translations": {"EN": "Attack"}}]
+            write_jsonl(items, rows)
+            write_jsonl(initial, rows)
+            manifest = build_manifest(
+                work_dir=root / "work",
+                items_jsonl=items,
+                source_rows_jsonl=None,
+                target_langs=["EN"],
+                workbook_count=1,
+                relay_config=None,
+                proofread_mode="full",
+            )
+            reviewer = FlakyReviewer()
+
+            summary = run_deep_proofread(
+                Path(manifest["manifest_path"]),
+                initial_cache=initial,
+                reviewer=reviewer,
+                auditor=Auditor(),
+            )
+
+            self.assertEqual(reviewer.calls, 2)
+            self.assertEqual(summary.changed_cells, 1)
+
     def test_blank_keep_suggestion_reuses_current_translation(self) -> None:
         class BlankKeepReviewer:
             checkpoint_identity = "blank-keep-reviewer-v1"

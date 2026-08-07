@@ -23,8 +23,9 @@ from openpyxl import load_workbook
 
 TOKEN_RE = re.compile(r"\\n|\{[^{}\s]+\}|%[sdif]|##\d+|</?[A-Za-z][^>\s]*[^>]*>|\[[A-Za-z0-9_:/#=.,-]+\]")
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
+MOJIBAKE_RE = re.compile(r"\ufffd|\x00|\?{3}")
 NUMBER_RE = re.compile(
-    r"\d+(?:[,.]\d+)?(?:\s*(?:千|万|萬|亿|億|(?i:thousand|million|billion|ribu|rb|juta|miliar|millones|millón|milhao|milhão|milhões|mil)\b)|[KkMBWw](?![A-Za-z]))%?"
+    r"\d+(?:[,.]\d+)?(?:\s*(?:千|万|萬|亿|億|(?i:thousand|million|billion|ribu|rb|juta|miliar|millones|millón|milhao|milhão|milhões|mil|тыс|тысяч|тысяча|тысячи|млн|миллион|миллиона|миллионов|млрд|миллиард|миллиарда|миллиардов)\b\.?|[KkMBWw](?![A-Za-z])))%?"
     r"|\d{1,3}(?:[,\s.]\d{3})+(?:[,.]\d+)?%?"
     r"|\d+(?:[,.]\d+)?%?"
 )
@@ -33,6 +34,10 @@ WORD_MULTIPLIERS = {
     "ribu": Decimal("1000"),
     "rb": Decimal("1000"),
     "mil": Decimal("1000"),
+    "тыс": Decimal("1000"),
+    "тысяч": Decimal("1000"),
+    "тысяча": Decimal("1000"),
+    "тысячи": Decimal("1000"),
     "million": Decimal("1000000"),
     "juta": Decimal("1000000"),
     "millones": Decimal("1000000"),
@@ -40,8 +45,16 @@ WORD_MULTIPLIERS = {
     "milhao": Decimal("1000000"),
     "milhão": Decimal("1000000"),
     "milhões": Decimal("1000000"),
+    "млн": Decimal("1000000"),
+    "миллион": Decimal("1000000"),
+    "миллиона": Decimal("1000000"),
+    "миллионов": Decimal("1000000"),
     "billion": Decimal("1000000000"),
     "miliar": Decimal("1000000000"),
+    "млрд": Decimal("1000000000"),
+    "миллиард": Decimal("1000000000"),
+    "миллиарда": Decimal("1000000000"),
+    "миллиардов": Decimal("1000000000"),
 }
 NUMBER_WORDS = {
     "zero": Decimal("0"),
@@ -243,6 +256,13 @@ def parse_number_token(token: str) -> Decimal | None:
 def numeric_values(text: str) -> set[Decimal]:
     text = text or ""
     text = re.sub(r"(\d(?:[\d,.]*))(?:<[^>]+>)+\s*([千万萬亿億KkMBWw])", r"\1\2", text)
+    word_suffixes = "|".join(re.escape(word) for word in sorted(WORD_MULTIPLIERS, key=len, reverse=True))
+    text = re.sub(
+        rf"(\d(?:[\d,.]*))(?:<[^>]+>)+\s*({word_suffixes})\b\.?",
+        r"\1 \2",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"(?<=\d)\uff0c(?=\d{3}(?!\d))", ",", text)
     text = text.replace("\uff0c", " ")
     values = set()
@@ -272,6 +292,12 @@ def source_numeric_values(row: dict[str, Any]) -> set[Decimal]:
                 and not re.search(rf"(?<!\d){int(value)}\s*%", src)
             )
         }
+    reference_en = str(row.get("reference_en") or "")
+    for left, right in re.findall(r"(?<!\d)(\d+)\s*[-–—]\s*(\d+)(?!\d)", reference_en):
+        joined = Decimal(left + right)
+        if joined in values:
+            values.discard(joined)
+            values.update((Decimal(left), Decimal(right)))
     return values
 
 
@@ -400,11 +426,17 @@ def cache_lint(cache_jsonl: Path, *, target_langs: list[str]) -> dict[str, Any]:
         tokens = protected_tokens(row)
         for lang in target_langs:
             target = row_translation(row, lang).strip()
+            if row.get("opaque_payload_preserved") is True:
+                if target != source_text(row).strip():
+                    add_issue(issues, "opaque_payload_changed", key, lang, "opaque source payload must be preserved exactly")
+                continue
             if not target:
                 add_issue(issues, "empty_translation", key, lang, "target translation is empty")
                 continue
             if lang.upper() not in CJK_ALLOWED_LANGS and CJK_RE.search(target):
                 add_issue(issues, "cjk_residue", key, lang, "target translation still contains Chinese/Japanese ideographs")
+            if MOJIBAKE_RE.search(target):
+                add_issue(issues, "mojibake", key, lang, "target translation contains replacement, null, or repeated question-mark characters")
             for token in tokens:
                 if token and token not in target:
                     add_issue(issues, "protected_token_missing", key, lang, f"missing protected token {token}")

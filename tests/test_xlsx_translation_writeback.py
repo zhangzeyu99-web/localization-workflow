@@ -203,6 +203,47 @@ class XlsxTranslationWritebackTests(unittest.TestCase):
                     output_dir=root / "delivery",
                 )
 
+    def test_writeback_preserves_numeric_zero_source_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append(["ID", "CN", "EN"])
+            sheet.append([1, 0, None])
+            workbook.save(source)
+            workbook.close()
+            cache = root / "cache.jsonl"
+            write_jsonl(
+                cache,
+                [
+                    {
+                        "key": "source.xlsx::Sheet::1::2",
+                        "id": "1",
+                        "source_file": "source.xlsx",
+                        "sheet": "Sheet",
+                        "row": 2,
+                        "cn": "0",
+                        "translations": {"EN": "0"},
+                    }
+                ],
+            )
+
+            write_translation_workbooks(
+                inputs=[source],
+                cache_jsonl=cache,
+                target_langs=["EN"],
+                output_dir=root / "delivery",
+            )
+
+            saved = load_workbook(root / "delivery" / "source.xlsx", read_only=True)
+            try:
+                self.assertEqual(saved["Sheet"]["C2"].value, "0")
+            finally:
+                saved.close()
+            verification = verify_translation_cache(root / "delivery", cache, ["EN"])
+            self.assertEqual(verification["hard_blockers"], 0)
+
     def test_writeback_rejects_repeated_source_row_with_wrong_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
