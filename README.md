@@ -129,6 +129,7 @@ localization-workflow-project/
 - [翻译提示词模板](templates/translation_prompt_template.txt)
 - [技能名、地名与建筑名翻译规范](docs/UI_NAME_TRANSLATION_STANDARD.md)
 - [中英双源翻译与校对](docs/BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md)
+- [游戏台词翻译与校对要求](docs/DIALOGUE_TRANSLATION_REQUIREMENTS.md)
 
 ## 当前规则权威
 
