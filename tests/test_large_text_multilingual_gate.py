@@ -23,6 +23,35 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 class LargeTextMultilingualGateTests(unittest.TestCase):
+    def test_cache_lint_recomputes_term_hits_and_blocks_missing_strict_term(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            term_base = root / "terms.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append(["ID", "CN", "EN", "分类"])
+            sheet.append([2179, "双生魔偶", "Clockwork Twins", "主角"])
+            workbook.save(term_base)
+            workbook.close()
+
+            cache = root / "cache.jsonl"
+            write_jsonl(
+                cache,
+                [
+                    {
+                        "key": "row-25",
+                        "cn": "战斗开始时，为双生魔偶恢复生命",
+                        "term_hits": [],
+                        "translations": {"EN": "At the start of battle, restores HP to Twin Doll."},
+                    }
+                ],
+            )
+
+            result = cache_lint(cache, target_langs=["EN"], term_base=term_base)
+
+            self.assertEqual(result["hard_by_type"], {"term_hit_snapshot_mismatch": 1, "term_missing": 1})
+            self.assertEqual(result["hard_blockers"], 2)
+
     def test_preflight_flags_large_pack_and_long_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             items = Path(tmp) / "items.jsonl"
@@ -80,6 +109,31 @@ class LargeTextMultilingualGateTests(unittest.TestCase):
             self.assertEqual(result["hard_blockers"], 4)
             issue_types = {issue["type"] for issue in result["issues"]}
             self.assertLessEqual({"cjk_residue", "protected_token_missing", "number_missing", "empty_translation"}, issue_types)
+
+    def test_cache_lint_blocks_missing_and_extra_angle_at_placeholders(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cache.jsonl"
+            write_jsonl(
+                cache,
+                [
+                    {
+                        "key": "missing",
+                        "cn": "造成<@1>%攻击力伤害",
+                        "translations": {"EN": "Deals ATK DMG"},
+                    },
+                    {
+                        "key": "extra",
+                        "cn": "造成<@1>%攻击力伤害",
+                        "translations": {"EN": "Deals <@1>% ATK DMG <@2>"},
+                    },
+                ],
+            )
+
+            result = cache_lint(cache, target_langs=["EN"])
+
+            self.assertEqual(result["hard_blockers"], 2, result["issues"])
+            issue_types = {issue["type"] for issue in result["issues"]}
+            self.assertEqual(issue_types, {"protected_token_missing", "protected_token_extra"})
 
     def test_cache_lint_accepts_equivalent_wan_number(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -322,6 +376,24 @@ class LargeTextMultilingualGateTests(unittest.TestCase):
             workbook.save(qa_path)
 
             result = readback_gate(delivery, target_langs=["EN", "IDN"])
+
+            self.assertEqual(result["hard_blockers"], 0, result["issues"])
+            self.assertTrue(result["readback_verified"])
+
+    def test_readback_gate_skips_trailing_styled_rows_without_id_or_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            delivery = Path(tmp) / "delivery"
+            delivery.mkdir()
+            final_path = delivery / "final.xlsx"
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append(["ID", "CN", "EN", "FR"])
+            sheet.append([1, "领取", "Claim", "Récupérer"])
+            sheet["C100"].style = "Headline 1"
+            sheet["D100"].style = "Headline 1"
+            workbook.save(final_path)
+
+            result = readback_gate(delivery, target_langs=["EN", "FR"])
 
             self.assertEqual(result["hard_blockers"], 0, result["issues"])
             self.assertTrue(result["readback_verified"])

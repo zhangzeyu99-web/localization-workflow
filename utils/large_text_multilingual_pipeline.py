@@ -153,7 +153,11 @@ def run_pipeline(
     initial_lint_path = work_dir / "cache_lint.json"
 
     def lint_initial() -> dict[str, Any]:
-        result = cache_lint(translation.cache_jsonl, target_langs=target_langs)
+        result = cache_lint(
+            translation.cache_jsonl,
+            target_langs=target_langs,
+            term_base=term_base,
+        )
         _write_json(initial_lint_path, result)
         if result["hard_blockers"]:
             raise ValueError(f"cache-lint failed with {result['hard_blockers']} hard blockers")
@@ -179,7 +183,11 @@ def run_pipeline(
         final_lint_path = work_dir / "final_cache_lint.json"
 
         def lint_final() -> dict[str, Any]:
-            result = cache_lint(final_cache, target_langs=target_langs)
+            result = cache_lint(
+                final_cache,
+                target_langs=target_langs,
+                term_base=term_base,
+            )
             _write_json(final_lint_path, result)
             if result["hard_blockers"]:
                 raise ValueError(
