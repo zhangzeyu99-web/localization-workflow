@@ -28,6 +28,18 @@
 - 必读文档：<相关文档路径>
 ```
 
+## 2026-08-24 深校抽样与失败恢复收口
+
+- 状态：`validated`
+- 代码版本：本次提交，分支 `agent/harden-large-text-terminology-gates`
+- 触发问题：真实金手指英语任务共 217 行，API 最后一个长 JSON 分包截断后通过缓存补齐完成翻译、6 包全量深校、final cache-lint 和成品读回，但 manifest 仍停留在 `api_translate_failed`；同时代码中的 `sampled` 策略虽然声明“高风险全量 + 低风险 10%”，执行函数实际仍审全部唯一文本。
+- 实施改动：`sampled` 按长文本、受保护 token 密集、术语密集和显式 `risk_flags` 判定高风险，并用稳定 review signature 抽取 10% 低风险唯一文本；风险标签进入签名和审校包。runner 新增 `reconcile`，只有 final cache、final cache-lint、深校摘要、apply-dry-run、非空交付目录和 readback 全部验证通过时才允许把恢复任务收口为 `complete`，并保存原失败状态、原因、证据路径和 `recovery_retro.json`。
+- 验收证据：新测试先复现 `sampled` 审查 21/21 条、显式风险标签丢失和恢复接口不存在，再修复通过；源仓库全量 `py -3 -X utf8 -m pytest -q` 为 277 passed、64 subtests passed。真实金手指任务恢复前为 `api_translate_failed`，执行 `reconcile` 后状态 `complete`、未完成阶段 0、恢复证据 6 项、recovery retro 状态 `complete`；原交付仍保持 217 条、final cache-lint hard blocker 0、readback hard blocker 0。
+- 生效范围：所有使用大文本 V2 `sampled/full` 深校的本地 workbook/DOCX 任务，以及 API 异常后依靠已验证缓存继续完成的恢复任务。
+- 回滚边界：使用 `full` 可继续全量审校；不调用 `reconcile` 时保持原失败状态。不得手工把 manifest 改为完成，也不得在任一门禁缺失或失败时强制收口。
+- 剩余风险：稳定 10% 抽样用于低风险唯一文本，不代表全量语言质量证明；用户要求逐句、逐行、完整或深度全量校对时必须继续使用 `full`。`reconcile` 只验证已有证据，不重新执行语义审校。
+- 必读文档：`docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`、`docs/workflow-execution-thread-handoff.md`
+
 ## 2026-08-11 在线术语快照与缓存命中重算门禁
 
 - 状态：`validated`

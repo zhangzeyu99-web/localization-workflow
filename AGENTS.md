@@ -18,6 +18,8 @@
 - reviewer 返回 `KEEP` 但省略 `suggested` 时，使用当前译文补齐审校记录；`FIX` 的 `suggested` 为空仍是 hard failure，不得当作通过。
 - 同一任务目录同时只允许一个深校主进程；命中 `proofread.lock` 时必须停止重复启动，不得让多个进程共享 checkpoint。
 - 深校建议必须经过主控二次审计，最终缓存 `cache-lint` hard blocker 为 0 后才允许精确写回。
+- `sampled` 深校只审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本；`full` 才是全部唯一文本，不得把两种模式混同。
+- API 阶段失败后若通过缓存补齐继续完成，必须运行 runner 的 `reconcile`，且只在 final cache-lint、深校摘要、apply-dry-run、交付目录和 readback 全部验证后把 manifest 收口为 `complete`。
 - 写回必须核对源文件、sheet、行号和源文，并在交付后普通打开、校验样式索引、执行 `readback-gate`。
 - 飞书长表任务必须先整表导出到本地任务目录，记录在线 revision 和源文件哈希后再翻译/深校；本地 hard blocker 为 0 后核对 revision，最后分块回填并在线读回，不得边翻译边写飞书。
 

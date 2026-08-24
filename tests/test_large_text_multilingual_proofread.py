@@ -80,6 +80,57 @@ class FailingAuditor:
 
 
 class LargeTextMultilingualProofreadTests(unittest.TestCase):
+    def test_sampled_mode_reviews_high_risk_rows_and_ten_percent_of_low_risk_rows(self) -> None:
+        class RecordingReviewer(Reviewer):
+            checkpoint_identity = "sampled-reviewer"
+
+            def __init__(self) -> None:
+                self.sources: list[str] = []
+
+            def review_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
+                self.sources.extend(str(row["cn"]) for row in rows)
+                return super().review_batch(rows, target_langs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = root / "items.jsonl"
+            initial = root / "initial.jsonl"
+            rows = [
+                {
+                    "key": str(index),
+                    "cn": "高风险" * 151 if index == 0 else f"低风险 {index}",
+                    "context": "ui",
+                    "risk_flags": ["qa_failed_once"] if index == 1 else [],
+                    "translations": {"EN": f"Text {index}"},
+                }
+                for index in range(21)
+            ]
+            write_jsonl(items, rows)
+            write_jsonl(initial, rows)
+            manifest = build_manifest(
+                work_dir=root / "work",
+                items_jsonl=items,
+                source_rows_jsonl=None,
+                target_langs=["EN"],
+                workbook_count=1,
+                relay_config=None,
+                proofread_mode="sampled",
+            )
+            reviewer = RecordingReviewer()
+
+            summary = run_deep_proofread(
+                Path(manifest["manifest_path"]),
+                initial_cache=initial,
+                reviewer=reviewer,
+                auditor=Auditor(),
+                batch_size=10,
+            )
+
+            self.assertEqual(summary.reviewed_rows, 4)
+            self.assertEqual(len(reviewer.sources), 4)
+            self.assertIn("高风险" * 151, reviewer.sources)
+            self.assertIn("低风险 1", reviewer.sources)
+
     def test_review_retries_transient_coverage_mismatch(self) -> None:
         class FlakyReviewer(Reviewer):
             checkpoint_identity = "flaky-reviewer-v1"

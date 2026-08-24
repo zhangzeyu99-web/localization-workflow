@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-24 - 深校抽样与失败恢复收口
+
+- `sampled` 深校现在审查全部高风险唯一文本，并稳定抽取 10% 低风险唯一文本；`full` 保持全量审校。
+- 风险标签进入审校签名和 workpack，避免显式高风险短文本在去重或抽样时丢失。
+- runner 新增 `reconcile`，仅凭通过的 final cache-lint、深校摘要、apply-dry-run、交付目录和 readback 证据收口恢复任务，并生成 `recovery_retro.json`。
+- 回归：277 项 pytest、64 个 subtests 通过；真实 217 行英语深校任务从 `api_translate_failed` 恢复为 `complete`，无未完成阶段。
+
 ## 2026-07-28 - 建筑名移动端地图 UI 精简策略
 
 - 术语表明确分类为建筑名或设施名时，翻译 workpack、AI 审校、机审和最终 workbook 扫描统一启用建筑名策略。

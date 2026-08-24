@@ -63,7 +63,26 @@ flowchart LR
 - 同一任务目录只允许一个深校主进程；`proofread.lock` 拒绝重复进程，防止共享 checkpoint 时重复调用。
 - 翻译、深校建议和二次审计允许受控并发；XLSX 只在最终缓存 hard blocker 为 0 后写一次。
 - 深校建议不能直接修改 workbook。subagent 或 API 只输出建议，主控审计后才进入最终缓存。
+- `sampled` 模式审全部高风险唯一文本，并按稳定签名抽取 10% 低风险唯一文本；`full` 模式审全部唯一文本。
 - 过程 JSONL、checkpoint、manifest、日志和复盘指标都留在 `_work`；交付目录只包含成品 workbook 和 `QA摘要.xlsx`。
+
+## 失败恢复收口
+
+API 返回截断等异常如果已通过缓存补齐继续完成，不得让 manifest 永久停留在 `api_translate_failed`。只有 final cache-lint、深校摘要、apply-dry-run、交付目录和 readback 全部存在且通过时，才运行：
+
+```powershell
+python scripts\run_large_text_multilingual_runner.py reconcile `
+  --manifest "<task>\_work\large_text_multilingual\large_text_multilingual_manifest.json" `
+  --final-cache "<task>\_work\large_text_multilingual\final_cache.jsonl" `
+  --final-cache-lint "<task>\_work\large_text_multilingual\final_cache_lint.json" `
+  --proofread-summary "<task>\_work\large_text_multilingual\proofread_summary.json" `
+  --apply-dry-run "<task>\_work\large_text_multilingual\apply_dry_run.json" `
+  --readback-gate "<task>\_work\large_text_multilingual\final_readback_gate.json" `
+  --delivery-dir "<task>\交付目录" `
+  --reason "provider response truncated"
+```
+
+命令会保留原失败状态和原因，登记验证证据，生成 `recovery_retro.json`，再把关键阶段收口为 `done`。任一门禁未通过时拒绝收口。
 
 ## 飞书长表离线优先
 
@@ -81,6 +100,7 @@ flowchart LR
 3. 精确写回：文件、sheet、行号和源文四重匹配；源文漂移立即停止。
 4. `readback-gate`：所有目标列非空，交付目录无过程文件；`QA摘要.xlsx` 不作为译文表重复扫描。
 5. manifest：每阶段记录 `running/done/failed`、耗时和产物路径；API key 不得进入任何产物。
+6. 恢复任务：不得手工改 manifest；只能凭已验证产物运行 `reconcile`。
 
 ## Subagent 边界
 

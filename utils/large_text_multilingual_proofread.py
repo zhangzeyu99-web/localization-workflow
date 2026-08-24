@@ -61,6 +61,7 @@ def _review_signature(row: dict[str, Any], target_langs: list[str]) -> str:
             "reference_en": row.get("reference_en", ""),
             "reference_en_status": row.get("reference_en_status", "not_requested"),
             "context": row.get("context", ""),
+            "risk_flags": row.get("risk_flags") or [],
             "tokens": row.get("tokens") or [],
             "term_hits": row.get("term_hits") or [],
             "translations": {
@@ -83,12 +84,35 @@ def _review_row(row: dict[str, Any], review_key: str, target_langs: list[str]) -
         "reference_en": str(row.get("reference_en") or ""),
         "reference_en_status": str(row.get("reference_en_status") or "not_requested"),
         "context": str(row.get("context") or ""),
+        "risk_flags": row.get("risk_flags") or [],
         "protected_tokens": row.get("tokens") or [],
         "term_hits": row.get("term_hits") or [],
         "translations": {
             lang: str((row.get("translations") or {}).get(lang) or "") for lang in target_langs
         },
     }
+
+
+def _is_high_risk_review_row(row: dict[str, object]) -> bool:
+    source = str(row.get("translation_source") or row.get("cn") or "")
+    explicit = row.get("risk_flags") or []
+    if isinstance(explicit, str):
+        explicit = [explicit]
+    return bool(
+        len(source) > 300
+        or len(row.get("protected_tokens") or []) >= 3
+        or len(row.get("term_hits") or []) >= 3
+        or explicit
+    )
+
+
+def _select_sampled_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    high_risk = [row for row in rows if _is_high_risk_review_row(row)]
+    low_risk = [row for row in rows if not _is_high_risk_review_row(row)]
+    sample_count = max(1, (len(low_risk) + 9) // 10) if low_risk else 0
+    sampled_low = sorted(low_risk, key=lambda row: str(row["review_key"]))[:sample_count]
+    selected = {str(row["review_key"]) for row in [*high_risk, *sampled_low]}
+    return [row for row in rows if str(row["review_key"]) in selected]
 
 
 def _batch_checkpoint(path: Path, version: str, rows: list[dict[str, Any]]) -> Path:
@@ -293,6 +317,8 @@ def run_deep_proofread(
         _review_row(row, signature, target_langs)
         for signature, row in representatives.items()
     ]
+    if str(manifest.get("inputs", {}).get("proofread_mode") or "full") == "sampled":
+        review_rows = _select_sampled_rows(review_rows)
     proof_dir = Path(manifest["work_dir"]) / "deep_proofread"
     proof_dir.mkdir(parents=True, exist_ok=True)
     proofread_lock = _acquire_proofread_lock(proof_dir)
@@ -433,7 +459,9 @@ def run_deep_proofread(
             translations = dict(row.get("translations") or {})
             row_changed = False
             for lang in target_langs:
-                suggestion = suggestions_by_cell[(signature, lang)]
+                suggestion = suggestions_by_cell.get((signature, lang))
+                if suggestion is None:
+                    continue
                 if suggestion["status"] != "FIX":
                     continue
                 decision = audit[(signature, lang)]
@@ -464,7 +492,7 @@ def run_deep_proofread(
             suggestions_jsonl=suggestions_path,
             audit_jsonl=audit_path,
             summary_json=summary_path,
-            reviewed_rows=len(rows),
+            reviewed_rows=len(review_rows),
             reviewed_cells=len(review_rows) * len(target_langs),
             suggested_changes=len(fixes),
             reverted_changes=sum(1 for row in audit.values() if row["decision"] == "REVERT"),
