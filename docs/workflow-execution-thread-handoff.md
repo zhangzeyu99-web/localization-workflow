@@ -236,10 +236,10 @@ python scripts\run_large_text_multilingual_runner.py prepare-pack `
 
 1. **只读分包**：顺序读取源 workbook，核对目标列为空，生成稳定 `file + sheet + ID + row` 键。
 2. **复用与去重**：先复用当前项目历史已验收交付和精确术语，再按“源文、语境、术语约束”去重；API 只处理剩余唯一文本。
-3. **API 初译**：只使用配置的 OpenAI-compatible 中转 API 或当前模型能力，不使用 Google/外部机翻；先小批 smoke，再按行数和字符预算并发。失败批次重试后自动拆分。
+3. **API 初译**：只使用配置的 OpenAI-compatible 中转 API 或当前模型能力，不使用 Google/外部机翻；先小批 smoke，再按行数和字符预算并发。JSON 或含 3 个以上技术标签的中文行由程序拆成纯文本槽，模型不接触结构，程序原位重建；失败批次重试后自动拆分。
 4. **断点续跑**：翻译 checkpoint 按模型、供应端、目标语言和 prompt 版本隔离；审校 checkpoint 按 reviewer/auditor 身份隔离，并按 `review_key + lang` 复用已完成单元。调整深校批大小后只补缺失项，不整包重译或重审。
-5. **缓存级 QA**：写 workbook 前必须执行 `cache-lint`，空译文、中文残留、未请求语言、占位符/标签/数字丢失和强术语遗漏的 hard blocker 必须为 0。
-6. **深校审计**：只有用户明确触发时执行。`sampled` 审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本，`full` 审全部唯一文本；API/subagent 只输出 `KEEP/FIX` 建议，不能直接写 workbook；主控二次审计后生成最终缓存，并再次执行 `cache-lint`。
+5. **缓存级 QA**：写 workbook 前先仅对含中文残留的失败单元格做确定性修复（该行命中术语、章节序号），再执行 `cache-lint`；空译文、中文残留、未请求语言、占位符/标签/数字丢失和强术语遗漏的 hard blocker 必须为 0。已通过单元格不得重译。
+6. **深校审计**：只有用户明确触发时执行。`sampled` 审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本，`full` 审全部唯一文本；API/subagent 只输出 `KEEP/FIX` 建议，不能直接写 workbook；结构化行只审纯文本槽，由主控按原结构回填；主控二次审计后生成最终缓存，并再次执行 `cache-lint`。
 7. **精确写回**：`apply-dry-run` 通过后，只修改目标单元格；写回必须同时核对文件、sheet、ID/key、行号和源文，保留原 worksheet 命名空间和样式。
 8. **交付读回**：普通模式打开成品、检查样式索引，再把每个目标单元格与最终缓存逐格比对；不能只检查“非空”。最后生成 retro 指标。
 

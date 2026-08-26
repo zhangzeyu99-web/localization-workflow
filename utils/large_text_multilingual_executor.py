@@ -13,6 +13,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from utils.large_text_multilingual_runner import load_manifest, save_manifest
+from utils.structured_text_template import (
+    ParsedTemplate,
+    TranslationSlot,
+    parse_template,
+    render_translations,
+    should_use_template,
+    translation_slots,
+)
 
 
 class TranslationClient(Protocol):
@@ -194,6 +202,8 @@ class OpenAICompatibleClient:
                 "Chinese is authoritative and English is a reviewed terminology/style reference. "
                 "For en, translation_source/reference_en is primary and Chinese is an omission "
                 "and gameplay-condition backcheck. Do not propagate conflicts or omissions. "
+                "Rows marked as structured text segments contain only readable text: return only "
+                "translated prose for them and never add markup, placeholders, or JSON syntax. "
                 "Return strict JSON: {\"rows\":[{\"request_key\":...,"
                 "\"translations\":{LANG:TEXT}}]}. Do not omit or add rows."
             ),
@@ -217,6 +227,8 @@ class OpenAICompatibleClient:
                 "and English is supporting evidence. For en, English is primary and Chinese is an "
                 "omission/gameplay-condition backcheck. Do not preserve an error merely because it "
                 "appears in the English reference. "
+                "For structured text segments, review only the readable text and never add markup, "
+                "placeholders, or JSON syntax to suggested. "
                 "Do not rewrite correct text. Return strict JSON with one item per row and language: "
                 "{\"rows\":[{\"review_key\":...,\"lang\":...,\"status\":\"KEEP|FIX\","
                 "\"suggested\":...,\"reason\":...}]}."
@@ -236,7 +248,8 @@ class OpenAICompatibleClient:
             (
                 "Audit localization change suggestions conservatively. Revert changes that narrow "
                 "meaning, force terminology into the wrong context, damage tokens/numbers, or are "
-                "not a clear improvement. Return strict JSON: {\"rows\":[{\"review_key\":...,"
+                "not a clear improvement. Structured text suggestions are prose-only; never add "
+                "markup, placeholders, or JSON syntax to final. Return strict JSON: {\"rows\":[{\"review_key\":...,"
                 "\"lang\":...,\"decision\":\"ACCEPT|REVERT|REVISE\",\"final\":...,"
                 "\"reason\":...}]}."
             ),
@@ -277,6 +290,30 @@ def _request_row(row: dict[str, Any], request_key: str) -> dict[str, object]:
         "context": str(row.get("context") or ""),
         "protected_tokens": row.get("tokens") or [],
         "term_hits": row.get("term_hits") or [],
+    }
+
+
+def _template_request_row(
+    row: dict[str, Any],
+    request_key: str,
+    slot: TranslationSlot,
+) -> dict[str, object]:
+    term_hits = [
+        hit
+        for hit in (row.get("term_hits") or [])
+        if isinstance(hit, dict)
+        and str(hit.get("source") or hit.get("CN") or hit.get("term") or "") in slot.source
+    ]
+    return {
+        "request_key": request_key,
+        "cn": slot.source,
+        "translation_source": slot.source,
+        "source_mode": "cn",
+        "reference_en": "",
+        "reference_en_status": "not_requested",
+        "context": f"{row.get('context') or ''}; structured text segment; {slot.context}",
+        "protected_tokens": [],
+        "term_hits": term_hits,
     }
 
 
@@ -424,11 +461,29 @@ def translate_manifest(
             else:
                 representatives.setdefault(signature, row)
 
-        request_rows = [
-            _request_row(row, signature)
-            for signature, row in representatives.items()
-            if signature not in seeded
-        ]
+        request_by_key: dict[str, dict[str, object]] = {}
+        template_specs: dict[str, tuple[ParsedTemplate, list[TranslationSlot]]] = {}
+        template_slot_keys: dict[tuple[str, str], str] = {}
+        for signature, row in representatives.items():
+            if signature in seeded:
+                continue
+            if should_use_template(row):
+                template = parse_template(str(row.get("translation_source") or row.get("cn") or ""))
+                slots = translation_slots(template)
+                if not slots:
+                    raise ValueError(
+                        f"structured source row {row.get('key')} has no translatable text slots"
+                    )
+                template_specs[signature] = (template, slots)
+                for slot in slots:
+                    segment = _template_request_row(row, "", slot)
+                    segment_key = _request_signature(segment)
+                    segment["request_key"] = segment_key
+                    request_by_key.setdefault(segment_key, segment)
+                    template_slot_keys[(signature, slot.slot_key)] = segment_key
+            else:
+                request_by_key.setdefault(signature, _request_row(row, signature))
+        request_rows = list(request_by_key.values())
         smoke_size = min(20, batch_size)
         smoke_candidates = _partition_requests(
             request_rows[:smoke_size],
@@ -453,7 +508,6 @@ def translate_manifest(
             )
         )
         strategy = manifest.get("api_strategy") or {}
-        source_modes = sorted({str(row.get("source_mode") or "cn") for row in items})
         model = str(strategy.get("model") or "injected")
         scope = hashlib.sha256(
             json.dumps(
@@ -463,11 +517,7 @@ def translate_manifest(
                     "provider_path": strategy.get("base_url_path", ""),
                     "client_identity": client_identity,
                     "target_langs": target_langs,
-                    "prompt": (
-                        "translate-v2-source-reference"
-                        if any(mode != "cn" for mode in source_modes)
-                        else "translate-v1"
-                    ),
+                    "prompt": "translate-v3-program-owned-structure",
                 },
                 sort_keys=True,
             ).encode("utf-8")
@@ -514,7 +564,22 @@ def translate_manifest(
                     values, reused = future.result()
                     translated.update(values)
                     reused_batches += int(reused)
-        resolved = {**translated, **seeded}
+        rebuilt: dict[str, dict[str, str]] = {}
+        for signature, (template, slots) in template_specs.items():
+            rebuilt[signature] = {
+                lang: render_translations(
+                    template,
+                    slots,
+                    {
+                        slot.slot_key: translated[
+                            template_slot_keys[(signature, slot.slot_key)]
+                        ][lang]
+                        for slot in slots
+                    },
+                )
+                for lang in target_langs
+            }
+        resolved = {**translated, **rebuilt, **seeded}
         output_rows: list[dict[str, Any]] = []
         for row, signature in zip(items, row_signatures, strict=True):
             if signature not in resolved:
@@ -550,6 +615,8 @@ def translate_manifest(
                 "unique_api_rows": summary.unique_api_rows,
                 "batch_count": summary.batch_count,
                 "reused_batches": summary.reused_batches,
+                "structured_source_rows": len(template_specs),
+                "structured_text_segments": len(template_slot_keys),
             },
         )
         return summary

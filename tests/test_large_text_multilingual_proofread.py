@@ -10,6 +10,7 @@ from pathlib import Path
 
 from utils.large_text_multilingual_proofread import run_deep_proofread
 from utils.large_text_multilingual_runner import build_manifest
+from utils.structured_text_template import technical_tokens
 
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -80,6 +81,94 @@ class FailingAuditor:
 
 
 class LargeTextMultilingualProofreadTests(unittest.TestCase):
+    def test_structured_deep_review_never_exposes_or_rebuilds_code(self) -> None:
+        class PlainReviewer:
+            checkpoint_identity = "plain-structured-reviewer"
+
+            def review_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
+                suggestions = []
+                for row in rows:
+                    for field in ("cn", "translation_source", "context"):
+                        value = str(row.get(field) or "")
+                        if any(token in value for token in ("<", "{", "[")):
+                            raise AssertionError(f"reviewer received structure: {value}")
+                    current = row["translations"][target_langs[0]]
+                    fix = row["cn"] == "今日打包"
+                    suggestions.append(
+                        {
+                            "review_key": row["review_key"],
+                            "lang": target_langs[0],
+                            "status": "FIX" if fix else "KEEP",
+                            "suggested": "Daily Bundle" if fix else current,
+                            "reason": "terminology" if fix else "ok",
+                        }
+                    )
+                return suggestions
+
+        class PlainAuditor:
+            checkpoint_identity = "plain-structured-auditor"
+
+            def audit_batch(self, suggestions):  # type: ignore[no-untyped-def]
+                for row in suggestions:
+                    if any(token in str(row.get("suggested") or "") for token in ("<", "{", "[")):
+                        raise AssertionError("auditor received structure")
+                return [
+                    {
+                        "review_key": row["review_key"],
+                        "lang": row["lang"],
+                        "decision": "ACCEPT",
+                        "final": row["suggested"],
+                        "reason": "clear improvement",
+                    }
+                    for row in suggestions
+                ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = root / "items.jsonl"
+            initial = root / "initial.jsonl"
+            source = json.dumps(
+                ["<color=#<@1>><@2>今日打包</color>", "章节一"],
+                ensure_ascii=False,
+            )
+            target = json.dumps(
+                ["<color=#<@1>><@2>Daily Pack</color>", "Chapter I"],
+                ensure_ascii=False,
+            )
+            rows = [
+                {
+                    "key": "1",
+                    "cn": source,
+                    "context": "ui",
+                    "term_hits": [],
+                    "translations": {"EN": target},
+                }
+            ]
+            write_jsonl(items, rows)
+            write_jsonl(initial, rows)
+            manifest = build_manifest(
+                work_dir=root / "work",
+                items_jsonl=items,
+                source_rows_jsonl=None,
+                target_langs=["EN"],
+                workbook_count=1,
+                relay_config=None,
+                proofread_mode="full",
+            )
+
+            summary = run_deep_proofread(
+                Path(manifest["manifest_path"]),
+                initial_cache=initial,
+                reviewer=PlainReviewer(),
+                auditor=PlainAuditor(),
+            )
+
+            output = json.loads(summary.final_cache.read_text(encoding="utf-8"))
+            final_text = output["translations"]["EN"]
+            self.assertEqual(technical_tokens(final_text), technical_tokens(source))
+            self.assertEqual(json.loads(final_text)[0], "<color=#<@1>><@2>Daily Bundle</color>")
+            self.assertEqual(summary.changed_cells, 1)
+
     def test_sampled_mode_reviews_high_risk_rows_and_ten_percent_of_low_risk_rows(self) -> None:
         class RecordingReviewer(Reviewer):
             checkpoint_identity = "sampled-reviewer"

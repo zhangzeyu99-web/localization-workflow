@@ -57,12 +57,14 @@ flowchart LR
 
 - 分包只顺序读取一次 workbook；源行和唯一文本分开记录。
 - API 只处理历史交付、精确术语未覆盖的唯一内容。
+- 中文源为 JSON 或包含 3 个以上技术标签时，runner 由程序解析结构并只把可读文本槽交给 API；模型不接触、不返回 JSON、`<@n>` 或标签，程序按原路径、原标签顺序重建。结构重建不一致立即失败，不降级为整段重译。
 - 翻译批次与深校批次独立配置。默认初译 `60 × 4 workers`，深校 `30 × 8 workers`；根据模型限流调整，不用放大多语言响应换取表面上的少批次。
 - 深校按单一目标语言分批，避免一个响应同时承载多语言结果而截断；review checkpoint 按 `review_key + lang` 复用，改变批大小后只补缺失单元。
 - reviewer 对 `KEEP` 省略重复译文时，以当前译文补齐 `suggested`；`FIX` 缺少新译文仍立即失败，不能降低审校覆盖门禁。
 - 同一任务目录只允许一个深校主进程；`proofread.lock` 拒绝重复进程，防止共享 checkpoint 时重复调用。
 - 翻译、深校建议和二次审计允许受控并发；XLSX 只在最终缓存 hard blocker 为 0 后写一次。
 - 深校建议不能直接修改 workbook。subagent 或 API 只输出建议，主控审计后才进入最终缓存。
+- 结构化长文本的 reviewer 和 auditor 同样只审纯文本槽；审计通过后由主控回填到当前目标结构。已经通过 QA 的原行/语言保持不变，不能因少量失败项推翻重跑。
 - `sampled` 模式审全部高风险唯一文本，并按稳定签名抽取 10% 低风险唯一文本；`full` 模式审全部唯一文本。
 - 过程 JSONL、checkpoint、manifest、日志和复盘指标都留在 `_work`；交付目录只包含成品 workbook 和 `QA摘要.xlsx`。
 
@@ -96,6 +98,7 @@ python scripts\run_large_text_multilingual_runner.py reconcile `
 ## 验收门禁
 
 1. `cache-lint`：空译文、中文残留、占位符/标签/数字丢失、强术语遗漏和未请求语言必须为 0。
+   初译后先执行保守的本地残留修复：只替换该行 `term_hits` 中仍残留的中文术语和章节序号；无法确定的中文正文不改，继续由 `cache-lint` 阻断。
 2. `apply-dry-run`：普通模式可打开，样式引用合法。
 3. 精确写回：文件、sheet、行号和源文四重匹配；源文漂移立即停止。
 4. `readback-gate`：所有目标列非空，交付目录无过程文件；`QA摘要.xlsx` 不作为译文表重复扫描。

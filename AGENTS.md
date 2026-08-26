@@ -20,6 +20,8 @@
 - 深校建议必须经过主控二次审计，最终缓存 `cache-lint` hard blocker 为 0 后才允许精确写回。
 - `sampled` 深校只审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本；`full` 才是全部唯一文本，不得把两种模式混同。
 - API 阶段失败后若通过缓存补齐继续完成，必须运行 runner 的 `reconcile`，且只在 final cache-lint、深校摘要、apply-dry-run、交付目录和 readback 全部验证后把 manifest 收口为 `complete`。
+- JSON 或含 3 个以上技术标签的中文结构化长文本必须由程序拆出纯文本槽；翻译、reviewer 和 auditor 均不得接收或返回整段 JSON、`<@n>` 或标签结构，最终由程序按原路径和标签序列回填。
+- 结构 QA 已通过的译文不得因其他行失败而重译。初译后仅允许本地修复命中术语残留和章节序号残留；其余中文残留继续作为 hard blocker，不得用整条模型重译掩盖。
 - 写回必须核对源文件、sheet、行号和源文，并在交付后普通打开、校验样式索引、执行 `readback-gate`。
 - 飞书长表任务必须先整表导出到本地任务目录，记录在线 revision 和源文件哈希后再翻译/深校；本地 hard blocker 为 0 后核对 revision，最后分块回填并在线读回，不得边翻译边写飞书。
 
