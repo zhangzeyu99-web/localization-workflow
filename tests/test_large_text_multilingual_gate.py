@@ -10,6 +10,7 @@ from openpyxl import Workbook, load_workbook
 from utils.large_text_multilingual_gate import (
     apply_dry_run,
     cache_lint,
+    numeric_values,
     preflight,
     readback_gate,
 )
@@ -23,6 +24,23 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 class LargeTextMultilingualGateTests(unittest.TestCase):
+    def test_numeric_values_does_not_join_numbers_across_line_breaks(self) -> None:
+        values = numeric_values("奖励*1\n成功率100%")
+
+        self.assertNotIn(1100, values)
+        self.assertIn(1, values)
+        self.assertIn(100, values)
+        self.assertIn(1100, numeric_values("1 100"))
+        self.assertIn(1100, numeric_values("1,100"))
+        self.assertIn(1100, numeric_values("1\u202f100"))
+
+    def test_numeric_values_treats_fullwidth_comma_as_punctuation(self) -> None:
+        values = numeric_values("获得棋子*1，100%概率获得奖励")
+
+        self.assertNotIn(1100, values)
+        self.assertIn(1, values)
+        self.assertIn(100, values)
+
     def test_cache_lint_recomputes_term_hits_and_blocks_missing_strict_term(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

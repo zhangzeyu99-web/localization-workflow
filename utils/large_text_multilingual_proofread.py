@@ -122,6 +122,12 @@ def _select_sampled_rows(rows: list[dict[str, object]]) -> list[dict[str, object
     return [row for row in rows if str(row["review_key"]) in selected]
 
 
+def _preserves_protected_tokens(before: str, after: str, tokens: object) -> bool:
+    if not isinstance(tokens, list):
+        return True
+    return all(before.count(str(token)) == after.count(str(token)) for token in tokens if str(token))
+
+
 def _batch_checkpoint(path: Path, version: str, rows: list[dict[str, Any]]) -> Path:
     raw = json.dumps(
         {"version": version, "rows": rows},
@@ -545,6 +551,10 @@ def run_deep_proofread(
                     final_text = decision["final"] or suggestion["suggested"]
                     reasons.append(suggestion["reason"])
                     audit_reasons.append(decision["reason"])
+                if str(row.get("seed_origin") or "") == "glossary_exact":
+                    final_text = before
+                elif not _preserves_protected_tokens(before, final_text, row.get("tokens") or []):
+                    final_text = before
                 if final_text != before:
                     issues.append(
                         {

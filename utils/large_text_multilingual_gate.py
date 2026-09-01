@@ -26,7 +26,7 @@ CJK_RE = re.compile(r"[\u3400-\u9fff]")
 MOJIBAKE_RE = re.compile(r"\ufffd|\x00|\?{3}")
 NUMBER_RE = re.compile(
     r"\d+(?:[,.]\d+)?(?:\s*(?:千|万|萬|亿|億|(?i:thousand|million|billion|ribu|rb|juta|miliar|millones|millón|milhao|milhão|milhões|mil|тыс|тысяч|тысяча|тысячи|млн|миллион|миллиона|миллионов|млрд|миллиард|миллиарда|миллиардов)\b\.?|[KkMBWw](?![A-Za-z])))%?"
-    r"|\d{1,3}(?:[,\s.]\d{3})+(?:[,.]\d+)?%?"
+    r"|\d{1,3}(?:[,. \u00a0\u202f]\d{3})+(?:[,.]\d+)?%?"
     r"|\d+(?:[,.]\d+)?%?"
 )
 WORD_MULTIPLIERS = {
@@ -177,7 +177,7 @@ def is_auto_protected_token(token: str) -> bool:
 
 def parse_number_token(token: str) -> Decimal | None:
     raw_with_spaces = token.strip()
-    raw = raw_with_spaces.replace(" ", "")
+    raw = re.sub(r"[ \u00a0\u202f]", "", raw_with_spaces)
     if not raw:
         return None
 
@@ -192,7 +192,7 @@ def parse_number_token(token: str) -> Decimal | None:
         match = re.search(rf"\s+{re.escape(word)}\.?$", lowered)
         if match:
             word_multiplier = multiplier
-            raw = raw_with_spaces[: match.start()].strip().replace(" ", "")
+            raw = re.sub(r"[ \u00a0\u202f]", "", raw_with_spaces[: match.start()].strip())
             break
     if raw and raw[-1] in "KkMBWw":
         suffix = raw[-1].upper()
@@ -263,8 +263,7 @@ def numeric_values(text: str) -> set[Decimal]:
         text,
         flags=re.IGNORECASE,
     )
-    text = re.sub(r"(?<=\d)\uff0c(?=\d{3}(?!\d))", ",", text)
-    text = text.replace("\uff0c", " ")
+    text = text.replace("\uff0c", ";")
     values = set()
     for token in NUMBER_RE.findall(text):
         parsed = parse_number_token(token)

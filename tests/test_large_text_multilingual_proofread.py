@@ -81,6 +81,140 @@ class FailingAuditor:
 
 
 class LargeTextMultilingualProofreadTests(unittest.TestCase):
+    def test_controller_reverts_suggestion_that_changes_literal_newline_token(self) -> None:
+        class NewlineReviewer:
+            checkpoint_identity = "newline-reviewer"
+
+            def review_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
+                return [
+                    {
+                        "review_key": row["review_key"],
+                        "lang": target_langs[0],
+                        "status": "FIX",
+                        "suggested": "First line\nSecond line",
+                        "reason": "style",
+                    }
+                    for row in rows
+                ]
+
+        class AcceptingAuditor:
+            checkpoint_identity = "newline-auditor"
+
+            def audit_batch(self, suggestions):  # type: ignore[no-untyped-def]
+                return [
+                    {
+                        "review_key": row["review_key"],
+                        "lang": row["lang"],
+                        "decision": "ACCEPT",
+                        "final": row["suggested"],
+                        "reason": "accepted",
+                    }
+                    for row in suggestions
+                ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = root / "items.jsonl"
+            initial = root / "initial.jsonl"
+            rows = [
+                {
+                    "key": "1",
+                    "cn": r"第一行\n第二行",
+                    "context": "ui",
+                    "tokens": [r"\n"],
+                    "translations": {"EN": r"Line one\nLine two"},
+                }
+            ]
+            write_jsonl(items, rows)
+            write_jsonl(initial, rows)
+            manifest = build_manifest(
+                work_dir=root / "work",
+                items_jsonl=items,
+                source_rows_jsonl=None,
+                target_langs=["EN"],
+                workbook_count=1,
+                relay_config=None,
+                proofread_mode="full",
+            )
+
+            summary = run_deep_proofread(
+                Path(manifest["manifest_path"]),
+                initial_cache=initial,
+                reviewer=NewlineReviewer(),
+                auditor=AcceptingAuditor(),
+            )
+
+            output = json.loads(summary.final_cache.read_text(encoding="utf-8"))
+            self.assertEqual(output["translations"]["EN"], r"Line one\nLine two")
+            self.assertEqual(summary.changed_cells, 0)
+
+    def test_controller_keeps_exact_glossary_seed_locked(self) -> None:
+        class GlossaryReviewer:
+            checkpoint_identity = "glossary-reviewer"
+
+            def review_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
+                return [
+                    {
+                        "review_key": row["review_key"],
+                        "lang": target_langs[0],
+                        "status": "FIX",
+                        "suggested": "Titan's Warblade",
+                        "reason": "style",
+                    }
+                    for row in rows
+                ]
+
+        class AcceptingAuditor:
+            checkpoint_identity = "glossary-auditor"
+
+            def audit_batch(self, suggestions):  # type: ignore[no-untyped-def]
+                return [
+                    {
+                        "review_key": row["review_key"],
+                        "lang": row["lang"],
+                        "decision": "ACCEPT",
+                        "final": row["suggested"],
+                        "reason": "accepted",
+                    }
+                    for row in suggestions
+                ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = root / "items.jsonl"
+            initial = root / "initial.jsonl"
+            rows = [
+                {
+                    "key": "1",
+                    "cn": "泰坦战刃",
+                    "context": "ui",
+                    "seed_origin": "glossary_exact",
+                    "translations": {"EN": "Titan Warblade"},
+                }
+            ]
+            write_jsonl(items, rows)
+            write_jsonl(initial, rows)
+            manifest = build_manifest(
+                work_dir=root / "work",
+                items_jsonl=items,
+                source_rows_jsonl=None,
+                target_langs=["EN"],
+                workbook_count=1,
+                relay_config=None,
+                proofread_mode="full",
+            )
+
+            summary = run_deep_proofread(
+                Path(manifest["manifest_path"]),
+                initial_cache=initial,
+                reviewer=GlossaryReviewer(),
+                auditor=AcceptingAuditor(),
+            )
+
+            output = json.loads(summary.final_cache.read_text(encoding="utf-8"))
+            self.assertEqual(output["translations"]["EN"], "Titan Warblade")
+            self.assertEqual(summary.changed_cells, 0)
+
     def test_structured_deep_review_never_exposes_or_rebuilds_code(self) -> None:
         class PlainReviewer:
             checkpoint_identity = "plain-structured-reviewer"
