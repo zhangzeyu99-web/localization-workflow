@@ -38,6 +38,13 @@ def test_consistent_but_incorrect_ordinal_is_blocked():
     assert {x["check_type"] for x in issues} == {"series_number_mismatch"}
 
 
+def test_equal_quantity_and_level_do_not_create_false_format_drift():
+    assert group_issues(rows([
+        ('击败9个9级以上怪物', 'Defeat 9 Lv. 9+ monsters'),
+        ('击败9个11级以上怪物', 'Defeat 9 Lv. 11+ monsters'),
+    ])) == []
+
+
 def test_harness_entry_checks_series_and_explicit_history():
     with TemporaryDirectory() as tmp:
         current, history = Path(tmp) / "current.xlsx", Path(tmp) / "history.xlsx"

@@ -1,5 +1,9 @@
 # 本地化工作流执行线程 Handoff
 
+## 改名与系列译法检查（本地维护源）
+
+最终成品按目标语言运行 `scripts/run_quality_harness.py --workbook <成品> --lang <语言> --term-base <最新术语表>`；既有内容修订且有历史语言包时显式追加 `--history <历史表>`。新增跨行罗马编号/同条件等级系列检查；异源同译仅提示复核，不自动覆盖。术语无分类列时，备注完整值“英雄名、角色名”等作为姓名约束，普通备注不猜分类。误分类或普通词语境冲突必须留审校裁决，不能删除问题凑零。详见 `docs/quality-harness.md`。当前仅维护源生效，未同步 Studio。
+
 ## 既有语言包诊断新增入口（本地维护源）
 
 评估任务先按 `docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md` 固定抽样范围，再运行 `scripts/run_quality_diagnostics.py`。它只校验实际覆盖、未决项及资源 ID 冲突，不输出整体质量分或发布通过。中英版本冲突不默认按英语自由重译。此本地入口未同步 Studio 时不得声称产品端已生效。

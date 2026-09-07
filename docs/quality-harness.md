@@ -57,7 +57,7 @@ python scripts\run_quality_harness.py fixtures\quality_regression.json `
 
 Workbook 扫描必须真实命中语言表行。`rows_scanned=0` 会被视为失败，不能把空扫描当作 QA 通过。扫描使用非只读方式打开 workbook，以便更接近交付前真实 Excel 状态。通用扫描会跳过 `术语表` / glossary sheet 和审计/裁决类辅助 sheet，避免把词典里的 Title Case 术语或返修记录当正文错误误杀。
 
-QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表；只有自动发现失败或需要覆盖时才补 `--term-base "C:\path\to\terms.xlsx"`。
+QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表；用户指定最新版时必须显式传 `--term-base "C:\path\to\terms.xlsx"`，避免自动发现旧版。未指定时才使用自动发现。
 
 术语默认是强约束。术语表里未显式标记为软参考的条目，正文命中中文术语时必须使用标准译法；例如 `战机 -> Warplane` 不能输出为 `Fighter`。`分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 的条目会降为软提示；当术语表没有分类列时，`获得`、`需要`、`成功` 这类明显泛词也会自动降为软提示，统计但不阻断。
 
@@ -74,6 +74,22 @@ QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见�
 ```powershell
 python scripts\run_quality_harness.py fixtures\quality_regression.json --json
 ```
+
+## 改名与跨行一致性
+
+既有文本改动且有历史表时，在最终成品上追加只读检索：
+
+```powershell
+python scripts\run_quality_harness.py --workbook "C:\path\to\final.xlsx" `
+  --lang en --term-base "C:\path\to\latest-terms.xlsx" `
+  --history "C:\path\to\approved-history.xlsx"
+```
+
+- `--history` 可重复，只打开显式指定的历史表，保留命中当前译文的源文及位置证据。不翻译历史表、不调用模型、不写 workbook；不传参数时不扫描历史表。
+- `source_drift_tm_conflict`：长度至少 12 字符的当前译文，在历史表对应不同中文时提示复核。它只能找“异源同译”，不是确认改名的证明；长度较短、改过字词或不在指定历史表中的旧译不在此检测范围内。标点变化、自然同译等仍可能产生合理候选，需逐项裁决。
+- 同文件同 sheet、短中文 UI、至少两个不同编号的罗马系列或只改变一个等级数字的同条件任务，比较目标词根/格式。混用 `Lv. 9+` 和 `level 11 or above` 报 `ui_series_inconsistency`；编号缺失或错误报 `series_number_mismatch`。以上/以下条件、不同 sheet、重复同号行不强行分组；不跨句型猜同义系列，不自动选多数译文。
+- 术语表无分类列时，备注完整值“人名、角色名、英雄名、人物名、怪物名、Boss、NPC、character name、person name”映射姓名分类；显式分类优先。普通备注不升级为姓名约束。普通扫描和大文本分包使用同一映射。
+- 人名约束若与普通词语境冲突，记录原始检测和裁决依据，不为归零强行改正常大小写或覆盖用户术语表。机审结果与语义审校结论分别报告，不能将结构 QA 通过说成全量深校通过。
 
 ## 判定规则
 
@@ -108,6 +124,8 @@ Workbook 扫描默认把以下问题当阻断项：
 - `fullwidth_punctuation`
 - `person_name_term_mismatch`
 - `numbered_term_inconsistency`
+- `ui_series_inconsistency`
+- `series_number_mismatch`
 
 以下问题会统计但默认不阻断：
 
@@ -116,6 +134,7 @@ Workbook 扫描默认把以下问题当阻断项：
 - `term_soft_partial_hit`
 - `term_soft_capitalization`
 - `term_superstring_drift_candidate`
+- `source_drift_tm_conflict`
 
 ## 维护规则
 
@@ -139,7 +158,7 @@ python scripts\run_quality_harness.py fixtures\quality_regression.json
 
 结果：
 
-- fixture cases：61
+- fixture cases：78
 - passed：True
 
 说明：`issue_counts` 里仍会统计 fixture 里的故意坏例；只要 `passed=True` 且没有 `workbook_issues`，就表示 workbook 通过当前 harness。Workbook 扫描的空扫描失败和 glossary sheet 跳过逻辑由 `tests/test_quality_harness.py` 覆盖。

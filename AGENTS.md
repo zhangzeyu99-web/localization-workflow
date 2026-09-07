@@ -196,7 +196,7 @@
      - `title_case_overuse`
      - 其他结构性错误
   6. 反复复检，直到不再有硬错误
-  7. 跑质量回归 harness：`python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx>`；QA 会自动读取 workbook 内置术语表、同目录术语表，以及常见输出目录上一级的术语表，只有自动发现失败或需要覆盖时才补 `--term-base <术语表.xlsx>`
+  7. 跑质量回归 harness：`python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx> --lang <语言>`；用户指定最新版术语表时必须显式传 `--term-base <术语表.xlsx>`，避免自动发现旧版。既有内容修改且有历史语言包时，加 `--history <历史语言包.xlsx>`，只读检索当前译文，不导入或重译完整历史表。
   8. 允许保留 `short_text_length_watch` 这类软提示作为说明项，除非用户明确要求清到 0
   9. 在任务目录落一个明确命名的最终版文件，例如 `原文件名_最终版.xlsx`
   10. 同时输出 `result_{lang}.xlsx` 和 `report_{lang}.xlsx`
@@ -250,6 +250,10 @@
 - `apply` 的 hard blocker 必须为 0 才能执行 `deliver`。
 
 ## 项目定制 harness 启动规则
+
+- 最终成品必须经过正式 `run_quality_harness.py`，项目临时脚本的结构 QA 不能替代它。短 UI 罗马编号系列及同条件等级阈值任务执行跨行一致性检查；不得多数表决自动覆盖译文。
+- 无分类列时，术语加载器只将备注中完整的“英雄名、角色名”等明确分类值作为姓名分类，普通备注不升级。正文姓名缺失要复核；若术语分类与当前普通词语境冲突，记录原始问题及裁决，不改正确句子或默默关闭检测。
+- `source_drift_tm_conflict` 仅是显式历史表中“异源同译”的复核候选，不能自动证明错译。源文改名时必须逐项核对新主体、名称、条件及相邻系列；短词、标点差异、自然同译均按语境裁决。机器 QA 通过不等于完成深度语义审校。
 
 - 既有语言包质量诊断须执行 `scripts/run_quality_diagnostics.py`，将物理行覆盖、未决项、同文件同 sheet 资源 ID 冲突分开报告。抽样缺陷指数不得宣称整体质量分；完整覆盖也不代表语义正确或发布验收通过。具体契约见 `docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`。
 

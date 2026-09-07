@@ -46,7 +46,11 @@ def group_issues(rows):
             stem = source[:match.start()] + "#级" + source[match.end():]
             key = (row.get("file"), row.get("sheet"), "level", stem)
             pattern = rf"(?<!\d){re.escape(number)}(?!\d)"
-            valid = bool(re.search(pattern, target))
+            target_levels = list(re.finditer(pattern, target))
+            if len(target_levels) > 1:
+                # Equal quantity and level values cannot be located unambiguously.
+                continue
+            valid = bool(target_levels)
             signature = re.sub(pattern, "#", target)
         else:
             continue
