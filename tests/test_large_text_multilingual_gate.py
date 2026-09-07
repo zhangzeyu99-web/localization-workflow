@@ -24,6 +24,15 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 class LargeTextMultilingualGateTests(unittest.TestCase):
+    def test_numeric_unit_does_not_consume_accented_word_initial(self) -> None:
+        fixtures = json.loads((Path(__file__).resolve().parents[1]/'fixtures/quality_regression.json').read_text(encoding='utf-8'))
+        for case in fixtures['numeric_word_boundary_cases']:
+            self.assertEqual(numeric_values(case['text']), set(case['values']))
+        for text, expected in [('12 Bäume', 12), ('24 Mũ', 24), ('3 Kılıç', 3), ('4 Wände', 4), ('5 B\u0301onus', 5)]:
+            self.assertEqual(numeric_values(text), {expected}, text)
+        for text, expected in [('12B', 12000000000), ('2 M', 2000000), ('3K金币', 3000)]:
+            self.assertEqual(numeric_values(text), {expected}, text)
+
     def test_numeric_values_does_not_join_numbers_across_line_breaks(self) -> None:
         values = numeric_values("奖励*1\n成功率100%")
 

@@ -11,6 +11,9 @@
 
 ## 大文本多语言 V2
 
+- 独立质量评估或深校复盘执行 `docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`：先提取同批已批准角色名基线；对白提供话轮和人物证据；二次审计输入必须含主控补齐的源文、原译及上下文。修改数和结构 QA 不能代替语言质量评估。
+- 同表批准姓名在清空工作副本前用 `scripts/run_approved_name_snapshot.py` 的显式姓名行生成私有 JSON；后续 pack/cache-lint 共用该 `--term-base`。不得从普通对白猜姓名定义。对白深校按显式场景补齐当前目标话轮，审计接受须有语义证据；已知语义回归由确定性门禁兜底，不能因模型 ACCEPT 放行。
+
 - 大文本、多 workbook 或 5 个以上目标语言优先使用 `scripts/run_large_text_multilingual_runner.py run`，详细契约见 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
 - 先按历史交付和精确术语复用，再对唯一文本调用中转 API；禁止把 API 返回直接写进 workbook。
 - API 批次必须落 checkpoint 并支持续跑；manifest 和日志不得保存 API key。
@@ -247,6 +250,8 @@
 - `apply` 的 hard blocker 必须为 0 才能执行 `deliver`。
 
 ## 项目定制 harness 启动规则
+
+- 既有语言包质量诊断须执行 `scripts/run_quality_diagnostics.py`，将物理行覆盖、未决项、同文件同 sheet 资源 ID 冲突分开报告。抽样缺陷指数不得宣称整体质量分；完整覆盖也不代表语义正确或发布验收通过。具体契约见 `docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`。
 
 - 新项目开始前，先用 `templates/project_profile_template.md` 和 `templates/project_profile_template.json` 收集项目资料：游戏信息、类型、目标市场、目标语言、核心玩法、术语、禁用译法、风格和技术约束。
 - 项目资料确认后，必须输出单项目 `translation_prompt.txt`，并在全量翻译 harness 中通过 `--style-hint-file` 使用。

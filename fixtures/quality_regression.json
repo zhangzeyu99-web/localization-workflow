@@ -1,6 +1,54 @@
 {
   "version": 1,
   "description": "Regression cases distilled from real localization delivery failures.",
+  "name_note_category_cases": [
+    {"value":"英雄名","expected":"角色名"},
+    {"value":"角色名","expected":"角色名"},
+    {"value":"角色确认后再改","expected":""},
+    {"value":"通用词","expected":""}
+  ],
+  "review_consistency_cases": [
+    {"name":"mixed_threshold_styles","rows":[["击败1个9级及以上的怪物","Defeat 1 Monster at Lv. 9 or above"],["击败1个11级及以上的怪物","Defeat 1 Lv. 11+ Monster"]],"expected":["ui_series_inconsistency"]},
+    {"name":"uniform_threshold_styles","rows":[["击败1个9级及以上的怪物","Defeat 1 Lv. 9+ Monster"],["击败1个11级及以上的怪物","Defeat 1 Lv. 11+ Monster"]],"expected":[]},
+    {"name":"roman_series_drift","rows":[["艾拉赠礼Ⅰ","Aria's Gift I"],["艾拉赠礼Ⅱ","Aria's Gifts II"]],"expected":["ui_series_inconsistency"]},
+    {"name":"roman_unicode_equivalence","rows":[["艾拉赠礼Ⅰ","Aria's Gift I"],["艾拉赠礼Ⅱ","Aria's Gift Ⅱ"]],"expected":[]},
+    {"name":"different_mechanics_are_separate","rows":[["击败9级以上怪物","Defeat monsters above Lv. 9"],["击败11级以下怪物","Defeat monsters below Lv. 11"]],"expected":[]},
+    {"name":"renamed_source_reuses_old_translation","rows":[["艾拉赠礼Ⅰ","Lucky Gifts I"]],"history":[["幸运赠礼Ⅰ","Lucky Gifts I"]],"expected":["source_drift_tm_conflict"]},
+    {"name":"same_source_history","rows":[["幸运赠礼Ⅰ","Lucky Gifts I"]],"history":[["幸运赠礼Ⅰ","Lucky Gifts I"]],"expected":[]},
+    {"name":"corrected_name_history","rows":[["艾拉赠礼Ⅰ","Aria's Gift I"]],"history":[["幸运赠礼Ⅰ","Lucky Gifts I"]],"expected":[]},
+    {"name":"shared_short_button_not_source_drift","rows":[["确定","OK"]],"history":[["好的","OK"]],"expected":[]}
+  ],
+  "numeric_word_boundary_cases": [
+    {"text":"12 Bäume","values":[12]},
+    {"text":"24 Mũ","values":[24]},
+    {"text":"12B","values":[12000000000]},
+    {"text":"3K金币","values":[3000]}
+  ],
+  "diagnostic_regression_cases": [
+    {"name":"purposive_full_coverage_is_not_census","sampling":"purposive","unresolved":[],"full_semantic_review":false,"resolved_reviewed_cells":1},
+    {"name":"census_unknown_is_not_pass","sampling":"census","unresolved":[["s|1","FR"]],"full_semantic_review":true,"resolved_reviewed_cells":0}
+  ],
+  "semantic_regression_cases": [
+    {"source_mode":"en","translation_source":"Don't worry your pretty little head about it.","lang":"FR","target":"Ne te fais pas de souci pour ta jolie petite tête.","blocked":true},
+    {"source_mode":"en","translation_source":"Don't worry your pretty little head about it.","lang":"FR","target":"Ne fatigue pas ta jolie petite tête avec ça.","blocked":false},
+    {"source_mode":"en","translation_source":"Don't worry your pretty little head about it.","lang":"FR","target":"Ne te fais pas de souci pour ça.","blocked":false},
+    {"source_mode":"en","translation_source":"Don't worry about your head; the doctor checked it.","lang":"FR","target":"Ne te fais pas de souci pour ta tête ; le médecin l'a examinée.","blocked":false}
+  ],
+  "strict_term_category_cases": [
+    {"category": "角色", "required": true},
+    {"category": "人名", "required": true},
+    {"category": "人物", "required": true},
+    {"category": "character", "required": true},
+    {"category": "Character Name", "required": true},
+    {"category": "person", "required": true},
+    {"category": "person name", "required": true},
+    {"category": "name", "required": true},
+    {"category": "角色描述", "required": false},
+    {"category": "角色 soft", "required": false},
+    {"category": "generic character", "required": false},
+    {"category": "character description", "required": false},
+    {"category": "资源", "required": false}
+  ],
   "cases": [
     {
       "id": "bad-title-case-too-many-roles",

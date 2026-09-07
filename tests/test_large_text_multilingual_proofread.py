@@ -81,6 +81,48 @@ class FailingAuditor:
 
 
 class LargeTextMultilingualProofreadTests(unittest.TestCase):
+    def test_auditor_receives_trusted_source_current_and_dialogue_context(self) -> None:
+        testcase = self
+        class GenderReviewer:
+            checkpoint_identity = 'gender-reviewer'
+            def review_batch(self, rows, target_langs):
+                return [{'review_key': row['review_key'], 'lang': 'RU', 'status': 'FIX',
+                         'suggested': 'Я выбирала.', 'reason': 'likely female speaker',
+                         'context': 'untrusted replacement context', 'current': 'not the original'}
+                        for row in rows]
+
+        class EvidenceAuditor:
+            checkpoint_identity = 'evidence-auditor'
+            def audit_batch(self, suggestions):
+                for row in suggestions:
+                    testcase.assertEqual(row['current'], 'Я выбирал.')
+                    testcase.assertEqual(row['translation_source'], 'I made the choice.')
+                    testcase.assertEqual(row['source_mode'], 'en')
+                    testcase.assertEqual(row['cn'], '我做出了选择。')
+                    testcase.assertEqual(row['context'], 'Speaker: Adrian, male. Addressee: Ella, female.')
+                    testcase.assertEqual(row['protected_tokens'], [])
+                    testcase.assertEqual(row['risk_flags'], ['dialogue'])
+                return [{'review_key': row['review_key'], 'lang': row['lang'],
+                         'decision': 'REVERT', 'final': row['current'], 'reason': 'speaker evidence contradicts suggestion'}
+                        for row in suggestions]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items, initial = root/'items.jsonl', root/'initial.jsonl'
+            rows = [{'key':'1','cn':'我做出了选择。','translation_source':'I made the choice.',
+                     'reference_en':'I made the choice.','source_mode':'en',
+                     'context':'Speaker: Adrian, male. Addressee: Ella, female.',
+                     'tokens':[], 'risk_flags':['dialogue'], 'translations':{'RU':'Я выбирал.'}}]
+            write_jsonl(items, rows)
+            write_jsonl(initial, rows)
+            manifest=build_manifest(work_dir=root/'work',items_jsonl=items,source_rows_jsonl=None,
+                target_langs=['RU'],workbook_count=1,relay_config=None,proofread_mode='full',source_mode='en')
+            summary=run_deep_proofread(Path(manifest['manifest_path']),initial_cache=initial,
+                reviewer=GenderReviewer(),auditor=EvidenceAuditor())
+            self.assertEqual(summary.changed_cells,0)
+            self.assertEqual(summary.reverted_changes,1)
+            self.assertEqual(json.loads(summary.final_cache.read_text(encoding='utf-8'))['translations']['RU'],'Я выбирал.')
+
     def test_controller_reverts_suggestion_that_changes_literal_newline_token(self) -> None:
         class NewlineReviewer:
             checkpoint_identity = "newline-reviewer"

@@ -59,6 +59,38 @@ class ProofreadSummary:
     elapsed_seconds: float
 
 
+def _attach_dialogue_evidence(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # 只使用显式场景边界；既有译文是待审证据，不是人物配置真值。
+    groups: dict[tuple[str, str, str], list[int]] = {}
+    contexts: dict[int, dict] = {}
+    for index, row in enumerate(rows):
+        raw = row.get("context") or ""
+        try:
+            context = raw if isinstance(raw, dict) else json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(context, dict) or context.get("type") != "dialogue" or not context.get("scene") or should_use_template(row):
+            continue
+        contexts[index] = context
+        key = (str(row.get("source_file") or ""), str(row.get("sheet") or ""), str(context["scene"]))
+        groups.setdefault(key, []).append(index)
+    result = [dict(row) for row in rows]
+    for indices in groups.values():
+        indices.sort(key=lambda index: (int(rows[index].get("row") or index), index))
+        for position, index in enumerate(indices):
+            selected = indices if len(indices) <= 48 else indices[max(0, position - 8):position + 9]
+            context = contexts[index]
+            result[index]["dialogue_evidence"] = {
+                "scene": context["scene"], "complete_scene": len(selected) == len(indices),
+                "speaker": context.get("speaker", "unknown"),
+                "addressee": context.get("addressee", "unknown"),
+                "turns": [{field: rows[item].get(field) for field in (
+                    "key", "id", "row", "cn", "translation_source", "reference_en", "translations"
+                )} for item in selected],
+            }
+    return result
+
+
 def _review_signature(row: dict[str, Any], target_langs: list[str]) -> str:
     raw = json.dumps(
         {
@@ -68,6 +100,7 @@ def _review_signature(row: dict[str, Any], target_langs: list[str]) -> str:
             "reference_en": row.get("reference_en", ""),
             "reference_en_status": row.get("reference_en_status", "not_requested"),
             "context": row.get("context", ""),
+            "dialogue_evidence": row.get("dialogue_evidence") or {},
             "risk_flags": row.get("risk_flags") or [],
             "tokens": row.get("tokens") or [],
             "term_hits": row.get("term_hits") or [],
@@ -82,6 +115,15 @@ def _review_signature(row: dict[str, Any], target_langs: list[str]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
+def _language_evidence(evidence: object, lang: str) -> dict:
+    if not isinstance(evidence, dict):
+        return {}
+    return {**evidence, "turns": [
+        {**turn, "translations": {lang: (turn.get("translations") or {}).get(lang, "")}}
+        for turn in evidence.get("turns", [])
+    ]}
+
+
 def _review_row(row: dict[str, Any], review_key: str, target_langs: list[str]) -> dict[str, object]:
     return {
         "review_key": review_key,
@@ -91,6 +133,7 @@ def _review_row(row: dict[str, Any], review_key: str, target_langs: list[str]) -
         "reference_en": str(row.get("reference_en") or ""),
         "reference_en_status": str(row.get("reference_en_status") or "not_requested"),
         "context": str(row.get("context") or ""),
+        "dialogue_evidence": row.get("dialogue_evidence") or {},
         "risk_flags": row.get("risk_flags") or [],
         "protected_tokens": row.get("tokens") or [],
         "term_hits": row.get("term_hits") or [],
@@ -291,6 +334,7 @@ def _validate_audit(
             f"audit coverage mismatch: missing={sorted(expected - actual)}, extras={sorted(actual - expected)}"
         )
     result: dict[tuple[str, str], dict[str, Any]] = {}
+    trusted_fixes = {(row["review_key"], row["lang"]): row for row in fixes}
     for row in decisions:
         decision = str(row.get("decision") or "").upper()
         if decision not in {"ACCEPT", "REVERT", "REVISE"}:
@@ -298,12 +342,31 @@ def _validate_audit(
         final = str(row.get("final") or "").strip()
         if decision in {"ACCEPT", "REVISE"} and not final:
             raise ValueError("accepted audit decision requires final text")
+        fix = trusted_fixes[(str(row["review_key"]), str(row["lang"]).upper())]
+        from utils.semantic_regression import known_semantic_regressions
+
+        if decision in {"ACCEPT", "REVISE"} and known_semantic_regressions(fix, str(row["lang"]), final):
+            raise ValueError("known semantic regression in accepted audit final")
+        check = row.get("semantic_check")
+        if fix.get("semantic_check_required") and decision in {"ACCEPT", "REVISE"}:
+            if not isinstance(check, dict) or any(
+                not isinstance(check.get(field), str) or not check[field].strip()
+                for field in ("source_meaning", "final_meaning")
+            ) or any(check.get(field) is not True for field in (
+                "meaning_preserved", "roles_preserved", "tone_preserved"
+            )):
+                raise ValueError("dialogue semantic evidence missing or contradicts accepted change")
         normalized = {
             "review_key": str(row["review_key"]),
             "lang": str(row["lang"]).upper(),
             "decision": decision,
             "final": final,
             "reason": str(row.get("reason") or ""),
+            **({"semantic_check": check} if isinstance(check, dict) else {}),
+            **({"independent_target_reading": row["independent_target_reading"]}
+               if isinstance(row.get("independent_target_reading"), dict) else {}),
+            **({"rejected_model_decision": row["rejected_model_decision"]}
+               if isinstance(row.get("rejected_model_decision"), dict) else {}),
         }
         result[(normalized["review_key"], normalized["lang"])] = normalized
     return result
@@ -321,7 +384,7 @@ def run_deep_proofread(
     overall_started = time.perf_counter()
     manifest = load_manifest(manifest_path)
     target_langs = [str(lang).upper() for lang in manifest["inputs"]["target_languages"]]
-    rows = _read_jsonl(initial_cache)
+    rows = _attach_dialogue_evidence(_read_jsonl(initial_cache))
     signatures = [_review_signature(row, target_langs) for row in rows]
     representatives: dict[str, dict[str, Any]] = {}
     for row, signature in zip(rows, signatures, strict=True):
@@ -395,7 +458,7 @@ def run_deep_proofread(
         start_phase(manifest, "subagent_review")
         suggestions: list[dict[str, object]] = []
         review_scope = hashlib.sha256(
-            f"review-v3-program-owned-structure:{_client_checkpoint_identity(reviewer)}".encode("utf-8")
+            f"review-v5-scene-target-evidence:{_client_checkpoint_identity(reviewer)}".encode("utf-8")
         ).hexdigest()[:16]
         review_checkpoint_dir = proof_dir / "review_batches" / review_scope
         review_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -418,9 +481,11 @@ def run_deep_proofread(
             job: tuple[list[dict[str, object]], str, Path],
         ) -> list[dict[str, Any]]:
             batch, lang, checkpoint = job
+            request_batch = [{**row, "translations": {lang: row["translations"][lang]},
+                              "dialogue_evidence": _language_evidence(row.get("dialogue_evidence"), lang)} for row in batch]
             validation_error: ValueError | None = None
             for _ in range(3):
-                batch_suggestions = reviewer.review_batch(batch, [lang])
+                batch_suggestions = reviewer.review_batch(request_batch, [lang])
                 try:
                     validated_batch = _validate_suggestions(batch, batch_suggestions, [lang])
                     break
@@ -467,10 +532,30 @@ def run_deep_proofread(
     merge_started = time.perf_counter()
     try:
         start_phase(manifest, "controller_merge")
-        fixes = [row for row in validated if row["status"] == "FIX"]
+        trusted_rows = {str(row['review_key']): row for row in review_rows}
+        fixes = []
+        for suggestion in validated:
+            if suggestion['status'] != 'FIX':
+                continue
+            trusted = trusted_rows[suggestion['review_key']]
+            # 源文和原译由主控补齐，不能让 reviewer 自述的理由代替独立审计证据。
+            fixes.append({
+                **suggestion,
+                **{field: trusted.get(field) for field in (
+                    'cn', 'translation_source', 'source_mode', 'reference_en',
+                    'reference_en_status', 'context', 'risk_flags',
+                    'protected_tokens', 'term_hits', 'dialogue_evidence',
+                )},
+                'current': (trusted.get('translations') or {}).get(suggestion['lang'], ''),
+                'dialogue_evidence': _language_evidence(trusted.get('dialogue_evidence'), suggestion['lang']),
+                'semantic_check_required': bool(trusted.get('dialogue_evidence')) or any(
+                    'dialogue' in str(flag).lower() or 'idiom' in str(flag).lower()
+                    for flag in (trusted.get('risk_flags') or [])
+                ),
+            })
         decisions: list[dict[str, object]] = []
         audit_scope = hashlib.sha256(
-            f"audit-v2-program-owned-structure:{_client_checkpoint_identity(auditor)}".encode("utf-8")
+            f"audit-v7-known-semantic-regression:{_client_checkpoint_identity(auditor)}".encode("utf-8")
         ).hexdigest()[:16]
         audit_checkpoint_dir = proof_dir / "audit_batches" / audit_scope
         audit_checkpoint_dir.mkdir(parents=True, exist_ok=True)

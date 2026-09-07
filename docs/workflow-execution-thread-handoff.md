@@ -1,5 +1,9 @@
 # 本地化工作流执行线程 Handoff
 
+## 既有语言包诊断新增入口（本地维护源）
+
+评估任务先按 `docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md` 固定抽样范围，再运行 `scripts/run_quality_diagnostics.py`。它只校验实际覆盖、未决项及资源 ID 冲突，不输出整体质量分或发布通过。中英版本冲突不默认按英语自由重译。此本地入口未同步 Studio 时不得声称产品端已生效。
+
 ## 新线程必读顺序
 
 1. 先读本文件，确认仓库边界、任务路由和交付规则。
@@ -155,6 +159,10 @@ python scripts/run_history_lookup.py `
 未完成基础 QA 不得声明交付完成。
 
 ## 深度逐句校对触发条件
+
+独立质量评估、深校净效果和对白证据契约见 `INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`。先提取需求表内已批准名称，再准备工作副本；auditor 接收主控提供的原译、源文与上下文，不以 reviewer 理由代替证据。
+
+同批姓名提取入口为 `scripts/run_approved_name_snapshot.py`（显式行号、来源哈希、冲突阻断）；其 JSON 输出可直接作为大文本 `--term-base`。深校自动补充显式场景中的源文及当前目标话轮；对白接受修改必须附语义复述与主客体/语气检查。模型仍可能误判，`utils/semantic_regression.py` 的窄范围已知误译规则同时约束审计和 cache-lint；新规则必须带反例与正确对照。
 
 默认不启用深度逐句校对；只有用户明确说以下表达时才启用：
 

@@ -229,7 +229,13 @@ class OpenAICompatibleClient:
                 "appears in the English reference. "
                 "For structured text segments, review only the readable text and never add markup, "
                 "placeholders, or JSON syntax to suggested. "
-                "Do not rewrite correct text. Return strict JSON with one item per row and language: "
+                "Do not rewrite correct text. "
+                "For dialogue, distinguish the speaker, addressee, and grammatical antecedent. "
+                "A gender or address change must cite concrete supplied context in reason; never "
+                "guess from an isolated line or assume alternating speakers. If context is insufficient, "
+                "KEEP the current form and state the uncertainty in reason. Preserve idiomatic meaning "
+                "and emotional intent instead of copying the surface metaphor. "
+                "Return strict JSON with one item per row and language: "
                 "{\"rows\":[{\"review_key\":...,\"lang\":...,\"status\":\"KEEP|FIX\","
                 "\"suggested\":...,\"reason\":...}]}."
             ),
@@ -244,20 +250,80 @@ class OpenAICompatibleClient:
         self,
         suggestions: list[dict[str, object]],
     ) -> list[dict[str, object]]:
+        blind_rows = [{"review_key": row["review_key"], "lang": row["lang"], "text": row["suggested"]}
+                      for row in suggestions if row.get("semantic_check_required")]
+        readings = {}
+        if blind_rows:
+            blind = self._chat_json(
+                "Read these target-language sentences independently, without assuming an intended source. "
+                "Describe what the actual grammar says in plain English. Identify who acts, the predicate, "
+                "and its exact object/complement; report tone and ambiguity. Do not silently repair an odd "
+                "sentence into a familiar English idiom. In particular distinguish worrying about a person "
+                "or body part from worrying about a situation. Return JSON {\"rows\":[{\"review_key\":...,"
+                "\"lang\":...,\"meaning\":...,\"predicate_object\":...,\"tone\":...}]}.",
+                {"rows": blind_rows},
+            )
+            blind = blind.get("rows") if isinstance(blind, dict) else blind
+            if not isinstance(blind, list) or len(blind) != len(blind_rows):
+                raise ValueError("blind semantic reading coverage mismatch")
+            for reading in blind:
+                key = (str(reading.get("review_key")), str(reading.get("lang")).upper())
+                if key in readings or any(not isinstance(reading.get(field), str) or not reading[field].strip()
+                                          for field in ("meaning", "predicate_object", "tone")):
+                    raise ValueError("invalid blind semantic reading")
+                readings[key] = reading
+            if set(readings) != {(str(row["review_key"]), str(row["lang"]).upper()) for row in blind_rows}:
+                raise ValueError("blind semantic reading key mismatch")
+        audit_input = [{**row, "independent_target_reading": readings.get((str(row["review_key"]), str(row["lang"]).upper()))}
+                       for row in suggestions]
         parsed = self._chat_json(
             (
                 "Audit localization change suggestions conservatively. Revert changes that narrow "
                 "meaning, force terminology into the wrong context, damage tokens/numbers, or are "
-                "not a clear improvement. Structured text suggestions are prose-only; never add "
+                "not a clear improvement. "
+                "Use the controller-supplied source, current translation, and context to check each "
+                "suggestion independently; the reviewer reason is a claim to verify, not evidence. "
+                "For dialogue gender/address changes require explicit speaker/addressee evidence; "
+                "REVERT speculative changes based only on a likely speaker. Compare idioms by meaning "
+                "and tone, not by literal imagery. First paraphrase the primary source WITHOUT its metaphor, "
+                "then independently paraphrase the actual final target wording back into plain English. "
+                "Check the predicate and its object: the thing worried about, the person causing an effect, "
+                "and the person affected must not change. A pretty metaphor cannot excuse a wrong object. "
+                "Use independent_target_reading (obtained without source or reviewer reason) to detect "
+                "anchoring: if it reveals a different predicate/object, REVERT or REVISE the wording. "
+                "Read target-language antecedents in dialogue_evidence; these are unverified translations, "
+                "not authoritative speaker labels. Do not infer alternating speakers. "
+                "For semantic_check_required=true, ACCEPT/REVISE must include semantic_check with nonempty "
+                "source_meaning and final_meaning plain-English paraphrases, and boolean meaning_preserved, "
+                "roles_preserved, tone_preserved. All must be true for the final wording; otherwise REVERT "
+                "or fix the wording and reassess. Do not rubber-stamp these fields from reviewer reason. "
+                "Structured text suggestions are prose-only; never add "
                 "markup, placeholders, or JSON syntax to final. Return strict JSON: {\"rows\":[{\"review_key\":...,"
                 "\"lang\":...,\"decision\":\"ACCEPT|REVERT|REVISE\",\"final\":...,"
-                "\"reason\":...}]}."
+                "\"reason\":...,\"semantic_check\":{\"source_meaning\":...,\"final_meaning\":...,"
+                "\"meaning_preserved\":true,\"roles_preserved\":true,\"tone_preserved\":true}}]}. "
+                "Always return final explicitly, including for ACCEPT."
             ),
-            {"suggestions": suggestions},
+            {"suggestions": audit_input},
         )
         result = parsed.get("rows") if isinstance(parsed, dict) else parsed
         if not isinstance(result, list):
             raise ValueError("audit response must contain a rows array")
+        for row in result:
+            key = (str(row.get("review_key")), str(row.get("lang")).upper())
+            reading = readings.get(key)
+            if reading:
+                row["independent_target_reading"] = reading
+            original = next((item for item in suggestions if (str(item["review_key"]), str(item["lang"]).upper()) == key), None)
+            if original and str(row.get("decision")).upper() in {"ACCEPT", "REVISE"}:
+                from utils.semantic_regression import known_semantic_regressions
+
+                regressions = known_semantic_regressions(original, key[1], str(row.get("final") or ""))
+                if regressions:
+                    row["rejected_model_decision"] = dict(row)
+                    row.update(decision="REVERT", final=original.get("current", ""),
+                               reason="Known semantic regression blocked: " + ", ".join(regressions))
+                    row.pop("semantic_check", None)
         return result
 
 

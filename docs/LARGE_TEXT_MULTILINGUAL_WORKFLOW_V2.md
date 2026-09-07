@@ -97,6 +97,10 @@ python scripts\run_large_text_multilingual_runner.py reconcile `
 
 ## 验收门禁
 
+独立评估与对白质量反馈按 `INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`：合并同批批准名称基线，记录语义审读覆盖，并对深校引入或加重的问题单独计数。auditor 输入包括主控源文、原译、上下文和术语；仅因输入契约或结构测试通过，不能宣称模型已消除语义错误。
+
+姓名快照使用 `run_approved_name_snapshot.py`，将输出 JSON 作为 pack 和 cache-lint 的同一 `--term-base`。对白语义检查有三个不同证据：无源文的目标盲读、含源文/原译/话轮的审计、源条件化的已知语义回归规则。盲读不是确定性保证；角色仍未知时不得依据交替行号猜测。具体协议、费用影响和语境豁免见独立评估规范。
+
 1. `cache-lint`：空译文、中文残留、占位符/标签/数字丢失、强术语遗漏和未请求语言必须为 0。
    初译后先执行保守的本地残留修复：只替换该行 `term_hits` 中仍残留的中文术语和章节序号；无法确定的中文正文不改，继续由 `cache-lint` 阻断。
 2. `apply-dry-run`：普通模式可打开，样式引用合法。

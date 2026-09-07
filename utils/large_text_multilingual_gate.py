@@ -25,7 +25,8 @@ TOKEN_RE = re.compile(r"\\n|<@\d+>|\{[^{}\s]+\}|%[sdif]|##\d+|</?[A-Za-z][^>\s]*
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 MOJIBAKE_RE = re.compile(r"\ufffd|\x00|\?{3}")
 NUMBER_RE = re.compile(
-    r"\d+(?:[,.]\d+)?(?:\s*(?:千|万|萬|亿|億|(?i:thousand|million|billion|ribu|rb|juta|miliar|millones|millón|milhao|milhão|milhões|mil|тыс|тысяч|тысяча|тысячи|млн|миллион|миллиона|миллионов|млрд|миллиард|миллиарда|миллиардов)\b\.?|[KkMBWw](?![A-Za-z])))%?"
+    # 拉丁扩展及组合重音仍是词的一部分，不能把 Bäume/Mũ 的首字母识别为单位。
+    r"\d+(?:[,.]\d+)?(?:\s*(?:千|万|萬|亿|億|(?i:thousand|million|billion|ribu|rb|juta|miliar|millones|millón|milhao|milhão|milhões|mil|тыс|тысяч|тысяча|тысячи|млн|миллион|миллиона|миллионов|млрд|миллиард|миллиарда|миллиардов)\b\.?|[KkMBWw](?![A-Za-z\u00c0-\u024f\u1e00-\u1eff\u0300-\u036f])))%?"
     r"|\d{1,3}(?:[,. \u00a0\u202f]\d{3})+(?:[,.]\d+)?%?"
     r"|\d+(?:[,.]\d+)?%?"
 )
@@ -402,6 +403,17 @@ def _check_required_terms(issues: list[dict[str, Any]], row: dict[str, Any], key
         variants = _accepted_term_variants(hit, lang)
         if variants and not any(variant in target for variant in variants):
             source = hit.get("source") or hit.get("CN") or hit.get("term") or ""
+            # 主控语境裁决只豁免这一格的精确源/译文，不能扩成全局代词变体。
+            waivers = row.get("term_waivers") or []
+            if any(isinstance(waiver, dict)
+                   and waiver.get("source") == source and waiver.get("lang") == lang
+                   and waiver.get("target") == target
+                   and waiver.get("cn") == source_text(row)
+                   and waiver.get("translation_source") == row.get("translation_source", row.get("cn", ""))
+                   and waiver.get("context") == row.get("context", "")
+                   and isinstance(waiver.get("reason"), str) and waiver["reason"].strip()
+                   for waiver in waivers):
+                continue
             add_issue(issues, "term_missing", key, lang, f"required term not used: {source}")
 
 
@@ -435,7 +447,11 @@ def cache_lint(
 
         effective_row = row
         if match_terms is not None:
-            expected_hits = match_terms(source_text(row), terms)
+            expected_hits = match_terms(
+                source_text(row), terms,
+                source_en=str(row.get("translation_source") or row.get("reference_en") or "")
+                if row.get("source_mode") == "en" else None,
+            )
             actual_hits = _term_hits(row)
             expected_snapshot = json.dumps(expected_hits, ensure_ascii=False, sort_keys=True)
             actual_snapshot = json.dumps(actual_hits, ensure_ascii=False, sort_keys=True)
@@ -460,6 +476,10 @@ def cache_lint(
             if not target:
                 add_issue(issues, "empty_translation", key, lang, "target translation is empty")
                 continue
+            from utils.semantic_regression import known_semantic_regressions
+
+            for regression in known_semantic_regressions(row, lang, target):
+                add_issue(issues, "known_semantic_regression", key, lang, regression)
             if lang.upper() not in CJK_ALLOWED_LANGS and CJK_RE.search(target):
                 add_issue(issues, "cjk_residue", key, lang, "target translation still contains Chinese/Japanese ideographs")
             if MOJIBAKE_RE.search(target):
