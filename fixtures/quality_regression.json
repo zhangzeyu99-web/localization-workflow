@@ -1,6 +1,17 @@
 {
   "version": 1,
   "description": "Regression cases distilled from real localization delivery failures.",
+  "punctuation_policy_cases": [
+    {"text":"Don't worry.","lang":"en","expected":[]},
+    {"text":"Don’t worry.","lang":"en","expected":["incompatible_punctuation"]},
+    {"text":"Ｌｖ．１２＇","lang":"en","expected":["fullwidth_punctuation"]},
+    {"text":"“Ready”…","lang":"en","expected":["incompatible_punctuation"]},
+    {"text":"ação, mañana, café","lang":"en","expected":[]},
+    {"text":"L’été","lang":"fr","expected":[]},
+    {"text":"L’été","lang":"fr","mode":"ascii","expected":["incompatible_punctuation"]},
+    {"text":"Don’t worry.","lang":"en","mode":"typographic","expected":[]},
+    {"text":"テスト：１２","lang":"ja","expected":[]}
+  ],
   "name_note_category_cases": [
     {"value":"英雄名","expected":"角色名"},
     {"value":"角色名","expected":"角色名"},
@@ -324,7 +335,7 @@
       "id": "bad-orphan-leading-clitic",
       "source": "毒舌依旧",
       "translation": "’s poisonous tongue remains the same.",
-      "expected_issues": ["orphan_leading_clitic"]
+      "expected_issues": ["orphan_leading_clitic", "incompatible_punctuation"]
     },
     {
       "id": "bad-leading-lowercase",

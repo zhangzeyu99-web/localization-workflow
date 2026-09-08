@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 
 from utils.language_config import normalize_language_code
 from utils.name_policy import evaluate_name_translation, find_name_collisions, resolve_name_type
+from utils.punctuation_policy import punctuation_issues
 from utils.review_consistency import GROUP_HARD_ISSUES, group_issues, history_issues, load_history_rows, normalized
 from utils.quality_harness_rules import (  # noqa: F401  (re-exported)
     BROKEN_BULLET_PATTERN,
@@ -113,6 +114,13 @@ def load_fixture(path: str | Path) -> dict:
 def run_fixture(fixture: dict, lang: str = 'en') -> HarnessResult:
     cases = fixture.get('cases', [])
     result = HarnessResult(passed=True, total_cases=len(cases))
+    for index, case in enumerate(fixture.get('punctuation_policy_cases', [])):
+        actual = sorted(punctuation_issues(case['text'], case['lang'], case.get('mode')))
+        result.total_cases += 1
+        result.issue_counts.update(actual)
+        if actual != sorted(case['expected']):
+            result.passed = False
+            result.failures.append({'id': f'punctuation-{index}', 'expected_issues': case['expected'], 'actual_issues': actual})
     collision_issues: dict[object, list] = {}
     name_rows = [
         {
@@ -189,6 +197,7 @@ def scan_workbook(
     term_base: str | Path | Sequence[str | Path] | None = None,
     auto_discover_terms: bool = True,
     history: Sequence[str | Path] | None = None,
+    punctuation_mode: str | None = None,
 ) -> HarnessResult:
     """Scan a workbook language table.
 
@@ -237,7 +246,7 @@ def scan_workbook(
                     'source': source,
                     'translation': target,
                 })
-                row_issues = check_row(row_id, source, target, lang=lang)
+                row_issues = check_row(row_id, source, target, lang=lang, punctuation_mode=punctuation_mode)
                 row_issues.extend(_check_ui_length(row_id, source, target, lang=lang))
                 name_type = resolve_name_type(source, name_type_lookup)
                 if name_type:

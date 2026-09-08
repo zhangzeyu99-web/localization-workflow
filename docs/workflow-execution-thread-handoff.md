@@ -1,5 +1,9 @@
 # 本地化工作流执行线程 Handoff
 
+## 全角与客户端标点门禁（本地维护源）
+
+拉丁字母语言执行完整 Unicode 全角/CJK 标点检查；英语默认额外拦截弯引号、Unicode 破折号和省略号等客户端不兼容标点。其他语言保留合法重音及排印标点；项目要求 ASCII 时，对 workbook、`cache-lint`、`readback-gate` 统一传 `--punctuation-mode ascii`。只修可读文本槽，不整体改写 JSON、标签属性或程序 token。详见 `docs/quality-harness.md`。当前仅维护源生效，未同步 Studio。
+
 ## 改名与系列译法检查（本地维护源）
 
 最终成品按目标语言运行 `scripts/run_quality_harness.py --workbook <成品> --lang <语言> --term-base <最新术语表>`；既有内容修订且有历史语言包时显式追加 `--history <历史表>`。新增跨行罗马编号/同条件等级系列检查；异源同译仅提示复核，不自动覆盖。术语无分类列时，备注完整值“英雄名、角色名”等作为姓名约束，普通备注不猜分类。误分类或普通词语境冲突必须留审校裁决，不能删除问题凑零。详见 `docs/quality-harness.md`。当前仅维护源生效，未同步 Studio。

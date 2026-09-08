@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from utils.punctuation_policy import punctuation_issues
 
 
 TOKEN_RE = re.compile(r"\\n|<@\d+>|\{[^{}\s]+\}|%[sdif]|##\d+|</?[A-Za-z][^>\s]*[^>]*>|\[[A-Za-z0-9_:/#=.,-]+\]")
@@ -422,6 +423,7 @@ def cache_lint(
     *,
     target_langs: list[str],
     term_base: Path | None = None,
+    punctuation_mode: str | None = None,
 ) -> dict[str, Any]:
     rows = read_jsonl(cache_jsonl)
     issues: list[dict[str, Any]] = []
@@ -476,6 +478,8 @@ def cache_lint(
             if not target:
                 add_issue(issues, "empty_translation", key, lang, "target translation is empty")
                 continue
+            for issue_type, detail in punctuation_issues(target, lang, punctuation_mode).items():
+                add_issue(issues, issue_type, key, lang, detail)
             from utils.semantic_regression import known_semantic_regressions
 
             for regression in known_semantic_regressions(row, lang, target):
@@ -584,7 +588,7 @@ def _looks_like_translation_sheet(headers: list[str], target_langs: list[str]) -
     return bool(header_set.intersection(SOURCE_HEADERS))
 
 
-def readback_gate(delivery_dir: Path, *, target_langs: list[str]) -> dict[str, Any]:
+def readback_gate(delivery_dir: Path, *, target_langs: list[str], punctuation_mode: str | None = None) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     files = []
     if not delivery_dir.exists():
@@ -637,6 +641,9 @@ def readback_gate(delivery_dir: Path, *, target_langs: list[str]) -> dict[str, A
                         value = row_values[col_index] if col_index < len(row_values) else None
                         if value is None or str(value).strip() == "":
                             add_issue(issues, "blank_target_cell", f"{path.name}:{sheet.title}!R{row_index}C{col_index + 1}", lang, "target cell is blank")
+                        else:
+                            for issue_type, detail in punctuation_issues(str(value), lang, punctuation_mode).items():
+                                add_issue(issues, issue_type, f"{path.name}:{sheet.title}!R{row_index}C{col_index + 1}", lang, detail)
         finally:
             workbook.close()
 
@@ -682,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
     lint.add_argument("--cache-jsonl", required=True, type=Path)
     lint.add_argument("--target-langs", required=True)
     lint.add_argument("--term-base", type=Path)
+    lint.add_argument("--punctuation-mode", choices=["ascii", "typographic"])
     lint.add_argument("--out", type=Path)
     lint.add_argument("--quiet", action="store_true")
 
@@ -694,6 +702,7 @@ def main(argv: list[str] | None = None) -> int:
     readback = sub.add_parser("readback-gate", help="Verify final delivery directory is clean and target columns are filled.")
     readback.add_argument("--delivery-dir", required=True, type=Path)
     readback.add_argument("--target-langs", required=True)
+    readback.add_argument("--punctuation-mode", choices=["ascii", "typographic"])
     readback.add_argument("--out", type=Path)
     readback.add_argument("--quiet", action="store_true")
 
@@ -713,6 +722,7 @@ def main(argv: list[str] | None = None) -> int:
             args.cache_jsonl,
             target_langs=parse_langs(args.target_langs),
             term_base=args.term_base,
+            punctuation_mode=args.punctuation_mode,
         )
         write_or_print(result, args.out, quiet=args.quiet)
         return 0 if result["hard_blockers"] == 0 else 1
@@ -721,7 +731,7 @@ def main(argv: list[str] | None = None) -> int:
         write_or_print(result, args.out, quiet=args.quiet)
         return 0
     if args.command == "readback-gate":
-        result = readback_gate(args.delivery_dir, target_langs=parse_langs(args.target_langs))
+        result = readback_gate(args.delivery_dir, target_langs=parse_langs(args.target_langs), punctuation_mode=args.punctuation_mode)
         write_or_print(result, args.out, quiet=args.quiet)
         return 0 if result["hard_blockers"] == 0 else 1
     return 2

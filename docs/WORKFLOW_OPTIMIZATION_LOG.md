@@ -211,6 +211,19 @@
 - 剩余风险：未同步Studio数字解析副本，backend parity未验证；目的性扩审仍不能证明全表语义无误。pytest包含既有工作表扩展及Windows临时目录清理警告，未对无关目录作清理。
 - 必读文档：`docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`、`AGENTS.md`、`docs/workflow-execution-thread-handoff.md`。
 
+## 2026-09-08 全角与客户端标点兼容门禁
+
+- 状态：`validated`，维护源已实现并通过真实表回放及修复交付；本次提交仅包含维护源，未同步 Studio。
+- 代码版本：基于 `main/db23700` 的本次标点门禁提交。
+- 触发问题：旧 `fullwidth_punctuation` 只枚举少量中式标点，英语弯撇号 U+2019 和全角撇号 U+FF07 均不命中；游戏客户端把弯撇号显示成异常宽间距。
+- 实施改动：增加完整 Unicode 全角/CJK 标点检查；英语默认增加 ASCII 客户端兼容策略，拦截弯引号、Unicode 破折号和省略号。项目可用 `--punctuation-mode ascii|typographic` 显式覆盖；workbook、缓存和最终读回门禁共用同一规则。自动修复仅转换明确标点映射，并跳过 JSON、标签属性、变量和程序 token。
+- 验收证据：固定回归包含直引号好例、弯引号坏例、全角字母数字符号坏例、西葡/法语重音好例及受保护结构好例。真实9.7英语表只读扫描9704个非空文本，检出31个单元格，其中2个含全角/CJK字符、29个含不兼容标点；修复词条逐项读回后标点阻断0，ID和中文一致，单词、数字、占位符及标签保持。最终复验为 pytest 328 passed、77 subtests passed，fixture 87项通过，`git diff --check`通过。
+- 生效范围：维护源 workbook harness、表面修复、large-text `cache-lint` 与 `readback-gate`。非英语默认不强制 ASCII，避免破坏合法排印标点及重音字母。
+- 补充交付验证：西语和葡语各扫描9701个非空字符串，分别修复9条和16条，以两个三列页签独立交付。标点阻断0；全部ID、中文、单词、重音字母、倒问号/倒感叹号、数字和程序标记保留；源表哈希不变，Excel普通模式打开并逐格读回一致，发布门禁通过。ASCII仅约束明确标点映射，不是去除所有非ASCII字符，也不增加模型调用。
+- 回滚边界：撤销 `utils/punctuation_policy.py` 及三处调用即可；不得退回用“非 ASCII 一律删除”的破坏性策略。
+- 剩余风险：客户端异常还可能受字体 fallback 或排版引擎影响；本轮只保证文本字符符合 ASCII 项目策略，仍需游戏内复测。客户原始工作簿未覆盖，单独交付修复词条。
+- 必读文档：`docs/quality-harness.md`、`AGENTS.md`、`docs/workflow-execution-thread-handoff.md`。
+
 ## 2026-09-07 改名旧译与跨行系列复核
 
 - 状态：`validated`，限定维护源检查能力，不代表真实整表重新深校或发布通过。
