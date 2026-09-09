@@ -55,8 +55,9 @@ class Reviewer:
 
 class Auditor:
     def audit_batch(self, suggestions):  # type: ignore[no-untyped-def]
-        self.assert_no_suggestions = suggestions
-        return []
+        self.audited = suggestions
+        return [dict(review_key=row['review_key'], lang=row['lang'], decision='ACCEPT',
+                     final=row['suggested'], reason='independently verified unchanged text') for row in suggestions]
 
 
 class LargeTextMultilingualPipelineTests(unittest.TestCase):

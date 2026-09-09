@@ -17,6 +17,8 @@ from utils.text_normalize import strip_tags_and_vars
 from utils.ui_detector import is_ui_text
 from utils.ui_length_checker import check_ui_length
 from utils.variable_checker import CheckResult, check_all as check_variables
+from utils.quantity_guard import quantity_issues
+from utils.semantic_constraints import semantic_constraint_issues
 
 HTML_ENTITY_PATTERN = re.compile(r'&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);')
 INTERNAL_TOKEN_PATTERN = re.compile(r'\b[A-Z]{2,}[A-Z0-9]*\d[A-Z0-9]*\b')
@@ -37,6 +39,14 @@ CJK_PATTERN = re.compile(r'[\u3400-\u9fff]')
 MIN_NUMBERED_TERM_GROUP_SIZE = 3
 
 DEFAULT_HARD_ISSUES = {
+    'number_missing',
+    'semantic_entity_number_missing',
+    'semantic_action_condition_missing',
+    'semantic_enemy_scope_missing',
+    'semantic_negation_missing',
+    'quantity_count_missing',
+    'quantity_duration_mismatch',
+    'quantity_per_hit_missing',
     'variable_missing',
     'variable_extra',
     'variable_order',
@@ -96,6 +106,12 @@ def check_row(row_id, source: str, translation: str, lang: str = 'en', punctuati
     translation = str(translation or '')
 
     results.extend(check_variables(row_id, source, translation))
+    from utils.large_text_multilingual_gate import pair_integrity_issues
+    for issue_type, detail in pair_integrity_issues({'cn': source}, lang, translation, punctuation_mode):
+        if issue_type in {'number_missing', 'newline_mismatch'} and not any(r.check_type == issue_type for r in results):
+            results.append(CheckResult(row_id, issue_type, 'error', detail, source, translation))
+    for issue_type, detail in quantity_issues(source, translation, lang) + semantic_constraint_issues(source, translation, lang):
+        results.append(CheckResult(row_id, issue_type, 'error', detail, source, translation))
     results.extend(check_chinese_residue(row_id, translation, lang=lang))
     results.extend(check_readability(row_id, source, translation, lang=lang))
     results.extend(_check_surface_regressions(row_id, source, translation, lang=lang, punctuation_mode=punctuation_mode))

@@ -114,6 +114,22 @@ def load_fixture(path: str | Path) -> dict:
 def run_fixture(fixture: dict, lang: str = 'en') -> HarnessResult:
     cases = fixture.get('cases', [])
     result = HarnessResult(passed=True, total_cases=len(cases))
+    from utils.semantic_constraints import semantic_constraint_issues
+    for case in fixture.get('semantic_constraint_cases', []):
+        actual = sorted({kind for kind, _ in semantic_constraint_issues(case['source'], case['target'], case['lang'])})
+        result.total_cases += 1
+        result.issue_counts.update(actual)
+        if actual != sorted(case['expected']):
+            result.passed = False
+            result.failures.append({'id': case['name'], 'expected_issues': case['expected'], 'actual_issues': actual})
+    from utils.quantity_guard import quantity_issues
+    for case in fixture.get('quantity_guard_cases', []):
+        actual = sorted({kind for kind, _ in quantity_issues(case['source'], case['target'], case['lang'])})
+        result.total_cases += 1
+        result.issue_counts.update(actual)
+        if actual != sorted(case['expected']):
+            result.passed = False
+            result.failures.append({'id': case['name'], 'expected_issues': case['expected'], 'actual_issues': actual})
     for index, case in enumerate(fixture.get('punctuation_policy_cases', [])):
         actual = sorted(punctuation_issues(case['text'], case['lang'], case.get('mode')))
         result.total_cases += 1

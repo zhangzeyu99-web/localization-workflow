@@ -297,6 +297,10 @@ def _validate_suggestions(
         )
     validated: list[dict[str, Any]] = []
     for row in suggestions:
+        from utils.review_findings import unresolved_review_detail
+        unresolved = unresolved_review_detail(row)
+        if unresolved:
+            raise ValueError(unresolved)
         status = str(row.get("status") or "").upper()
         if status not in {"KEEP", "FIX"}:
             raise ValueError(f"invalid review status: {status}")
@@ -307,6 +311,9 @@ def _validate_suggestions(
                 suggested = current_by_cell.get(cell, "")
             if not suggested:
                 raise ValueError("review suggestion cannot be blank")
+        current = current_by_cell.get((str(row["review_key"]), str(row["lang"]).upper()), "")
+        if status == "KEEP" and current and suggested != current:
+            raise ValueError("KEEP must preserve the current target exactly; use FIX for a change")
         validated.append(
             {
                 "review_key": str(row["review_key"]),
@@ -336,6 +343,10 @@ def _validate_audit(
     result: dict[tuple[str, str], dict[str, Any]] = {}
     trusted_fixes = {(row["review_key"], row["lang"]): row for row in fixes}
     for row in decisions:
+        from utils.review_findings import unresolved_review_detail
+        unresolved = unresolved_review_detail(row)
+        if unresolved:
+            raise ValueError(unresolved)
         decision = str(row.get("decision") or "").upper()
         if decision not in {"ACCEPT", "REVERT", "REVISE"}:
             raise ValueError(f"invalid audit decision: {decision}")
@@ -343,6 +354,8 @@ def _validate_audit(
         if decision in {"ACCEPT", "REVISE"} and not final:
             raise ValueError("accepted audit decision requires final text")
         fix = trusted_fixes[(str(row["review_key"]), str(row["lang"]).upper())]
+        if fix.get('status') == 'KEEP' and decision == 'REVERT':
+            raise ValueError('A KEEP audit must ACCEPT the current target or REVISE it; REVERT is unresolved')
         from utils.semantic_regression import known_semantic_regressions
 
         if decision in {"ACCEPT", "REVISE"} and known_semantic_regressions(fix, str(row["lang"]), final):
@@ -458,7 +471,7 @@ def run_deep_proofread(
         start_phase(manifest, "subagent_review")
         suggestions: list[dict[str, object]] = []
         review_scope = hashlib.sha256(
-            f"review-v5-scene-target-evidence:{_client_checkpoint_identity(reviewer)}".encode("utf-8")
+            f"review-v6-keep-and-unresolved-integrity:{_client_checkpoint_identity(reviewer)}".encode("utf-8")
         ).hexdigest()[:16]
         review_checkpoint_dir = proof_dir / "review_batches" / review_scope
         review_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -535,8 +548,6 @@ def run_deep_proofread(
         trusted_rows = {str(row['review_key']): row for row in review_rows}
         fixes = []
         for suggestion in validated:
-            if suggestion['status'] != 'FIX':
-                continue
             trusted = trusted_rows[suggestion['review_key']]
             # 源文和原译由主控补齐，不能让 reviewer 自述的理由代替独立审计证据。
             fixes.append({
@@ -555,7 +566,7 @@ def run_deep_proofread(
             })
         decisions: list[dict[str, object]] = []
         audit_scope = hashlib.sha256(
-            f"audit-v7-known-semantic-regression:{_client_checkpoint_identity(auditor)}".encode("utf-8")
+            f"audit-v9-all-reviewed-cells-explicit-verdict:{_client_checkpoint_identity(auditor)}".encode("utf-8")
         ).hexdigest()[:16]
         audit_checkpoint_dir = proof_dir / "audit_batches" / audit_scope
         audit_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -617,7 +628,7 @@ def run_deep_proofread(
                     for index, slot in enumerate(slots):
                         review_key = f"{signature}:segment:{index}"
                         suggestion = suggestions_by_cell.get((review_key, lang))
-                        if suggestion is None or suggestion["status"] != "FIX":
+                        if suggestion is None:
                             continue
                         decision = audit[(review_key, lang)]
                         if decision["decision"] == "REVERT":
@@ -628,7 +639,7 @@ def run_deep_proofread(
                     final_text = render_reviewed_target(target_template, slots, values)
                 else:
                     suggestion = suggestions_by_cell.get((signature, lang))
-                    if suggestion is None or suggestion["status"] != "FIX":
+                    if suggestion is None:
                         continue
                     decision = audit[(signature, lang)]
                     if decision["decision"] == "REVERT":
@@ -666,8 +677,8 @@ def run_deep_proofread(
             summary_json=summary_path,
             reviewed_rows=len(source_review_rows),
             reviewed_cells=len(validated),
-            suggested_changes=len(fixes),
-            reverted_changes=sum(1 for row in audit.values() if row["decision"] == "REVERT"),
+            suggested_changes=sum(row["status"] == "FIX" for row in fixes),
+            reverted_changes=sum(1 for row in fixes if row["status"] == "FIX" and audit[(row["review_key"], row["lang"])]["decision"] == "REVERT"),
             changed_rows=changed_rows,
             changed_cells=changed_cells,
             elapsed_seconds=elapsed,
@@ -678,6 +689,8 @@ def run_deep_proofread(
             "suggestions_jsonl": str(suggestions_path),
             "audit_jsonl": str(audit_path),
             "summary_json": str(summary_path),
+            "audited_cells": len(audit),
+            "audited_keep_cells": sum(row["status"] == "KEEP" for row in fixes),
             "changed_by_language": dict(sorted(changed_by_lang.items())),
             "issues": issues,
         }

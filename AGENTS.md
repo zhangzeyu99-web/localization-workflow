@@ -264,3 +264,17 @@
 - 项目 profile 和 prompt 只能放在单项目私有环境中，不能跨项目复用，也不能提交公开仓库。
 - 项目定制 harness 不强制依赖 profile；但如果当前项目存在 `project_profile.json`、`project_profile.yaml` 或等价 profile，则必须读取并执行，不能忽略。
 - profile 规则优先级：用户当前明确要求 > 项目 profile/prompt > 项目术语表 > 通用 `quality_harness` 规则 > 历史经验。
+
+## 备注修改词条的强制语义复核
+
+- 备注/状态为“修改”的所有本次目标语言单元格，必须按当前中文逐条复核语义；ID/Key只定位，不允许直接据此复用旧译。全部行显式记录KEEP/FIX及依据，无输出不得默认为通过，二次核对也必须覆盖KEEP。
+- 用户要求抛弃旧译重译时，初译移除旧译、旧英语参考、历史句库和旧任务翻译缓存，仅使用当前中文、项目上下文及当前术语；保留原ID和非目标列。具体执行与验收见 `docs/MODIFIED_SOURCE_REVIEW.md`。
+
+## 数量与未决审校问题
+
+- 中文到英/西/葡的显式次数、时长和每次伤害执行共享数量门禁，不受旧小数字豁免影响。已发现的遗漏不得以旧版已有或本次未新增为由放行。审校导入保留 unresolved_issues；明确未决交接备注也须解决后重新复核。规则、适用边界及验证见 `docs/QUANTITY_AND_UNRESOLVED_REVIEW_GATE.md`。
+
+
+## 数字语义与验收覆盖量补充
+
+本地规则现检查 EN/ES/PT 可读小数字、编号实体、明确攻防/敌方/短句否定、变量次数和游戏标签。全量审校时 KEEP 与 FIX 均须进入独立二审，KEEP 只允许 ACCEPT/REVISE；audit 未决缺陷同样阻断。空缓存/空交付或缺源译列不能合格，真实成品逐格运行共享源译检查并报告覆盖量。试写不得覆盖源表。按 docs/QUANTITY_AND_UNRESOLVED_REVIEW_GATE.md 运行负向和端到端回归；有限规则不代表全表深校，未同步 Studio。

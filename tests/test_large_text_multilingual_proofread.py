@@ -58,7 +58,7 @@ class Auditor:
             {
                 "review_key": row["review_key"],
                 "lang": row["lang"],
-                "decision": "ACCEPT" if row["lang"] == "EN" else "REVERT",
+                "decision": "ACCEPT" if row["lang"] == "EN" or row['status'] == 'KEEP' else "REVERT",
                 "final": row["suggested"],
                 "reason": "meaning preserved" if row["lang"] == "EN" else "meaning narrowed",
             }

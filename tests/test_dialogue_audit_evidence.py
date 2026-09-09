@@ -98,12 +98,17 @@ def test_scene_target_evidence_reaches_real_review_audit_and_survives_revert(tmp
 
     class Auditor:
         def audit_batch(self, rows):
-            assert len(rows)==1
-            row=rows[0]
-            assert row['semantic_check_required'] is True
-            assert row['dialogue_evidence']['speaker']=='unknown'
-            assert row['dialogue_evidence']['turns'][0]['translations']['DE']=='Der Tisch.'
-            return [{'review_key':row['review_key'],'lang':'DE','decision':'REVERT','final':row['current'], 'reason':'Tisch is masculine.'}]
+            assert len(rows)==2
+            for row in rows:
+                assert row['semantic_check_required'] is True
+                assert row['dialogue_evidence']['speaker']=='unknown'
+                assert row['dialogue_evidence']['turns'][0]['translations']['DE']=='Der Tisch.'
+            return [{'review_key':row['review_key'],'lang':'DE',
+                     'decision':'ACCEPT' if row['status']=='KEEP' else 'REVERT',
+                     'final':row['current'], 'reason':'Tisch is masculine.',
+                     'semantic_check':{'source_meaning':'The table.','final_meaning':'The table.',
+                                       'meaning_preserved':True,'roles_preserved':True,'tone_preserved':True}}
+                    for row in rows]
 
     rows=[{'key':str(i),'source_file':'a.xlsx','sheet':'S','row':i+2,'cn':cn,
            'context':json.dumps({'type':'dialogue','scene':'one'}), 'translations':{'DE':de}}
