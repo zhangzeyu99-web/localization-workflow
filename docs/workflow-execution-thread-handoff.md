@@ -399,3 +399,7 @@ QA 规则：
 ## 正文用词修改后的术语同步
 
 用户确认改名或正文修复涉及固定主译时，执行 `docs/TERM_CHANGE_DELIVERY_SYNC.md`：只处理本次范围，按当前确认和语言区域同步实际术语文件，保留自然词形及未决项。已授权的非空主译修改与默认只补空的术语完善分开处理；仅更新缓存不算同步完成。交付前回读正文、术语和非目标内容，并纠正会把批准用词改回去的旧审校理由。
+
+## 名称冲突与累计交付（本地维护源）
+
+按 `docs/NAME_COLLISION_AND_CUMULATIVE_DELIVERY.md` 执行名称定义预检、人工语义裁决、关联引用和正式术语同步、成品重扫。入口为 `scripts/run_name_collision_gate.py names`；用户要求全部分开时加 `--require-distinct`。多轮总交付使用 `changes --round ... --round ... --final ...` 验证变更并集和最初/最终译文。必须读取实际载体，不拿预期字典替代同步或回读证据；这是显式 Agent 步骤，尚未接入旧 runner 或 Studio 后台。
