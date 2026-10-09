@@ -430,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     run = sub.add_parser("run", help="Run extract, translate, QA, optional deep proofread, writeback, and readback.")
     run.add_argument("--input", action="append", required=True, type=Path)
     run.add_argument("--term-base", type=Path)
+    run.add_argument("--glossary-receipt", type=Path, help="Require hash-bound reviewed glossary enrichment before any API call")
     run.add_argument("--history-dir", action="append", default=[], type=Path)
     run.add_argument("--target-langs", required=True)
     run.add_argument("--task-dir", required=True, type=Path)
@@ -525,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
             proofread_batch_size=args.proofread_batch_size,
             proofread_workers=args.proofread_workers,
             source_mode=args.source_mode,
+            glossary_receipt=args.glossary_receipt,
         )
         payload = asdict(result)
         write_or_print({key: str(value) if isinstance(value, Path) else value for key, value in payload.items()}, args.out)

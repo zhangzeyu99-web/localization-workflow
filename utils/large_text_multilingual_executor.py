@@ -446,18 +446,50 @@ def _partition_requests(
     return batches
 
 
+def _cached_requests(
+    checkpoint_dir: Path,
+    requested: list[dict[str, object]],
+    target_langs: list[str],
+) -> dict[str, dict[str, str]]:
+    by_key = {str(row['request_key']): row for row in requested}
+    cached: dict[str, dict[str, str]] = {}
+    # Scope already binds provider, model, prompt and languages; keys bind source/context/terms.
+    for path in sorted(checkpoint_dir.glob('*.json')):
+        if path.name.endswith('.split.json'):
+            continue
+        for row in _read_json(path).get('rows') or []:
+            key = str(row.get('request_key') or '')
+            if key not in by_key:
+                continue
+            value = _validate_response([by_key[key]], [row], target_langs)[key]
+            if key in cached and cached[key] != value:
+                raise ValueError(f'conflicting translation checkpoints for {key}')
+            cached[key] = value
+    return cached
+
+
 def _execute_batch(
     client: TranslationClient,
     batch: list[dict[str, object]],
     target_langs: list[str],
     checkpoint_dir: Path,
     max_attempts: int,
+    cached_requests: dict[str, dict[str, str]] | None = None,
 ) -> tuple[dict[str, dict[str, str]], bool]:
     checkpoint = checkpoint_dir / _checkpoint_name(batch)
     split_marker = checkpoint.with_suffix(".split.json")
     if checkpoint.exists():
         saved = _read_json(checkpoint)
         return _validate_response(batch, saved.get("rows") or [], target_langs), True
+    cached_requests = cached_requests or {}
+    reused = {str(row['request_key']): cached_requests[str(row['request_key'])]
+              for row in batch if str(row['request_key']) in cached_requests}
+    if reused:
+        missing = [row for row in batch if str(row['request_key']) not in reused]
+        if not missing:
+            return reused, True
+        values, _ = _execute_batch(client, missing, target_langs, checkpoint_dir, max_attempts)
+        return {**reused, **values}, False
     if split_marker.exists() and len(batch) > 1:
         midpoint = len(batch) // 2
         left, left_reused = _execute_batch(
@@ -597,6 +629,7 @@ def translate_manifest(
         ).hexdigest()[:16]
         checkpoint_dir = work_dir / "translation_batches" / scope
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        cached_requests = _cached_requests(checkpoint_dir, request_rows, target_langs)
 
         translated: dict[str, dict[str, str]] = {}
         reused_batches = 0
@@ -608,6 +641,7 @@ def translate_manifest(
                 target_langs,
                 checkpoint_dir,
                 max_attempts,
+                cached_requests,
             )
             translated.update(values)
             reused_batches += int(reused)
@@ -630,6 +664,7 @@ def translate_manifest(
                         target_langs,
                         checkpoint_dir,
                         max_attempts,
+                        cached_requests,
                     ): batch
                     for batch in batches
                 }

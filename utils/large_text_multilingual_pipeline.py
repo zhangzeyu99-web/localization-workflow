@@ -111,9 +111,16 @@ def run_pipeline(
     proofread_batch_size: int | None = None,
     proofread_workers: int | None = None,
     source_mode: str = "cn",
+    glossary_receipt: Path | None = None,
 ) -> PipelineResult:
     started = time.perf_counter()
     target_langs = [str(lang).upper() for lang in target_langs]
+    glossary_acceptance = None
+    if glossary_receipt is not None:
+        from utils.glossary_enrichment import verify_receipt
+        glossary_acceptance = verify_receipt(
+            glossary_receipt, inputs=inputs, term_base=term_base, target_langs=target_langs,
+        )
     reserved_names = {"qa摘要.xlsx", "qa_summary.xlsx"}
     conflicts = sorted(path.name for path in inputs if path.name.casefold() in reserved_names)
     if conflicts:
@@ -138,6 +145,15 @@ def run_pipeline(
         source_mode=source_mode,
     )
     manifest_path = Path(manifest["manifest_path"])
+    if glossary_acceptance is not None:
+        manifest['critical_path'].insert(0, 'glossary_enrichment')
+        manifest['phase_status']['glossary_enrichment'] = 'done'
+        manifest.setdefault('artifacts', {})['glossary_receipt'] = str(glossary_receipt)
+        manifest.setdefault('phase_metrics', {})['glossary_enrichment'] = {
+            'approved_terms': glossary_acceptance['approved_terms'],
+            'rejected_terms': glossary_acceptance['rejected_terms'],
+        }
+        save_manifest(manifest)
     shared_client = translation_client
     if shared_client is None:
         if relay_config is None:

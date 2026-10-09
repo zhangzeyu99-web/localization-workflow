@@ -74,6 +74,46 @@ class IdentifiedClient(FakeClient):
 
 
 class LargeTextMultilingualExecutorTests(unittest.TestCase):
+    def test_rebatch_and_one_row_edit_reuse_unchanged_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = root / 'items.jsonl'
+            rows = [{'key': str(i), 'cn': f'Entry {i}', 'context': 'ui', 'term_hits': []}
+                    for i in range(8)]
+            write_jsonl(items, rows)
+            manifest = build_manifest(
+                work_dir=root/'work', items_jsonl=items, source_rows_jsonl=None,
+                target_langs=['EN'], workbook_count=1, relay_config=None,
+                proofread_mode='basic',
+            )
+            path = Path(manifest['manifest_path'])
+            translate_manifest(path, relay_config=None, client=FakeClient(), batch_size=2)
+            rebatch_client = FakeClient()
+            translate_manifest(path, relay_config=None, client=rebatch_client, batch_size=60)
+            self.assertEqual(rebatch_client.calls, [])
+            rows[3]['cn'] = 'Changed entry'
+            write_jsonl(items, rows)
+            client = FakeClient()
+            translate_manifest(path, relay_config=None, client=client, batch_size=60)
+            self.assertEqual([r['cn'] for batch in client.calls for r in batch], ['Changed entry'])
+            rows[5]['context'] = 'dialogue'
+            write_jsonl(items, rows)
+            client = FakeClient()
+            translate_manifest(path, relay_config=None, client=client, batch_size=60)
+            self.assertEqual([r['cn'] for batch in client.calls for r in batch], ['Entry 5'])
+
+    def test_conflicting_request_checkpoints_are_not_silently_reused(self) -> None:
+        from utils.large_text_multilingual_executor import _cached_requests
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for index, translation in enumerate(('First', 'Different')):
+                (root/f'{index}.json').write_text(json.dumps({'rows': [
+                    {'request_key': 'same', 'translations': {'EN': translation}}
+                ]}), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'conflicting translation checkpoints'):
+                _cached_requests(root, [{'request_key': 'same'}], ['EN'])
+
     def test_structured_rows_send_only_plain_text_and_rebuild_programmatically(self) -> None:
         class PlainTextOnlyClient(FakeClient):
             def translate_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
