@@ -9,7 +9,17 @@
 - 优化改变默认入口、任务路由、质量门禁或 subagent/API 边界时，必须同步更新 `AGENTS.md`、`docs/workflow-execution-thread-handoff.md` 和对应专项文档，确保其他线程按仓库文件即可执行。
 - 新线程执行任务前必须检查优化档案最新 `validated` 条目是否已进入当前分支；未进入时不得假定新流程可用。
 
+## 竞品参考与建议表
+
+- 用户要求竞品查词或固定 XLSX 增加多语言建议列时，执行 `docs/REFERENCE_SUGGESTION_WORKFLOW.md`，统一入口为 `scripts/run_reference_suggestion_workflow.py`。竞品 catalog/cache 和客户任务配置必须放在仓库外；候选先经双阶段审校导入验收，再用 Artifact Tool 导出并读回验证。
+
 ## 大文本多语言 V2
+
+- 术语更新收口时，项目根目录每个术语系列只留已验收的当前维护版；旧版默认移入 `_archive/glossaries/<时间戳>/`，不删除、不递归清理交付/缓存快照。按已验收新版与显式旧文件路径、内容和版本预览归档，移动后读回内容并保留路径清单；要求额外哈希的旧归档脚本退出默认入口，无法安全归档时保留旧文件并说明待处理，不主动计算或登记散列。必须等使用旧路径的任务结束后再移，不能在 accept 与正文校验之间归档；默认查词排除归档目录。
+
+- 翻译任务要求术语完善或发现词典外稳定专名时，先执行 `docs/GLOSSARY_ENRICHMENT_WORKFLOW.md`：用术语提取CLI生成候选，审阅/补译后验收更新词典，正文runner必须传 `--glossary-receipt`。只处理本批必要名词及命中缺译，不自动重做整份词典或已完成任务。已有中文但缺目标译文不得视为完成；只补空、只追加，不改原非空译文；已授权主译调整另按 `docs/TERM_CHANGE_DELIVERY_SYNC.md` 执行。源表/术语/候选漂移时停止API调用，不得省略凭据绕过。
+- 术语语言列按实际表头识别，规范语言代码优先于兼容别名，不能按固定列号读取；同时存在 `ID` 与 `IDN` 时，`IDN` 才是印尼语列。批准英语和官方译名优先复用，各语言遵守项目地区约定；名称按显式分类应用简洁单一主译规范，正文主源不因存在英语列而自动切换。
+- 默认收敛为“术语一次定稿 → 正文翻译及合并校对 → 一次导出验收”。术语模型输入用 `request.json.review_packet`，不重复塞完整证据；原表默认只补本批命中空译。沿用正式 runner 默认分包，不为本批另造极小批脚本；额外模型复核必须对应未决问题或变更范围，不重审已通过的同版本缓存。具体执行及不减质量边界见上述文档。
 
 - 独立质量评估或深校复盘执行 `docs/INDEPENDENT_TRANSLATION_QUALITY_EVALUATION.md`：先提取同批已批准角色名基线；对白提供话轮和人物证据；二次审计输入必须含主控补齐的源文、原译及上下文。修改数和结构 QA 不能代替语言质量评估。
 - 同表批准姓名在清空工作副本前用 `scripts/run_approved_name_snapshot.py` 的显式姓名行生成私有 JSON；后续 pack/cache-lint 共用该 `--term-base`。不得从普通对白猜姓名定义。对白深校按显式场景补齐当前目标话轮，审计接受须有语义证据；已知语义回归由确定性门禁兜底，不能因模型 ACCEPT 放行。
@@ -26,7 +36,7 @@
 - JSON 或含 3 个以上技术标签的中文结构化长文本必须由程序拆出纯文本槽；翻译、reviewer 和 auditor 均不得接收或返回整段 JSON、`<@n>` 或标签结构，最终由程序按原路径和标签序列回填。
 - 结构 QA 已通过的译文不得因其他行失败而重译。初译后仅允许本地修复命中术语残留和章节序号残留；其余中文残留继续作为 hard blocker，不得用整条模型重译掩盖。
 - 写回必须核对源文件、sheet、行号和源文，并在交付后普通打开、校验样式索引、执行 `readback-gate`。
-- 飞书长表任务必须先整表导出到本地任务目录，记录在线 revision 和源文件哈希后再翻译/深校；本地 hard blocker 为 0 后核对 revision，最后分块回填并在线读回，不得边翻译边写飞书。
+- 飞书长表任务必须先整表导出到本地任务目录，记录在线 revision、源文件路径、sheet 与原始内容快照后再翻译/深校；本地 hard blocker 为 0 后核对 revision，最后分块回填并在线读回，不得边翻译边写飞书。
 
 ## 语言
 
@@ -42,7 +52,7 @@
 ## 下游同步关系（Localization Workflow Studio）
 
 - 本仓库是本地化工作流（翻译校对/大文本多语言/公告 DOCX/本地 QA）的**单一维护源**；`D:\codex\localization-workflow-studio\workflow\localization` 是它的只读同步产物，禁止在那边直接改。
-- 本仓库改动提交后，到 studio 仓库根执行：`python scripts/sync_workflow_sources.py localization`（自动镜像 + 哈希读回校验）。
+- 本仓库改动提交后，到 studio 仓库根执行：`python scripts/sync_workflow_sources.py localization`（自动镜像后按文件路径、明确版本和实际内容读回核对，不额外计算或登记散列）。
 - 同步后必须在 studio 跑 `python -m pytest workflow/localization/tests -q` 和 `python -m pytest backend/tests -q`：`process_language.py`、`scripts/run_quality_harness.py`、`scripts/run_translation_harness.py` 是 studio 工作台 backend 的 subprocess 运行时依赖（各文件 docstring 有 `Boundary:` 标注），backend 测试不全绿不得声明同步完成。
 - studio backend 的 `app/workflow/large_text.py` 是从本仓库 `utils/large_text_multilingual_gate.py` port 的受控复制；改 gate 规则后要求 studio 侧 `backend/tests/test_large_text_productization.py` parity 测试通过。
 - 同步范围只含代码与测试（`cli.py`、`process_language.py`、`workspace_runner.py`、`scripts/`、`utils/`、`tests/`、`templates/`、`fixtures/`、`requirements.txt`、`CHANGELOG.md`）；`docs/`、`tools/`、根目录中文文档、样例文件是本仓库私有资产，不同步。
@@ -282,6 +292,7 @@
 ## 正文用词修改后的术语同步
 
 用户确认改名或正文修复涉及固定主译时，执行 `docs/TERM_CHANGE_DELIVERY_SYNC.md`：只处理本次范围，按当前确认和语言区域同步实际术语文件，保留自然词形及未决项。已授权的非空主译修改与默认只补空的术语完善分开处理；仅更新缓存不算同步完成。交付前回读正文、术语和非目标内容，并纠正会把批准用词改回去的旧审校理由。
+
 
 ## 名称冲突和多轮总交付
 
