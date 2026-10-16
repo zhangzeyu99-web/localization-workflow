@@ -27,6 +27,7 @@
 - 问号被破坏成多余引号：`What's wrong, Nora"`。
 - 非问句分隔符被编码污染成问号：`Tank ? Basic Attack I`。
 - 字面量 `\n` 被写成真实换行。
+- JSON 尾部多字符、未转义引号、截断、多根、重复键及非标准常量；解析通过后仍检查源容器路径、固定值和逐叶技术 token，不能仅比较占位符数量。
 - 人名/角色名近似但不一致：术语表是 `Aria`，译文写成 `Arya`。
 - 通用术语未命中：术语表是 `战机 -> Warplane`，译文写成 `Fighter upgrade`。
 - UI 短文案超预算：`领取奖励 -> Claim all rewards now immediately`。
@@ -38,6 +39,11 @@
 - `Battle Pass` 属于功能名，可以 Title Case。
 - `HP`、`ATK`、`PVP` 等稳定游戏缩写允许保留。
 - `##1 and ##2 others were reassigned` 这类占位符开头句子不按普通句首小写拦截。
+- 普通 `[领取]`、BBCode、`{count}` 及 `[{0}]` 不是 JSON，不因括号外观被强行升级为结构化内容；有效源 JSON 容器才约束目标 JSON。明显损坏的 JSON 源单独报告，不能归咎译文。
+
+JSON 专项硬错误为 `source_json_invalid`、`target_json_invalid`、`json_structure_mismatch`、`json_value_changed`、`json_string_missing` 和 `json_token_mismatch`。`utils/structured_text_template.py` 提供同一校验，供初译、审校/二审、`cache-lint`、workbook harness 和 `readback-gate` 共用；所有接受/回退分支都校验最终选用文本。结构校验不替代语义审校，也不自动修复源文标签。
+
+通用 JSON 门禁逐字符串路径保留标签原串、属性和顺序，并核对每个格式作用域内独立 `<@n>` 的次数。为日期、时间和数量自然语序在同一作用域换序不算损坏；跨路径、跨颜色/标签实例搬移仍阻断。程序托管模板重建及分槽审校保持既有精确 token 顺序契约，不因此允许模型重建结构。
 
 ## 使用方式
 

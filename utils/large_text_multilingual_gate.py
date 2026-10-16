@@ -24,6 +24,7 @@ from utils.quantity_guard import quantity_issues, visible_text, WORDS
 from utils.review_findings import unresolved_review_detail
 from utils.semantic_constraints import semantic_constraint_issues
 from utils.language_config import target_header_candidates
+from utils.structured_text_template import json_structure_issues
 
 
 TOKEN_RE = re.compile(r"\\n|<@\d+>|\{[^{}\s]+\}|%[sdif]|##\d+|#[A-Za-z]\d*#|</?[A-Za-z][^>\s]*[^>]*>|\[[A-Za-z0-9_:/#=.,-]+\]")
@@ -428,7 +429,8 @@ def _check_required_terms(issues: list[dict[str, Any]], row: dict[str, Any], key
 def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuation_mode: str | None = None) -> list[tuple[str, str]]:
     """Shared source/target checks for cache validation and actual file readback."""
     source = source_text(row)
-    issues = list(punctuation_issues(target, lang, punctuation_mode).items())
+    issues = json_structure_issues(source, target)
+    issues.extend(punctuation_issues(target, lang, punctuation_mode).items())
     if lang.upper() not in CJK_ALLOWED_LANGS and CJK_RE.search(target):
         issues.append(("cjk_residue", "target still contains CJK ideographs"))
     if MOJIBAKE_RE.search(target):

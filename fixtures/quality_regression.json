@@ -574,6 +574,60 @@
   ],
   "cases": [
     {
+      "id": "bad-json-source-truncated",
+      "source": "[[\"领取奖励\"]",
+      "translation": "[[\"Claim rewards\"]]",
+      "expected_issues": ["source_json_invalid"]
+    },
+    {
+      "id": "bad-json-string-erased",
+      "source": "[\"领取奖励\"]",
+      "translation": "[\"\"]",
+      "expected_issues": ["json_string_missing"]
+    },
+    {
+      "id": "bad-json-placeholder-cross-path",
+      "source": "[\"<@1>奖励\",\"<@2>完成\"]",
+      "translation": "[\"<@2>Rewards\",\"<@1>Done\"]",
+      "expected_issues": ["json_token_mismatch"]
+    },
+    {
+      "id": "good-json-natural-variable-order",
+      "source": "[\"每<@1>小时回复<@2>次\"]",
+      "translation": "[\"Restore <@2> attempts every <@1> hours\"]",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-json-extra-closing-brace",
+      "source": "[[\"奖励\",\"领取奖励\"],[\"完成\",\"继续游戏\"]]",
+      "translation": "[[\"Rewards\",\"Claim rewards\"],[\"Done\",\"Continue playing\"]]}",
+      "expected_issues": ["target_json_invalid"]
+    },
+    {
+      "id": "bad-json-unescaped-inner-quote",
+      "source": "[\"点击跨区入口查看详情\"]",
+      "translation": "[\"Tap \"Cross-Region\" for details\"]",
+      "expected_issues": ["target_json_invalid"]
+    },
+    {
+      "id": "bad-json-fixed-scalar-changed",
+      "source": "{\"text\":\"领取奖励\",\"enabled\":true}",
+      "translation": "{\"text\":\"Claim rewards\",\"enabled\":false}",
+      "expected_issues": ["json_value_changed"]
+    },
+    {
+      "id": "bad-json-path-shape-changed",
+      "source": "[\"领取奖励\",\"继续游戏\"]",
+      "translation": "[\"Claim rewards\"]",
+      "expected_issues": ["json_structure_mismatch"]
+    },
+    {
+      "id": "good-json-complete-escaped-inner-quote",
+      "source": "[\"点击跨区入口查看详情\"]",
+      "translation": "[\"Tap \\\"Cross-Region\\\" for details\"]",
+      "expected_issues": []
+    },
+    {
       "id": "bad-title-case-too-many-roles",
       "source": "该帐号创角过多",
       "translation": "Too Many Roles",

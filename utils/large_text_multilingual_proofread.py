@@ -277,6 +277,7 @@ def _validate_suggestions(
     suggestions: list[dict[str, object]],
     target_langs: list[str],
 ) -> list[dict[str, Any]]:
+    trusted_by_key = {str(row["review_key"]): row for row in request_rows}
     current_by_cell = {
         (str(row["review_key"]), lang): str(
             ((row.get("translations") or {}).get(lang) or "")
@@ -314,6 +315,11 @@ def _validate_suggestions(
         current = current_by_cell.get((str(row["review_key"]), str(row["lang"]).upper()), "")
         if status == "KEEP" and current and suggested != current:
             raise ValueError("KEEP must preserve the current target exactly; use FIX for a change")
+        from utils.structured_text_template import json_structure_issues
+        trusted = trusted_by_key[str(row['review_key'])]
+        integrity = json_structure_issues(str(trusted.get('cn') or ''), suggested)
+        if integrity:
+            raise ValueError(f"review suggestion JSON integrity failed: {integrity}")
         validated.append(
             {
                 "review_key": str(row["review_key"]),
@@ -354,6 +360,11 @@ def _validate_audit(
         if decision in {"ACCEPT", "REVISE"} and not final:
             raise ValueError("accepted audit decision requires final text")
         fix = trusted_fixes[(str(row["review_key"]), str(row["lang"]).upper())]
+        from utils.structured_text_template import json_structure_issues
+        selected = str(fix.get('current', fix.get('original', '')) or '') if decision == 'REVERT' else final
+        integrity = json_structure_issues(str(fix.get('cn') or ''), selected)
+        if integrity:
+            raise ValueError(f"audit {decision} JSON integrity failed: {integrity}")
         if fix.get('status') == 'KEEP' and decision == 'REVERT':
             raise ValueError('A KEEP audit must ACCEPT the current target or REVISE it; REVERT is unresolved')
         from utils.semantic_regression import known_semantic_regressions

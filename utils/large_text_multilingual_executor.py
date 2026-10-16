@@ -403,6 +403,7 @@ def _validate_response(
             f"response={sorted(response_keys)}"
         )
     validated: dict[str, dict[str, str]] = {}
+    trusted_by_key = {str(row["request_key"]): row for row in requested}
     for row in response:
         request_key = str(row["request_key"])
         translations = row.get("translations")
@@ -415,6 +416,12 @@ def _validate_response(
             raise ValueError(
                 f"language mismatch for {request_key}: missing={missing}, extras={extras}"
             )
+        from utils.structured_text_template import json_structure_issues
+        source = str(trusted_by_key[request_key].get("cn") or "")
+        for lang in target_langs:
+            integrity = json_structure_issues(source, normalized[lang])
+            if integrity:
+                raise ValueError(f"translation JSON integrity failed for {request_key}/{lang}: {integrity}")
         validated[request_key] = {lang: normalized[lang] for lang in target_langs}
     return validated
 

@@ -3,14 +3,114 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 TECHNICAL_START_RE = re.compile(r"<(?=@\d+>|/?[A-Za-z])")
 JSON_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
+JSON_HARD_ISSUES = frozenset({
+    "source_json_invalid", "target_json_invalid", "json_structure_mismatch",
+    "json_value_changed", "json_string_missing", "json_token_mismatch",
+})
+
+
+def _looks_like_json_container(text: str) -> bool:
+    # Do not classify [领取], [VIP], {count}, BBCode or mathematical ranges
+    # as broken JSON just because their first character is a bracket.
+    return bool(re.match(r'^\s*(?:(?:\[\s*)+(?:"|\{\s*"|\])|\{\s*["}])', text))
+
+
+def _strict_json_loads(text: str, *, exact_numbers: bool = False) -> object:
+    def constant(value: str) -> None:
+        raise ValueError(f"non-standard JSON constant: {value}")
+
+    def object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON object key: {key!r}")
+            result[key] = value
+        return result
+
+    options: dict[str, Any] = {"parse_constant": constant, "object_pairs_hook": object_pairs}
+    if exact_numbers:
+        options.update(parse_int=Decimal, parse_float=Decimal)
+    return json.loads(text, **options)
+
+
+def json_structure_issues(source: str, target: str) -> list[tuple[str, str]]:
+    """Validate complete JSON and immutable data at each source-owned path.
+
+    Valid source containers opt into the contract. Clearly broken JSON source
+    is reported separately; ordinary bracketed prose keeps its existing route.
+    No repair, prefix extraction or target reserialization is performed here.
+    """
+    source, target = str(source or ""), str(target or "")
+    if not source.lstrip().startswith(("[", "{")):
+        return []
+    try:
+        left = _strict_json_loads(source, exact_numbers=True)
+    except ValueError as exc:
+        return [("source_json_invalid", str(exc))] if _looks_like_json_container(source) else []
+    if not isinstance(left, (list, dict)):
+        return []
+    try:
+        right = _strict_json_loads(target, exact_numbers=True)
+    except ValueError as exc:
+        return [("target_json_invalid", str(exc))]
+
+    def has_translatable_value(value: object) -> bool:
+        if isinstance(value, str):
+            return bool(CJK_RE.search(value))
+        if isinstance(value, dict):
+            return any(has_translatable_value(item) for item in value.values())
+        return isinstance(value, list) and any(has_translatable_value(item) for item in value)
+
+    chinese_slots = has_translatable_value(left)
+    issues: list[tuple[str, str]] = []
+
+    def compare(a: object, b: object, path: str) -> None:
+        if type(a) is not type(b):
+            issues.append(("json_structure_mismatch", f"{path}: JSON value type changed"))
+            return
+        if isinstance(a, dict):
+            if set(a) != set(b):
+                issues.append(("json_structure_mismatch", f"{path}: JSON object keys changed"))
+                return
+            for key in a:
+                compare(a[key], b[key], f"{path}[{key!r}]")
+        elif isinstance(a, list):
+            if len(a) != len(b):
+                issues.append(("json_structure_mismatch", f"{path}: JSON array length changed"))
+                return
+            for index, (av, bv) in enumerate(zip(a, b, strict=True)):
+                compare(av, bv, f"{path}[{index}]")
+        elif isinstance(a, str):
+            try:
+                source_parts, target_parts = tokenize_template(a), tokenize_template(b)
+            except ValueError as exc:
+                issues.append(("json_token_mismatch", f"{path}: {exc}"))
+                return
+            if _json_token_binding(source_parts) != _json_token_binding(target_parts):
+                issues.append(("json_token_mismatch", f"{path}: technical tags or placeholder binding changed"))
+            fixed = (chinese_slots and not CJK_RE.search(a)) or not a or bool(
+                re.match(r'^(?:https?://|mailto:|#[0-9a-fA-F]{3,8}$)', a, re.IGNORECASE)
+            ) or (any(part.kind == "code" for part in source_parts)
+                  and not "".join(part.value for part in source_parts if part.kind == "text").strip())
+            if fixed and a != b:
+                issues.append(("json_value_changed", f"{path}: fixed JSON string changed"))
+            elif a.strip() and not b.strip():
+                issues.append(("json_string_missing", f"{path}: nonempty JSON text became blank"))
+        elif a != b:
+            issues.append(("json_value_changed", f"{path}: fixed JSON value changed"))
+
+    compare(left, right, "$")
+    return list(dict.fromkeys(issues))
 
 
 @dataclass(frozen=True)
@@ -90,6 +190,43 @@ def technical_tokens(text: str) -> list[str]:
     return [part.value for part in tokenize_template(text) if part.kind == "code"]
 
 
+def _json_token_binding(parts: list[TemplatePart]) -> tuple[list[str], Counter]:
+    """Keep markup exact without mistaking natural variable order for damage.
+
+    Independent indexed variables may move within the same formatting scope,
+    but not into another color/tag instance or another JSON string path.
+    Template rendering itself still requires the exact source token sequence.
+    """
+    markup: list[str] = []
+    bindings: Counter = Counter()
+    stack: list[tuple[str, int]] = []
+    void_tags = {"br", "hr", "img", "input", "meta", "link", "wbr"}
+    for part in parts:
+        if part.kind != "code":
+            continue
+        token = part.value
+        if re.fullmatch(r"<@\d+>", token):
+            bindings[(tuple(index for _, index in stack), token)] += 1
+            continue
+        markup.append(token)
+        tag = re.match(r"<(/?)([A-Za-z][\w:-]*)", token)
+        if not tag:
+            continue
+        closing, name = tag.groups()
+        name = name.lower()
+        if closing:
+            # Existing runtime color alias: recognize the scope, never rewrite it.
+            if name == "c" and not any(open_name == "c" for open_name, _ in stack):
+                name = "color"
+            for index in range(len(stack) - 1, -1, -1):
+                if stack[index][0] == name:
+                    del stack[index:]
+                    break
+        elif name not in void_tags and not token.rstrip().endswith("/>"):
+            stack.append((name, len(markup)))
+    return markup, bindings
+
+
 def _shape(value: object) -> object:
     if isinstance(value, list):
         return [_shape(item) for item in value]
@@ -104,8 +241,10 @@ def parse_template(text: str) -> ParsedTemplate:
     stripped = text.strip()
     if stripped.startswith(("[", "{")):
         try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
+            parsed = _strict_json_loads(text)
+        except ValueError as exc:
+            if _looks_like_json_container(text):
+                raise ValueError(f"invalid source JSON: {exc}") from exc
             parsed = None
         if isinstance(parsed, (list, dict)):
             root = parsed
@@ -221,6 +360,9 @@ def render_template(
         root = _assign(root, path, rendered)
     if template.is_json:
         result = _render_json_original(template, rendered_leaves)
+        integrity = json_structure_issues(template.original_text, result)
+        if integrity:
+            raise ValueError(f"rebuilt JSON integrity failed: {integrity}")
         parsed_result = json.loads(result)
         if _shape(parsed_result) != _shape(template.root):
             raise ValueError("rebuilt JSON shape differs from source")
@@ -244,6 +386,9 @@ def render_translations(
 
 
 def aligned_review_slots(source_text: str, target_text: str) -> tuple[ParsedTemplate, list[ReviewSlot]]:
+    integrity = json_structure_issues(source_text, target_text)
+    if integrity:
+        raise ValueError(f"source/target JSON integrity failed: {integrity}")
     source = parse_template(source_text)
     target = parse_template(target_text)
     if source.is_json != target.is_json or _shape(source.root) != _shape(target.root):
