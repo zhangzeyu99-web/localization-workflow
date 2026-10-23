@@ -11,6 +11,16 @@ from utils.term_checker import TERM_REVIEW_ISSUE_TYPES
 
 from utils.language_config import LANGUAGE_NAMES, language_name
 
+SHORT_TRANSLATION_REVIEW_POLICY = (
+    "When reviewing an existing suggested short translation, use that short version as the baseline, "
+    "not an older long translation. Change it only if it would mislead players or is genuinely unnatural "
+    "or hard to understand. Keep reasonable contextual omissions; do not restore source words merely "
+    "for literal completeness, stylistic polish, or uniform phrasing. Preserve gameplay-critical "
+    "distinctions, required terminology, and protected technical content. Make the smallest necessary "
+    "change; justify added words with a concrete misunderstanding or language defect. Judge changes "
+    "and character-count deltas against the supplied short version.\n"
+)
+
 REVIEW_PROTOCOL_VERSION = 3
 
 LANG_NAMES = {
@@ -50,8 +60,8 @@ def _make_prompt_header(lang: str = "en") -> str:
     return (
         neutral
         + english_rules
-        +
-        "\n"
+        + SHORT_TRANSLATION_REVIEW_POLICY
+        + "\n"
         "Output protocol (mandatory):\n"
         "- Cover every ID in this batch exactly once.\n"
         "- Keep the same ID order as the input list.\n"
@@ -129,7 +139,7 @@ def _make_source_reference_section(batch_rows: list[dict]) -> str:
     lines = [
         "Bilingual source rule:",
         "- REF_EN is a reviewed English reference when present; do not copy its word order mechanically.",
-        "- Preserve placeholders, numbers, conditions, targets, tags, and content that appear in the Chinese source.",
+        "- Preserve placeholders, numbers, conditions, targets, tags, and meaningful content from the Chinese source; reasonable UI omissions do not require word-for-word restoration.",
     ]
     if "cn+en" in modes:
         lines.append(
@@ -418,7 +428,8 @@ def format_recheck_prompt(
     prompt = (
         f"Second-pass terminology review for {language_name(lang)} localization.\n"
         "These rows still need term compliance confirmation.\n"
-        "\n"
+        + SHORT_TRANSLATION_REVIEW_POLICY
+        + "\n"
         "Output protocol (mandatory):\n"
         "- Cover every ID in this batch exactly once.\n"
         "- Keep the same ID order as the input list.\n"

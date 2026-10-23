@@ -68,6 +68,8 @@ flowchart LR
 - 同一任务目录只允许一个深校主进程；`proofread.lock` 拒绝重复进程，防止共享 checkpoint 时重复调用。
 - 翻译、深校建议和二次审计允许受控并发；XLSX 只在最终缓存 hard blocker 为 0 后写一次。
 - 深校建议不能直接修改 workbook。subagent 或 API 只输出建议，主控审计后才进入最终缓存。
+- 已有建议短译的精简校对按 `readability-abbreviation-gate.md` 执行：当前译文绑定建议短译，reviewer 只修误导或确实不通顺，auditor 回退无必要补词；修改量与字符变化对建议短译计算。合理省略不按逐词漏译处理，数字/机制/技术门禁不降低。
+- 审校策略版本升级至 `review-v7-existing-short-baseline` / `audit-v10-existing-short-baseline`，显式续跑时隔离旧标准的 review/audit 结论；历史 checkpoint 保留，不自动重跑已完成任务，初译缓存不受此策略版本调整影响。
 - 结构化长文本的 reviewer 和 auditor 同样只审纯文本槽；审计通过后由主控回填到当前目标结构。已经通过 QA 的原行/语言保持不变，不能因少量失败项推翻重跑。
 - `sampled` 模式审全部高风险唯一文本，并按稳定签名抽取 10% 低风险唯一文本；`full` 模式审全部唯一文本。
 - 过程 JSONL、checkpoint、manifest、日志和复盘指标都留在 `_work`；交付目录只包含成品 workbook 和 `QA摘要.xlsx`。

@@ -74,6 +74,33 @@ class IdentifiedClient(FakeClient):
 
 
 class LargeTextMultilingualExecutorTests(unittest.TestCase):
+    def test_existing_short_copy_policy_reaches_review_and_audit_transport(self) -> None:
+        client = OpenAICompatibleClient.__new__(OpenAICompatibleClient)
+        rows = [{"review_key": "ui-1", "cn": "当前暂无奖励可领取",
+                 "translations": {"EN": "No rewards"}, "context": "Concise reward-panel label"}]
+        review = {"review_key": "ui-1", "lang": "EN", "status": "KEEP",
+                  "suggested": "No rewards", "reason": "Clear contextual omission"}
+        with patch.object(client, "_chat_json", return_value={"rows": [review]}) as chat:
+            self.assertEqual(client.review_batch(rows, ["EN"]), [review])
+            system, payload = chat.call_args.args
+            self.assertIn("existing suggested short translation", system)
+            self.assertIn("reasonable contextual omissions", system)
+            self.assertIn("against the supplied short version", system)
+            self.assertEqual(payload["rows"], rows)
+
+        suggestion = {"review_key": "ui-1", "lang": "EN", "cn": "当前暂无奖励可领取",
+                      "current": "No rewards", "suggested": "No rewards available for you at the moment",
+                      "review_status": "FIX", "reason": "Restore more source wording"}
+        decision = {"review_key": "ui-1", "lang": "EN", "decision": "REVERT",
+                    "final": "No rewards", "reason": "No player-facing defect in current short copy"}
+        with patch.object(client, "_chat_json", return_value={"rows": [decision]}) as chat:
+            actual = client.audit_batch([suggestion])
+            system, payload = chat.call_args.args
+            self.assertIn("existing suggested short translation", system)
+            self.assertIn("REVERT expansions", system)
+            self.assertEqual(payload["suggestions"][0]["current"], "No rewards")
+            self.assertEqual(actual[0]["final"], "No rewards")
+
     def test_rebatch_and_one_row_edit_reuse_unchanged_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

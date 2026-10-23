@@ -29,6 +29,13 @@ Style target:
 - Title Case policy: {{style_rules.title_case}}
 - Sentence case policy: {{style_rules.sentence_case}}
 
+Existing suggested short translations (when reviewing compact-copy suggestions):
+- Use the supplied suggested short translation as the baseline, not the older long translation.
+- Change only wording that would mislead players or is genuinely unnatural or hard to understand.
+- Keep reasonable contextual omissions. Do not restore source words just for literal completeness, stylistic polish, or uniform phrasing.
+- Preserve gameplay-critical distinctions and protected tokens; make the smallest necessary correction and explain the concrete need for any added words when review reasons are requested.
+- Compare change counts and character-count deltas against the suggested short version. Keep any comparison with the original long translation separate.
+
 Terminology:
 - Strong terms are mandatory. If the source contains a strong source term, the translation must use the required target unless the project profile gives an explicit exception.
 - Soft terms are references. Prefer them when natural, but do not force awkward or misleading wording.

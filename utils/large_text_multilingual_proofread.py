@@ -482,7 +482,7 @@ def run_deep_proofread(
         start_phase(manifest, "subagent_review")
         suggestions: list[dict[str, object]] = []
         review_scope = hashlib.sha256(
-            f"review-v6-keep-and-unresolved-integrity:{_client_checkpoint_identity(reviewer)}".encode("utf-8")
+            f"review-v7-existing-short-baseline:{_client_checkpoint_identity(reviewer)}".encode("utf-8")
         ).hexdigest()[:16]
         review_checkpoint_dir = proof_dir / "review_batches" / review_scope
         review_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -577,7 +577,7 @@ def run_deep_proofread(
             })
         decisions: list[dict[str, object]] = []
         audit_scope = hashlib.sha256(
-            f"audit-v9-all-reviewed-cells-explicit-verdict:{_client_checkpoint_identity(auditor)}".encode("utf-8")
+            f"audit-v10-existing-short-baseline:{_client_checkpoint_identity(auditor)}".encode("utf-8")
         ).hexdigest()[:16]
         audit_checkpoint_dir = proof_dir / "audit_batches" / audit_scope
         audit_checkpoint_dir.mkdir(parents=True, exist_ok=True)

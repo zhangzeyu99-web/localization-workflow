@@ -6,6 +6,7 @@ from process_language import RowState
 from utils.ai_checker import (
     BatchInfo,
     format_batch_prompt,
+    format_recheck_prompt,
     merge_review_batches,
     parse_ai_response,
     parse_review_response,
@@ -15,6 +16,18 @@ from utils.ai_checker import (
 
 
 class AIReviewProtocolTests(unittest.TestCase):
+    def test_existing_short_copy_policy_covers_review_and_recheck_without_len(self):
+        rows = [{"id": 1, "original": "当前没有可领取的战利品，请稍后查看", "translation": "No loot"}]
+        for builder in (format_batch_prompt, format_recheck_prompt):
+            for lang in ("en", "ru"):
+                with self.subTest(builder=builder.__name__, lang=lang):
+                    prompt = builder(rows, 1, 1, lang=lang)
+                    self.assertIn("existing suggested short translation", prompt)
+                    self.assertIn("reasonable contextual omissions", prompt)
+                    self.assertIn("against the supplied short version", prompt)
+                    self.assertIn("1 | 当前没有可领取的战利品，请稍后查看 | No loot", prompt)
+                    self.assertNotIn("LEN:", prompt)
+
     def test_format_batch_prompt_includes_ui_length_guidance_and_len_metadata(self):
         prompt = format_batch_prompt(
             batch_rows=[

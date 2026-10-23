@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from utils.ai_checker import SHORT_TRANSLATION_REVIEW_POLICY
 from utils.large_text_multilingual_runner import load_manifest, save_manifest
 from utils.structured_text_template import (
     ParsedTemplate,
@@ -230,6 +231,8 @@ class OpenAICompatibleClient:
                 "For structured text segments, review only the readable text and never add markup, "
                 "placeholders, or JSON syntax to suggested. "
                 "Do not rewrite correct text. "
+                + SHORT_TRANSLATION_REVIEW_POLICY
+                +
                 "For dialogue, distinguish the speaker, addressee, and grammatical antecedent. "
                 "A gender or address change must cite concrete supplied context in reason; never "
                 "guess from an isolated line or assume alternating speakers. If context is insufficient, "
@@ -281,7 +284,11 @@ class OpenAICompatibleClient:
                        for row in suggestions]
         parsed = self._chat_json(
             (
-                "Audit localization change suggestions conservatively. Revert changes that narrow "
+                "Audit localization change suggestions conservatively. "
+                + SHORT_TRANSLATION_REVIEW_POLICY
+                + "For existing short copy, REVERT expansions that only restore reasonably omitted "
+                "wording or change style without fixing a concrete player-facing or language defect. "
+                "Revert changes that narrow "
                 "meaning, force terminology into the wrong context, damage tokens/numbers, or are "
                 "not a clear improvement. "
                 "Review every supplied cell, including KEEP rows; KEEP is not evidence of correctness. "
