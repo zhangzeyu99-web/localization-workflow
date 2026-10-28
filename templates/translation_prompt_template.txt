@@ -14,7 +14,7 @@ Source priority:
 - cn: translate from Chinese.
 - cn+en: Chinese is authoritative; use reviewed English only for terminology, proper names, tone, and ambiguity.
 - en: reviewed English is primary; use Chinese to backcheck omissions, gameplay conditions, numbers, placeholders, and terminology.
-- Never propagate an English omission or mistranslation merely because it appears in the reference.
+- Never propagate gameplay-critical omissions or mistranslations merely because they appear in the English reference. When English is explicitly primary and user-approved, keep intentional removal of redundant descriptions; do not restore them from Chinese.
 
 Style target:
 - Primary goal: {{translation_goals.primary_goal}}
@@ -28,6 +28,14 @@ Style target:
 - Error messages: {{style_rules.error_messages}}
 - Title Case policy: {{style_rules.title_case}}
 - Sentence case policy: {{style_rules.sentence_case}}
+
+Compact UI and gameplay instructions (when requested by the user or project):
+- Follow the current project prompt and the latest user-approved compact copy. Do not replace a suitable current version with an older local suggestion just because the suggestion has fewer characters.
+- Prefer common short verbs and direct action-result phrasing with clear necessary objects. Do not force pronouns, omitted objects, longer synonyms, or literary metaphors merely to minimize character count; keep natural, unambiguous contextual omissions.
+- Remove redundant descriptions while preserving gameplay-critical actions, objects, resources, quantities, conditions, restrictions, counts, ranges, negation, probabilities, and timing. Do not turn contextual shortening into a global proper-name change.
+- Keep English cells unchanged only where the user explicitly requires it. If those rows use English as the primary source, match its information scope in natural target-language wording; do not automatically freeze all English or switch source mode.
+- Apply the project's actual layout budget. A two-line target needs the real font, size, text-box width, and wrapping to verify; character count alone is not proof. Do not fit text by clipping words, shrinking the font, or inserting unauthorized hard line breaks, and do not apply UI budgets to dialogue or mail.
+- Re-read the final copy for directness, clear actions and necessary objects, preserved meaning, redundant wording, and explicitly frozen values. Report language review separately from any unverified in-client layout; do not add an unsolicited full deep-review round.
 
 Existing suggested short translations (when reviewing compact-copy suggestions):
 - Use the supplied suggested short translation as the baseline, not the older long translation.
