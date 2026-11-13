@@ -94,3 +94,8 @@ requests (including two validation retries), zero hard blockers, native Excel re
 of all 48 target cells, and zero new API requests on resume. A real 40,000-row workload
 still starts with about 300 representative rows; retain these results and measure
 stage throughput before estimating total duration. Do not raise concurrency above five.
+
+The subsequent live 824-row/four-language trial, including full review, independent
+audit, checkpoint recovery, and native Excel acceptance, is recorded in
+[RELAY_VALIDATION_20261113.md](RELAY_VALIDATION_20261113.md). Its stage durations and
+version boundaries are explicit; customer data and credentials remain private.
