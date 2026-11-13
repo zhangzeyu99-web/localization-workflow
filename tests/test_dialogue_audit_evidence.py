@@ -27,6 +27,67 @@ def test_dialogue_evidence_enters_signature():
     assert 'FR' in evidence['turns'][0]['translations']
 
 
+def test_review_item_key_is_language_local_but_preserves_authoritative_dependencies():
+    from copy import deepcopy
+    from utils.large_text_multilingual_proofread import _review_item_key
+
+    row = {'cn': '桌子', 'reference_en': 'The table.', 'reference_en_status': 'usable',
+           'translations': {'EN': 'The table.', 'FR': 'La table.'}, 'protected_tokens': ['{0}'],
+           'context': {'type': 'dialogue', 'scene': 'one', 'speaker': 'unknown',
+                       'turns': [{'translations': {'EN': 'A table.', 'FR': 'Une table.'}}]},
+           'dialogue_evidence': {'turns': [{'translations': {'EN': 'A table.', 'FR': 'Une table.'}}]},
+           'term_hits': [{'source': '桌子', 'translations': {'EN': 'Table', 'FR': 'Table'}}]}
+    key = _review_item_key(row, 'EN')
+    unrelated = deepcopy(row)
+    unrelated['translations']['FR'] = 'Une table.'
+    unrelated['context']['turns'][0]['translations']['FR'] = 'Autre texte.'
+    unrelated['dialogue_evidence']['turns'][0]['translations']['FR'] = 'Autre texte.'
+    unrelated['term_hits'][0]['translations']['FR'] = 'Tableau'
+    assert _review_item_key(unrelated, 'EN') == key
+    for field, value in [('cn', '椅子'), ('reference_en', 'A chair.'),
+                         ('protected_tokens', ['{1}']), ('translations', {'EN': 'A chair.', 'FR': 'La table.'})]:
+        assert _review_item_key({**row, field: value}, 'EN') != key
+    for field in ('context', 'dialogue_evidence'):
+        changed = deepcopy(row)
+        changed[field]['turns'][0]['translations']['EN'] = 'A chair.'
+        assert _review_item_key(changed, 'EN') != key
+    changed = deepcopy(row)
+    changed['term_hits'][0]['translations']['EN'] = 'Desk'
+    assert _review_item_key(changed, 'EN') != key
+    changed = deepcopy(row)
+    changed['context']['source_example'] = '{"translations":{"EN":"code","FR":"original source field"}}'
+    source_key = _review_item_key(changed, 'EN')
+    changed['context']['source_example'] = '{"translations":{"EN":"code","FR":"changed source field"}}'
+    assert _review_item_key(changed, 'EN') != source_key
+
+
+def test_audit_item_key_binds_suggestion_and_semantic_requirements():
+    from utils.large_text_multilingual_proofread import _audit_item_key
+
+    fix = {'review_key': 'aggregate-a', 'lang': 'EN', 'cn': '桌子', 'current': 'Table',
+           'status': 'KEEP', 'suggested': 'Table', 'reason': 'Correct', 'semantic_check_required': False}
+    key = _audit_item_key(fix)
+    assert _audit_item_key({**fix, 'review_key': 'aggregate-b'}) == key
+    for field, value in [('suggested', 'Desk'), ('current', 'Desk'), ('status', 'FIX'),
+                         ('reason', 'A different argument'), ('semantic_check_required', True), ('cn', '椅子')]:
+        assert _audit_item_key({**fix, field: value}) != key
+
+
+def test_shared_context_objects_cannot_be_accepted_as_translated_prose():
+    from utils.large_text_multilingual_executor import _validate_response
+    from utils.large_text_multilingual_proofread import _validate_suggestions
+
+    ref = {'$context_ref': 'context-1'}
+    with pytest.raises(ValueError, match='must be text'):
+        _validate_response([{'request_key': 'a'}], [{'request_key': 'a', 'translations': {'EN': ref}}], ['EN'])
+    with pytest.raises(ValueError, match='must be text'):
+        _validate_suggestions([{'review_key': 'a', 'translations': {'EN': 'Hello'}}],
+                              [{'review_key': 'a', 'lang': 'EN', 'status': 'FIX', 'suggested': ref}], ['EN'])
+    with pytest.raises(ValueError, match='must be text'):
+        _validate_audit([{'review_key': 'a', 'lang': 'EN'}],
+                        [{'review_key': 'a', 'lang': 'EN', 'decision': 'ACCEPT', 'final': ref}])
+
+
 def test_scene_evidence_keeps_target_antecedents_and_stays_in_scene():
     from utils.large_text_multilingual_proofread import _attach_dialogue_evidence
     import json
@@ -49,7 +110,7 @@ def test_blind_target_reading_does_not_receive_source_or_reviewer_reason():
         def __init__(self):
             pass
 
-        def _chat_json(self, prompt, payload):
+        def _chat_json(self, prompt, payload, **kwargs):
             calls.append(payload)
             if len(calls) == 1:
                 assert set(payload["rows"][0]) == {"review_key", "lang", "text"}

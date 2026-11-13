@@ -6,24 +6,27 @@ import json
 import os
 import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from utils.relay_runtime import IncompletePhase, RequestBudgetExceeded, ResponseTooLarge, bounded_results
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from utils.large_text_multilingual_executor import (
     _atomic_write_text,
     _read_jsonl,
     _write_jsonl,
+    _partition_requests,
     complete_phase,
     fail_phase,
     start_phase,
 )
 from utils.large_text_multilingual_runner import load_manifest
+from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES
 from utils.structured_text_template import (
     ParsedTemplate,
     ReviewSlot,
     aligned_review_slots,
+    parse_template,
     render_reviewed_target,
     should_use_template,
 )
@@ -124,6 +127,47 @@ def _language_evidence(evidence: object, lang: str) -> dict:
     ]}
 
 
+def _language_context(value: Any, lang: str, *, english_reference: bool = False) -> Any:
+    def project(node: Any) -> Any:
+        if isinstance(node, list):
+            return [project(item) for item in node]
+        if isinstance(node, dict):
+            result = {}
+            for field, item in node.items():
+                if (field == 'translations' and isinstance(item, dict)
+                        and all(str(key).lower() in SUPPORTED_TRANSLATION_LANGUAGES for key in item)):
+                    wanted = {lang, 'EN'} if english_reference else {lang}
+                    result[field] = {key: text for key, text in item.items() if str(key).upper() in wanted}
+                else:
+                    result[field] = project(item)
+            return result
+        return node
+
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return value
+        if not isinstance(parsed, (dict, list)):
+            return value
+        projected = project(parsed)
+        return value if projected == parsed else json.dumps(projected, ensure_ascii=False, sort_keys=True)
+    return project(value)
+
+
+def _language_review_row(row: dict[str, Any], lang: str) -> dict[str, Any]:
+    return {**row, 'translations': {lang: (row.get('translations') or {}).get(lang, '')},
+            'context': _language_context(row.get('context') or '', lang),
+            'term_hits': _language_context(row.get('term_hits') or [], lang, english_reference=True),
+            'dialogue_evidence': _language_evidence(row.get('dialogue_evidence'), lang)}
+
+
+def _review_item_key(row: dict[str, Any], lang: str) -> str:
+    projected = _language_review_row(row, lang)
+    projected['tokens'] = row.get('tokens') or row.get('protected_tokens') or []
+    return _review_signature(projected, [lang])
+
+
 def _review_row(row: dict[str, Any], review_key: str, target_langs: list[str]) -> dict[str, object]:
     return {
         "review_key": review_key,
@@ -132,7 +176,7 @@ def _review_row(row: dict[str, Any], review_key: str, target_langs: list[str]) -
         "source_mode": str(row.get("source_mode") or "cn"),
         "reference_en": str(row.get("reference_en") or ""),
         "reference_en_status": str(row.get("reference_en_status") or "not_requested"),
-        "context": str(row.get("context") or ""),
+        "context": row.get("context") or "",
         "dialogue_evidence": row.get("dialogue_evidence") or {},
         "risk_flags": row.get("risk_flags") or [],
         "protected_tokens": row.get("tokens") or [],
@@ -261,7 +305,9 @@ def _load_review_item_checkpoints(
                 )[0]
             except ValueError:
                 continue
-            item_key = (review_key, lang)
+            cache_key = str(row.get('cache_key') or review_key)
+            normalized.update(review_key=cache_key, cache_key=cache_key)
+            item_key = (cache_key, lang)
             previous = reusable.get(item_key)
             if previous is not None and previous != normalized:
                 conflicts.add(item_key)
@@ -270,6 +316,44 @@ def _load_review_item_checkpoints(
     for item_key in conflicts:
         reusable.pop(item_key, None)
     return reusable
+
+
+def _audit_item_key(fix: dict[str, Any]) -> str:
+    payload = {key: value for key, value in fix.items() if key not in {'review_key', 'cache_key'}}
+    return _batch_checkpoint(Path('.'), 'audit-cell-v1', [payload]).stem
+
+
+def _rekey_audit(row: dict[str, Any], review_key: str) -> dict[str, Any]:
+    result = {**row, 'review_key': review_key}
+    for field in ('independent_target_reading', 'rejected_model_decision'):
+        if isinstance(result.get(field), dict) and 'review_key' in result[field]:
+            result[field] = {**result[field], 'review_key': review_key}
+    return result
+
+
+def _load_audit_item_checkpoints(checkpoint_dir: Path, fixes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    expected = {_audit_item_key(fix): fix for fix in fixes}
+    reusable: dict[str, dict[str, Any]] = {}
+    conflicts: set[str] = set()
+    for checkpoint in sorted(checkpoint_dir.glob('*.jsonl')):
+        try:
+            records = _read_jsonl(checkpoint)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        for record in records:
+            key = str(record.get('cache_key') or '')
+            fix = expected.get(key)
+            if fix is None:
+                continue
+            try:
+                normalized = _validate_audit([fix], [_rekey_audit(record, fix['review_key'])])[(fix['review_key'], fix['lang'])]
+            except ValueError:
+                continue
+            normalized = _rekey_audit(normalized, key)
+            if key in reusable and reusable[key] != normalized:
+                conflicts.add(key)
+            reusable[key] = normalized
+    return {key: row for key, row in reusable.items() if key not in conflicts}
 
 
 def _validate_suggestions(
@@ -281,7 +365,7 @@ def _validate_suggestions(
     current_by_cell = {
         (str(row["review_key"]), lang): str(
             ((row.get("translations") or {}).get(lang) or "")
-        ).strip()
+        )
         for row in request_rows
         for lang in target_langs
     }
@@ -305,12 +389,14 @@ def _validate_suggestions(
         status = str(row.get("status") or "").upper()
         if status not in {"KEEP", "FIX"}:
             raise ValueError(f"invalid review status: {status}")
-        suggested = str(row.get("suggested") or "").strip()
-        if not suggested:
+        if isinstance(row.get('suggested'), (dict, list)):
+            raise ValueError('review suggestion must be text, not context references or objects')
+        suggested = str(row.get("suggested") or "")
+        if not suggested.strip():
             cell = (str(row["review_key"]), str(row["lang"]).upper())
             if status == "KEEP":
                 suggested = current_by_cell.get(cell, "")
-            if not suggested:
+            if not suggested.strip():
                 raise ValueError("review suggestion cannot be blank")
         current = current_by_cell.get((str(row["review_key"]), str(row["lang"]).upper()), "")
         if status == "KEEP" and current and suggested != current:
@@ -356,8 +442,10 @@ def _validate_audit(
         decision = str(row.get("decision") or "").upper()
         if decision not in {"ACCEPT", "REVERT", "REVISE"}:
             raise ValueError(f"invalid audit decision: {decision}")
-        final = str(row.get("final") or "").strip()
-        if decision in {"ACCEPT", "REVISE"} and not final:
+        if isinstance(row.get('final'), (dict, list)):
+            raise ValueError('audit final must be text, not context references or objects')
+        final = str(row.get("final") or "")
+        if decision in {"ACCEPT", "REVISE"} and not final.strip():
             raise ValueError("accepted audit decision requires final text")
         fix = trusted_fixes[(str(row["review_key"]), str(row["lang"]).upper())]
         from utils.structured_text_template import json_structure_issues
@@ -394,6 +482,79 @@ def _validate_audit(
         }
         result[(normalized["review_key"], normalized["lang"])] = normalized
     return result
+
+
+def _retry_validated_cells(
+    batch: list[dict[str, Any]],
+    request: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    validate: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]],
+    checkpoint: Path,
+    cache_keys: dict[tuple[str, str], str],
+    *, phase: str = 'review', max_attempts: int = 3, runtime=None,
+) -> list[dict[str, Any]]:
+    """Checkpoint sound cells immediately; retry only unresolved input cells."""
+    def cell(row):
+        return str(row.get('review_key') or ''), str(row.get('lang') or '').upper()
+
+    trusted = {cell(row): row for row in batch}
+    accepted: dict[tuple[str, str], dict[str, Any]] = {}
+    feedback: dict[tuple[str, str], str] = {}
+    blocked: set[tuple[str, str]] = set()
+    for attempt in range(max_attempts):
+        previous_feedback = feedback
+        pending = {key: row for key, row in trusted.items() if key not in accepted and key not in blocked}
+        if not pending:
+            break
+        wire_rows = [{**row, **({'validation_feedback': feedback[key]} if key in feedback else {})}
+                     for key, row in pending.items()]
+        try:
+            response = request(wire_rows)
+            if not isinstance(response, list) or any(not isinstance(row, dict) for row in response):
+                raise ValueError(f'{phase} coverage mismatch: response must be an array of cell objects')
+            counts = Counter(cell(row) for row in response)
+            extras = counts.keys() - pending.keys()
+            if extras:
+                # Unbound output cannot be silently dropped to claim full coverage.
+                raise ValueError(f'{phase} coverage mismatch: unexpected cells={sorted(extras)}; return only requested cells')
+        except RequestBudgetExceeded as exc:
+            blocked.update(exc.cells or pending.keys())
+            feedback.update({key: str(exc) for key in blocked})
+            continue
+        except ResponseTooLarge:
+            if len(wire_rows) <= 1 or attempt + 1 >= max_attempts:
+                raise
+            midpoint = len(wire_rows) // 2
+            for suffix, child in (('left', wire_rows[:midpoint]), ('right', wire_rows[midpoint:])):
+                values = _retry_validated_cells(child, request, validate,
+                    checkpoint.with_name(checkpoint.stem + '.' + suffix + '.jsonl'), cache_keys,
+                    phase=phase, max_attempts=max_attempts - attempt - 1, runtime=runtime)
+                accepted.update({cell(row): row for row in values})
+            _write_jsonl(checkpoint, [{**row, 'cache_key': cache_keys[key]} for key, row in accepted.items()])
+            if not blocked:
+                return [accepted[key] for key in trusted]
+            break
+        except ValueError as exc:
+            feedback = {key: str(exc) for key in pending}
+        else:
+            by_cell = {cell(row): row for row in response}
+            feedback = {}
+            for key, row in pending.items():
+                if counts[key] != 1:
+                    feedback[key] = f'{phase} coverage mismatch: expected exactly one result for {key}, got {counts[key]}'
+                    continue
+                try:
+                    accepted[key] = validate(row, by_cell[key])
+                except ValueError as exc:
+                    feedback[key] = str(exc)
+            if accepted:
+                _write_jsonl(checkpoint, [{**row, 'cache_key': cache_keys[key]} for key, row in accepted.items()])
+            if not feedback and not blocked:
+                return [accepted[key] for key in trusted]
+        if runtime:
+            runtime.note_validation(phase, feedback)
+        if feedback == previous_feedback:
+            break
+    raise ValueError(f'cell validation failed after {attempt + 1} attempts: {feedback}; exhausted={sorted(blocked)}')
 
 
 def run_deep_proofread(
@@ -486,14 +647,30 @@ def run_deep_proofread(
         ).hexdigest()[:16]
         review_checkpoint_dir = proof_dir / "review_batches" / review_scope
         review_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        reusable = _load_review_item_checkpoints(review_checkpoint_dir, target_langs)
+        saved_items = _load_review_item_checkpoints(review_checkpoint_dir, target_langs)
+        review_cache_keys = {(str(row['review_key']), lang): _review_item_key(row, lang)
+                             for row in review_rows for lang in target_langs}
+        reusable: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in review_rows:
+            for lang in target_langs:
+                cell = (str(row['review_key']), lang)
+                cached = saved_items.get((review_cache_keys[cell], lang)) or saved_items.get(cell)
+                if cached is None:
+                    continue
+                try:
+                    reusable[cell] = _validate_suggestions([row], [{**cached, 'review_key': cell[0]}], [lang])[0]
+                except ValueError:
+                    continue
+        if reusable:
+            _write_jsonl(review_checkpoint_dir / 'reused_items.jsonl', [
+                {**row, 'cache_key': review_cache_keys[cell]} for cell, row in reusable.items()
+            ])
         review_jobs: list[tuple[list[dict[str, object]], str, Path]] = []
         for lang in target_langs:
             missing = [
                 row for row in review_rows if (str(row["review_key"]), lang) not in reusable
             ]
-            for index in range(0, len(missing), batch_size):
-                batch = missing[index : index + batch_size]
+            for batch in _partition_requests(missing, max_rows=batch_size, max_chars=24000, output_languages=1):
                 checkpoint = _batch_checkpoint(
                     review_checkpoint_dir,
                     f"review-v2:{lang}",
@@ -505,29 +682,26 @@ def run_deep_proofread(
             job: tuple[list[dict[str, object]], str, Path],
         ) -> list[dict[str, Any]]:
             batch, lang, checkpoint = job
-            request_batch = [{**row, "translations": {lang: row["translations"][lang]},
-                              "dialogue_evidence": _language_evidence(row.get("dialogue_evidence"), lang)} for row in batch]
-            validation_error: ValueError | None = None
-            for _ in range(3):
-                batch_suggestions = reviewer.review_batch(request_batch, [lang])
-                try:
-                    validated_batch = _validate_suggestions(batch, batch_suggestions, [lang])
-                    break
-                except ValueError as exc:
-                    validation_error = exc
-            else:
-                assert validation_error is not None
-                raise validation_error
-            _write_jsonl(checkpoint, validated_batch)
-            return validated_batch
+            request_batch = [_language_review_row(row, lang) for row in batch]
+            return _retry_validated_cells(
+                [{**row, 'lang': lang} for row in request_batch],
+                lambda pending: reviewer.review_batch(pending, [lang]),
+                lambda row, suggestion: _validate_suggestions([row], [suggestion], [lang])[0],
+                checkpoint, review_cache_keys,
+                runtime=getattr(reviewer, 'runtime', None),
+            )
 
         if review_jobs:
-            with ThreadPoolExecutor(
-                max_workers=max(1, min(workers, len(review_jobs)))
-            ) as pool:
-                for batch_suggestions in pool.map(review_missing, review_jobs):
+            failures = []
+            for job, batch_suggestions, error in bounded_results(review_missing, review_jobs, workers=workers):
+                if error:
+                    failures.append({'checkpoint': str(job[2]), 'error': str(error)})
+                else:
                     for suggestion in batch_suggestions:
                         reusable[(suggestion["review_key"], suggestion["lang"])] = suggestion
+            _atomic_write_text(proof_dir / 'review_failures.json', json.dumps(failures, ensure_ascii=False))
+            if failures:
+                raise IncompletePhase(f"{len(failures)} review batches unresolved; healthy cells saved; {failures[0]['error']}")
         suggestions = [
             reusable[(str(row["review_key"]), lang)]
             for row in review_rows
@@ -557,11 +731,25 @@ def run_deep_proofread(
     try:
         start_phase(manifest, "controller_merge")
         trusted_rows = {str(row['review_key']): row for row in review_rows}
+        suggested_cells = {(row['review_key'], row['lang']): row['suggested'] for row in validated}
+        whole_contexts = {}
+        def plain_leaves(text):
+            return [''.join(part.value for part in parts if part.kind == 'text')
+                    for parts in parse_template(text).leaves.values()]
+        for (signature, lang), (template, slots) in structured_cells.items():
+            values = {slot.slot_key: suggested_cells[(f'{signature}:segment:{index}', lang)]
+                      for index, slot in enumerate(slots)}
+            proposed = render_reviewed_target(template, slots, values)
+            whole_contexts[(signature, lang)] = {
+                'whole_cell_source': plain_leaves(str(representatives[signature].get('translation_source') or representatives[signature]['cn'])),
+                'whole_cell_proposed': plain_leaves(proposed),
+            }
         fixes = []
+        legacy_fixes = {}
         for suggestion in validated:
             trusted = trusted_rows[suggestion['review_key']]
             # 源文和原译由主控补齐，不能让 reviewer 自述的理由代替独立审计证据。
-            fixes.append({
+            fix = {
                 **suggestion,
                 **{field: trusted.get(field) for field in (
                     'cn', 'translation_source', 'source_mode', 'reference_en',
@@ -574,48 +762,67 @@ def run_deep_proofread(
                     'dialogue' in str(flag).lower() or 'idiom' in str(flag).lower()
                     for flag in (trusted.get('risk_flags') or [])
                 ),
-            })
+            }
+            legacy_fixes[(fix['review_key'], fix['lang'])] = {**fix, 'context': str(fix.get('context') or '')}
+            fix['context'] = _language_context(fix.get('context') or '', fix['lang'])
+            signature = str(fix['review_key']).split(':segment:')[0]
+            if (signature, fix['lang']) in whole_contexts:
+                fix['context'] = {'segment_context': fix['context'], **whole_contexts[(signature, fix['lang'])]}
+            fix['term_hits'] = _language_context(fix.get('term_hits') or [], fix['lang'], english_reference=True)
+            fixes.append(fix)
         decisions: list[dict[str, object]] = []
         audit_scope = hashlib.sha256(
             f"audit-v10-existing-short-baseline:{_client_checkpoint_identity(auditor)}".encode("utf-8")
         ).hexdigest()[:16]
         audit_checkpoint_dir = proof_dir / "audit_batches" / audit_scope
         audit_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        audit_cache_keys = {(row['review_key'], row['lang']): _audit_item_key(row) for row in fixes}
+        reusable_audits = _load_audit_item_checkpoints(audit_checkpoint_dir, fixes)
         audit_jobs: list[tuple[list[dict[str, Any]], Path]] = []
-        for index in range(0, len(fixes), batch_size):
-            batch = fixes[index : index + batch_size]
-            checkpoint = _batch_checkpoint(audit_checkpoint_dir, "audit-v1", batch)
-            if checkpoint.exists():
-                batch_decisions = _read_jsonl(checkpoint)
-                _validate_audit(batch, batch_decisions)
-                decisions.extend(batch_decisions)
-            else:
-                audit_jobs.append((batch, checkpoint))
+        audit_batches = [batch for lang in target_langs for batch in _partition_requests(
+            [row for row in fixes if row['lang'] == lang], max_rows=batch_size,
+            max_chars=24000, output_languages=1)]
+        for batch in audit_batches:
+            missing = [row for row in batch if audit_cache_keys[(row['review_key'], row['lang'])] not in reusable_audits]
+            if missing:
+                legacy = _batch_checkpoint(audit_checkpoint_dir, 'audit-v1',
+                                           [legacy_fixes[(row['review_key'], row['lang'])] for row in batch])
+                if legacy.exists():
+                    records = _read_jsonl(legacy)
+                    if not any('cache_key' in row for row in records):
+                        accepted = _validate_audit(batch, records)
+                        _write_jsonl(_batch_checkpoint(audit_checkpoint_dir, 'audit-v1', batch), [
+                            {**row, 'cache_key': audit_cache_keys[cell]} for cell, row in accepted.items()
+                        ])
+                        decisions.extend(accepted.values())
+                        continue
+            for row in batch:
+                cached = reusable_audits.get(audit_cache_keys[(row['review_key'], row['lang'])])
+                if cached is not None:
+                    decisions.append(_rekey_audit(cached, row['review_key']))
+            if missing:
+                audit_jobs.append((missing, _batch_checkpoint(audit_checkpoint_dir, 'audit-v1', missing)))
 
         def audit_missing(
             job: tuple[list[dict[str, Any]], Path],
         ) -> list[dict[str, object]]:
             batch, checkpoint = job
-            validation_error: ValueError | None = None
-            for _ in range(3):
-                batch_decisions = auditor.audit_batch(batch)
-                try:
-                    _validate_audit(batch, batch_decisions)
-                    break
-                except ValueError as exc:
-                    validation_error = exc
-            else:
-                assert validation_error is not None
-                raise validation_error
-            _write_jsonl(checkpoint, batch_decisions)
-            return batch_decisions
+            return _retry_validated_cells(
+                batch, auditor.audit_batch,
+                lambda row, decision: _validate_audit([row], [decision])[(row['review_key'], row['lang'])],
+                checkpoint, audit_cache_keys, phase='audit', runtime=getattr(auditor, 'runtime', None),
+            )
 
         if audit_jobs:
-            with ThreadPoolExecutor(
-                max_workers=max(1, min(workers, len(audit_jobs)))
-            ) as pool:
-                for batch_decisions in pool.map(audit_missing, audit_jobs):
+            failures = []
+            for job, batch_decisions, error in bounded_results(audit_missing, audit_jobs, workers=workers):
+                if error:
+                    failures.append({'checkpoint': str(job[1]), 'error': str(error)})
+                else:
                     decisions.extend(batch_decisions)
+            _atomic_write_text(proof_dir / 'audit_failures.json', json.dumps(failures, ensure_ascii=False))
+            if failures:
+                raise IncompletePhase(f"{len(failures)} audit batches unresolved; healthy cells saved; {failures[0]['error']}")
         audit = _validate_audit(fixes, decisions)
         _write_jsonl(audit_path, list(audit.values()))
         suggestions_by_cell = {
@@ -660,7 +867,7 @@ def run_deep_proofread(
                     audit_reasons.append(decision["reason"])
                 if str(row.get("seed_origin") or "") == "glossary_exact":
                     final_text = before
-                elif not _preserves_protected_tokens(before, final_text, row.get("tokens") or []):
+                elif not _preserves_protected_tokens(str(row.get('cn') or before), final_text, row.get("tokens") or []):
                     final_text = before
                 if final_text != before:
                     issues.append(
@@ -701,6 +908,7 @@ def run_deep_proofread(
             "audit_jsonl": str(audit_path),
             "summary_json": str(summary_path),
             "audited_cells": len(audit),
+            "audit_reused_cells": len(fixes) - sum(len(batch) for batch, _ in audit_jobs),
             "audited_keep_cells": sum(row["status"] == "KEEP" for row in fixes),
             "changed_by_language": dict(sorted(changed_by_lang.items())),
             "issues": issues,
@@ -717,6 +925,7 @@ def run_deep_proofread(
                 "reverted_changes": summary.reverted_changes,
                 "changed_cells": summary.changed_cells,
                 "audit_api_batches": len(audit_jobs),
+                "audit_reused_cells": len(fixes) - sum(len(batch) for batch, _ in audit_jobs),
             },
         )
         _release_proofread_lock(proofread_lock)

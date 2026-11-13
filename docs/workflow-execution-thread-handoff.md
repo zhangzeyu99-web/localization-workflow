@@ -1,5 +1,9 @@
 # 本地化工作流执行线程 Handoff
 
+## 中转 API 稳定执行入口
+
+大文本新译和已有译文校对统一按 `RELAY_STABLE_EXECUTION.md` 执行。API 总并发默认4、最多5；初译、reviewer、auditor 共用上限，失败不回退 Codex 批量审读。已有译文使用 runner 的 `--task-mode review`；恢复用 `resume --manifest`，查状态用 `status --manifest`。已验收缓存不清空；仅明确诊断后使用 `--retry-failed` 重开耗尽预算的失败项。本入口不新增远端回填授权。
+
 ## 竞品参考与建议表
 
 用户要求“先查竞品再给建议”或在原小表每种语言后增加建议列时，按 `REFERENCE_SUGGESTION_WORKFLOW.md` 使用 `scripts/run_reference_suggestion_workflow.py`。复用仓外稳定 cache，查询只给最多三条来源明确的字面/相似候选；一个模型评估、控制模型复核，完整 import 验收后才能 export/verify。不得把字面命中自动当作语义对应或直接套用译文。

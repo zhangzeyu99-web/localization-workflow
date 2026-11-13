@@ -1,5 +1,9 @@
 # 大文本多语言工作流 V2
 
+## 稳定 API 执行补充
+
+翻译、逐句校对和独立二审统一由中转 API 执行，不消耗正文处理的 Codex 订阅额度，不自动回退 subagent。总并发默认4、最多5，跨语言和角色共用；新增 `--task-mode review`、`resume` 和独立校对/二审配置。失败分类、逐格重试、任务锁、费用边界和验收见 `RELAY_STABLE_EXECUTION.md`。
+
 ## 适用范围
 
 满足任一条件时使用本流程：目标语言超过 4 个、多 workbook 交付、唯一文本超过 5,000 条，或用户明确要求全量逐句/深度校对。
@@ -20,7 +24,7 @@ python scripts\run_large_text_multilingual_runner.py run `
   --batch-size 60 `
   --workers 4 `
   --proofread-batch-size 30 `
-  --proofread-workers 8 `
+  --proofread-workers 4 `
   --proofread-mode full
 ```
 
@@ -62,10 +66,10 @@ flowchart LR
 - 初译续跑先在同一模型/提示词/语言作用域内按文本、上下文、术语签名读取已有请求结果，再处理当前批次；改变批大小不重新调用已完成请求，源文或上下文变更只补对应请求。冲突缓存明确报错，不静默挑选旧译。沿用现有批次文件，不增加一套任务或缓存服务。
 - 中文源为 JSON 或包含 3 个以上技术标签时，runner 由程序解析结构并只把可读文本槽交给 API；模型不接触、不返回 JSON、`<@n>` 或标签，程序按原路径、原标签顺序重建。结构重建不一致立即失败，不降级为整段重译。
 - JSON 完整性由共享门禁覆盖初译响应、KEEP/FIX、控制器 ACCEPT/REVISE/REVERT、旧 checkpoint 复用、最终缓存和实际 workbook 回读。必须完整解析整格，保持源容器路径、固定值和逐叶技术 token；尾缀、多根、截断、未转义引号、重复键、非标准常量和结构漂移均阻断。REVERT 必须检验实际回退到的 `current`，不能使用建议或响应中的 `final` 代替。校验失败进入既有失败/重试路径，未修复不得写回或交付，不能解析前缀、删内容或回退坏稿凑通过。
-- 翻译批次与深校批次独立配置。默认初译 `60 × 4 workers`，深校 `30 × 8 workers`；根据模型限流调整，不用放大多语言响应换取表面上的少批次。
+- 翻译批次与深校批次独立配置。默认初译 `60 × 4 workers`，深校 `30 × 4 workers`；所有 API 角色受 `--api-concurrency` 共同限制，最多5。根据模型限流调整，不用放大多语言响应换取表面上的少批次。
 - 深校按单一目标语言分批，避免一个响应同时承载多语言结果而截断；review checkpoint 按 `review_key + lang` 复用，改变批大小后只补缺失单元。
 - reviewer 对 `KEEP` 省略重复译文时，以当前译文补齐 `suggested`；`FIX` 缺少新译文仍立即失败，不能降低审校覆盖门禁。
-- 同一任务目录只允许一个深校主进程；`proofread.lock` 拒绝重复进程，防止共享 checkpoint 时重复调用。
+- 同一任务目录只允许一个主进程；`task.lock` 覆盖准备、翻译、校对、导出，旧 `proofread.lock` 继续保护单独深校入口，防止共享 checkpoint 重复调用。
 - 翻译、深校建议和二次审计允许受控并发；XLSX 只在最终缓存 hard blocker 为 0 后写一次。
 - 深校建议不能直接修改 workbook。subagent 或 API 只输出建议，主控审计后才进入最终缓存。
 - 已有建议短译的精简校对按 `readability-abbreviation-gate.md` 执行：当前译文绑定建议短译，reviewer 只修误导或确实不通顺，auditor 回退无必要补词；修改量与字符变化对建议短译计算。合理省略不按逐词漏译处理，数字/机制/技术门禁不降低。

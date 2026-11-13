@@ -12,16 +12,20 @@ from typing import Any
 from openpyxl import Workbook
 
 from utils.large_text_multilingual_executor import (
+    ExecutionSummary,
     OpenAICompatibleClient,
     TranslationClient,
     _atomic_write_text,
+    _read_jsonl,
+    _write_jsonl,
     complete_phase,
     fail_phase,
     start_phase,
     translate_manifest,
 )
 from utils.large_text_multilingual_gate import apply_dry_run, cache_lint, readback_gate
-from utils.large_text_multilingual_pack import prepare_pack
+from utils.large_text_multilingual_pack import PackArtifacts, prepare_pack
+from utils.relay_runtime import RelayRuntime, atomic_json, concurrency, task_lock
 from utils.large_text_multilingual_proofread import AuditClient, ReviewClient, run_deep_proofread
 from utils.large_text_residue_repair import repair_cache_residue
 from utils.large_text_multilingual_runner import build_manifest, load_manifest, save_manifest
@@ -93,7 +97,71 @@ def _qa_summary(
     workbook.close()
 
 
-def run_pipeline(
+def run_pipeline(*, task_dir: Path, api_concurrency: int = 4, retry_failed: bool = False, **kwargs) -> PipelineResult:
+    concurrency(api_concurrency)
+    work_dir = task_dir / "_work" / "large_text_multilingual"
+    with task_lock(work_dir):
+        runtime = RelayRuntime(work_dir, limit=api_concurrency, retry_failed=retry_failed)
+        config = {key: value for key, value in kwargs.items()
+                  if key not in {"translation_client", "reviewer", "auditor"}}
+        config.update(task_dir=task_dir, api_concurrency=api_concurrency)
+        serializable = json.loads(json.dumps(config, default=str))
+        snapshot = []
+        for path in [*kwargs.get('inputs', []), kwargs.get('term_base'), kwargs.get('glossary_receipt')]:
+            if path is not None:
+                stat = Path(path).stat()
+                snapshot.append({'path': str(Path(path).resolve()), 'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns})
+        saved_config = work_dir / 'run_config.json'
+        reuse_prepared = saved_config.exists()
+        if saved_config.exists():
+            previous = json.loads(saved_config.read_text(encoding='utf-8'))
+            if previous.get('source_snapshot') != snapshot:
+                raise ValueError('source/terminology changed; use a new task directory, existing checkpoints preserved')
+            for field, default in [('task_mode', 'translate'), ('source_mode', 'cn'),
+                                   ('proofread_mode', 'basic'), ('target_langs', [])]:
+                if previous['arguments'].get(field, default) != serializable.get(field, default):
+                    raise ValueError(f'task binding changed: {field}; use a new task directory')
+        atomic_json(saved_config, {'arguments': serializable, 'source_snapshot': snapshot})
+        try:
+            previous_result = work_dir / 'pipeline_result.json'
+            previous_manifest = work_dir / 'large_text_multilingual_manifest.json'
+            if previous_result.exists() and previous_manifest.exists():
+                saved_manifest = load_manifest(previous_manifest)
+                if saved_manifest.get('status') == 'complete':
+                    accepted = json.loads(previous_result.read_text(encoding='utf-8'))
+                    directory = Path(accepted['delivery_dir'])
+                    languages = kwargs['target_langs']
+                    readback = readback_gate(directory, target_langs=languages)
+                    cache = Path(saved_manifest['artifacts'].get('final_cache') or saved_manifest['artifacts']['initial_cache'])
+                    exact = verify_translation_cache(directory, cache, languages)
+                    if readback.get('hard_blockers') or exact.get('hard_blockers'):
+                        raise ValueError('completed delivery changed or failed readback; inspect before regenerating')
+                    atomic_json(work_dir / 'resume_verification.json', {'readback': readback, 'exact': exact, 'new_api_requests': 0})
+                    for field in ('manifest', 'delivery_dir', 'retro_metrics'):
+                        accepted[field] = Path(accepted[field])
+                    return PipelineResult(**accepted)
+            result = _run_pipeline(task_dir=task_dir, runtime=runtime, reuse_prepared=reuse_prepared, **kwargs)
+            atomic_json(work_dir / 'pipeline_result.json', json.loads(json.dumps(asdict(result), default=str)))
+            return result
+        finally:
+            runtime.progress(force=True)
+
+
+def resume_pipeline(manifest_path: Path, *, retry_failed: bool = False,
+                    api_concurrency: int | None = None) -> PipelineResult:
+    config = json.loads((manifest_path.parent / 'run_config.json').read_text(encoding='utf-8'))['arguments']
+    for name in ('task_dir', 'term_base', 'glossary_receipt', 'relay_config', 'review_relay_config',
+                 'audit_relay_config', 'delivery_dir'):
+        if config.get(name) is not None:
+            config[name] = Path(config[name])
+    for name in ('inputs', 'history_dirs'):
+        config[name] = [Path(path) for path in config.get(name, [])]
+    if api_concurrency is not None:
+        config['api_concurrency'] = api_concurrency
+    return run_pipeline(**config, retry_failed=retry_failed)
+
+
+def _run_pipeline(
     *,
     inputs: list[Path],
     term_base: Path | None,
@@ -112,9 +180,16 @@ def run_pipeline(
     proofread_workers: int | None = None,
     source_mode: str = "cn",
     glossary_receipt: Path | None = None,
+    task_mode: str = 'translate',
+    review_relay_config: Path | None = None,
+    audit_relay_config: Path | None = None,
+    runtime: RelayRuntime | None = None,
+    reuse_prepared: bool = False,
 ) -> PipelineResult:
     started = time.perf_counter()
     target_langs = [str(lang).upper() for lang in target_langs]
+    if task_mode == 'review' and proofread_mode == 'basic':
+        proofread_mode = 'full'
     glossary_acceptance = None
     if glossary_receipt is not None:
         from utils.glossary_enrichment import verify_receipt
@@ -126,15 +201,25 @@ def run_pipeline(
     if conflicts:
         raise ValueError(f"input uses reserved delivery file name: {conflicts}")
     work_dir = task_dir / "_work" / "large_text_multilingual"
-    pack = prepare_pack(
-        inputs=inputs,
-        term_base=term_base,
-        history_dirs=history_dirs,
-        target_langs=target_langs,
-        work_dir=work_dir,
-        source_mode=source_mode,
-    )
-    manifest = build_manifest(
+    existing_manifest = work_dir / 'large_text_multilingual_manifest.json'
+    stats_path = work_dir / 'prepare_stats.json'
+    if reuse_prepared and existing_manifest.exists() and stats_path.exists():
+        stats = json.loads(stats_path.read_text(encoding='utf-8'))
+        values = {field: stats[field] for field in PackArtifacts.__dataclass_fields__}
+        for field in ('items_jsonl', 'source_rows_jsonl', 'prepare_stats'):
+            values[field] = Path(values[field])
+        pack = PackArtifacts(**values)
+    else:
+        pack = prepare_pack(
+            inputs=inputs,
+            term_base=term_base,
+            history_dirs=history_dirs,
+            target_langs=target_langs,
+            work_dir=work_dir,
+            source_mode=source_mode,
+            task_mode=task_mode,
+        )
+    manifest = load_manifest(existing_manifest) if reuse_prepared and existing_manifest.exists() else build_manifest(
         work_dir=work_dir,
         items_jsonl=pack.items_jsonl,
         source_rows_jsonl=pack.source_rows_jsonl,
@@ -145,8 +230,14 @@ def run_pipeline(
         source_mode=source_mode,
     )
     manifest_path = Path(manifest["manifest_path"])
+    manifest['execution_backend'] = 'relay'
+    manifest['inputs']['task_mode'] = task_mode
+    manifest['subagent_strategy'] = {'enabled': False, 'owner': 'relay_api', 'mode': proofread_mode}
+    manifest['api_strategy']['concurrency_limit'] = runtime.limit if runtime else 4
+    save_manifest(manifest)
     if glossary_acceptance is not None:
-        manifest['critical_path'].insert(0, 'glossary_enrichment')
+        if 'glossary_enrichment' not in manifest['critical_path']:
+            manifest['critical_path'].insert(0, 'glossary_enrichment')
         manifest['phase_status']['glossary_enrichment'] = 'done'
         manifest.setdefault('artifacts', {})['glossary_receipt'] = str(glossary_receipt)
         manifest.setdefault('phase_metrics', {})['glossary_enrichment'] = {
@@ -158,14 +249,30 @@ def run_pipeline(
     if shared_client is None:
         if relay_config is None:
             raise ValueError("relay_config is required for a real pipeline run")
-        shared_client = OpenAICompatibleClient(relay_config)
-    translation = translate_manifest(
-        manifest_path,
-        relay_config=relay_config,
-        client=shared_client,
-        batch_size=batch_size,
-        workers=workers,
-    )
+        shared_client = OpenAICompatibleClient(relay_config, runtime=runtime)
+    elif isinstance(shared_client, OpenAICompatibleClient) and runtime is not None:
+        shared_client.runtime = runtime
+    if task_mode == 'review':
+        existing_rows = _read_jsonl(pack.items_jsonl)
+        gaps = [{'key': row['key'], 'lang': lang} for row in existing_rows for lang in target_langs
+                if not str(row.get('translations', {}).get(lang, '')).strip()]
+        atomic_json(work_dir / 'review_missing_cells.json', gaps)
+        if gaps:
+            raise ValueError(f'review-only input contains {len(gaps)} empty target cells; no implicit translation')
+        cache = work_dir / 'initial_cache.jsonl'
+        _write_jsonl(cache, existing_rows)
+        translation = ExecutionSummary(cache, work_dir / 'translation_metrics.json', len(existing_rows), 0, 0, 0, 0, 0)
+        manifest['phase_status']['api_translate'] = 'skipped'
+        manifest['phase_status']['api_smoke'] = 'skipped'
+        save_manifest(manifest)
+    else:
+        translation = translate_manifest(
+            manifest_path,
+            relay_config=relay_config,
+            client=shared_client,
+            batch_size=batch_size,
+            workers=min(workers, runtime.limit if runtime else 5),
+        )
 
     residue_report_path = work_dir / "local_residue_repairs.json"
     residue_report = repair_cache_residue(
@@ -189,7 +296,7 @@ def run_pipeline(
             term_base=term_base,
         )
         _write_json(initial_lint_path, result)
-        if result["hard_blockers"]:
+        if result["hard_blockers"] and task_mode != 'review':
             raise ValueError(f"cache-lint failed with {result['hard_blockers']} hard blockers")
         return result
 
@@ -197,8 +304,11 @@ def run_pipeline(
     final_cache = translation.cache_jsonl
     proof_summary = None
     if proofread_mode in {"sampled", "full"}:
-        effective_reviewer = reviewer or shared_client
-        effective_auditor = auditor or shared_client
+        effective_reviewer = reviewer or (OpenAICompatibleClient(review_relay_config, runtime=runtime) if review_relay_config else shared_client)
+        effective_auditor = auditor or (OpenAICompatibleClient(audit_relay_config, runtime=runtime) if audit_relay_config else shared_client)
+        for client in (effective_reviewer, effective_auditor):
+            if isinstance(client, OpenAICompatibleClient) and runtime is not None:
+                client.runtime = runtime
         if not hasattr(effective_reviewer, "review_batch") or not hasattr(effective_auditor, "audit_batch"):
             raise ValueError("deep proofreading requires reviewer and auditor clients")
         proof_summary = run_deep_proofread(
@@ -207,7 +317,7 @@ def run_pipeline(
             reviewer=effective_reviewer,  # type: ignore[arg-type]
             auditor=effective_auditor,  # type: ignore[arg-type]
             batch_size=proofread_batch_size or batch_size,
-            workers=proofread_workers or workers,
+            workers=min(proofread_workers or workers, runtime.limit if runtime else 5),
         )
         final_cache = proof_summary.final_cache
         final_lint_path = work_dir / "final_cache_lint.json"

@@ -6,13 +6,18 @@ import json
 import time
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
+from utils.relay_runtime import (
+    RelayRuntime, ResponseTooLarge, FatalRelayError, RequestBudgetExceeded,
+    IncompletePhase, bounded_results,
+)
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from utils.ai_checker import SHORT_TRANSLATION_REVIEW_POLICY
+from utils.localization_quality_policy import QUALITY_POLICY_VERSION, localization_quality_policy
 from utils.large_text_multilingual_runner import load_manifest, save_manifest
 from utils.structured_text_template import (
     ParsedTemplate,
@@ -126,14 +131,86 @@ def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
+    fields = {'context', 'dialogue_evidence', 'term_hits'}
+    reserved = False
+
+    def normalize(value: Any, field: str = '') -> Any:
+        nonlocal reserved
+        if field == 'context' and isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, (dict, list)):
+                    value = parsed
+            except (ValueError, TypeError):
+                pass
+        if isinstance(value, dict):
+            reserved |= '$context_ref' in value or 'shared_contexts' in value
+            return {key: normalize(item, key) for key, item in value.items()}
+        if isinstance(value, list):
+            return [normalize(item) for item in value]
+        return value
+
+    normalized = normalize(payload)
+    if reserved:
+        return payload
+    counts: Counter[str] = Counter()
+
+    def signature(value: Any) -> str:
+        if not isinstance(value, (dict, list, str)):
+            return ''
+        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        return encoded if len(encoded) >= 256 else ''
+
+    def count(value: Any, eligible: bool = False) -> None:
+        if eligible and (key := signature(value)):
+            counts[key] += 1
+        if isinstance(value, dict):
+            for field, item in value.items():
+                count(item, eligible or field in fields)
+        elif isinstance(value, list):
+            for item in value:
+                count(item, eligible)
+
+    count(normalized)
+    shared: dict[str, Any] = {}
+    references: dict[str, str] = {}
+
+    def children(value: Any, eligible: bool) -> Any:
+        if isinstance(value, dict):
+            return {field: compact(item, eligible or field in fields) for field, item in value.items()}
+        if isinstance(value, list):
+            return [compact(item, eligible) for item in value]
+        return value
+
+    def compact(value: Any, eligible: bool = False) -> Any:
+        key = signature(value) if eligible else ''
+        if key and counts[key] > 1:
+            if key not in references:
+                ref = references[key] = f'context-{len(references) + 1}'
+                shared[ref] = children(value, eligible)
+            return {'$context_ref': references[key]}
+        return children(value, eligible)
+
+    result = compact(normalized)
+    if not shared:
+        return payload
+    result['shared_contexts'] = shared
+    if len(json.dumps(result, ensure_ascii=False)) >= len(json.dumps(payload, ensure_ascii=False)):
+        return payload
+    return result
+
+
 class OpenAICompatibleClient:
-    def __init__(self, config_path: Path, *, timeout: int = 180) -> None:
+    def __init__(self, config_path: Path, *, timeout: int = 180,
+                 runtime: RelayRuntime | None = None) -> None:
         config = _flatten_config(_read_json(config_path))
         self.base_url = str(config.get("base_url") or "").rstrip("/")
         self.model = str(config.get("model") or "")
         self.api_key = str(config.get("api_key") or "")
-        self.checkpoint_identity = f"openai-compatible:{self.base_url}:{self.model}"
+        self.checkpoint_identity = f"openai-compatible:{self.base_url}:{self.model}:{QUALITY_POLICY_VERSION}"
         self.timeout = timeout
+        self.runtime = runtime or RelayRuntime()
         if not self.base_url or not self.model:
             raise ValueError("relay config requires base_url and model")
 
@@ -144,7 +221,16 @@ class OpenAICompatibleClient:
             return self.base_url + "/chat/completions"
         return self.base_url + "/v1/chat/completions"
 
-    def _chat_json(self, system: str, user_payload: dict[str, object]) -> object:
+    def _chat_json(self, system: str, user_payload: dict[str, object], *, stage: str = "chat") -> object:
+        compact = _compact_shared_context(user_payload)
+        if compact is not user_payload:
+            system += (
+                ' Input uses shared_contexts: recursively resolve each {"$context_ref":"id"} '
+                'to that complete table value before reviewing its row. References replace only '
+                'repeated context/evidence, never omit it. Existing scene translations are still '
+                'unverified evidence, not speaker configuration. Return original row keys and '
+                'the requested response schema, never context references.'
+            )
         payload = {
             "model": self.model,
             "temperature": 0,
@@ -153,12 +239,11 @@ class OpenAICompatibleClient:
                 {"role": "system", "content": system},
                 {
                     "role": "user",
-                    "content": json.dumps(user_payload, ensure_ascii=False),
+                    "content": json.dumps(compact, ensure_ascii=False),
                 },
             ],
         }
-        last_error: BaseException | None = None
-        for attempt in range(3):
+        def send():
             request = urllib.request.Request(
                 self._endpoint(),
                 data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -168,27 +253,20 @@ class OpenAICompatibleClient:
                 },
                 method="POST",
             )
-            try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    body = json.loads(response.read().decode("utf-8"))
-                choices = body.get("choices") if isinstance(body, dict) else None
-                if not isinstance(choices, list) or not choices:
-                    raise RuntimeError("relay response is missing choices")
-                message = choices[0].get("message") if isinstance(choices[0], dict) else None
-                if not isinstance(message, dict) or "content" not in message:
-                    raise RuntimeError("relay response is missing message content")
-                content = message["content"]
-                return json.loads(content) if isinstance(content, str) else content
-            except (
-                urllib.error.URLError,
-                TimeoutError,
-                json.JSONDecodeError,
-                RuntimeError,
-            ) as exc:
-                last_error = exc
-                if attempt < 2:
-                    time.sleep(2**attempt)
-        raise RuntimeError(f"relay request failed after 3 attempts: {last_error}") from last_error
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read().decode("utf-8"))
+            choices = body.get("choices") if isinstance(body, dict) else None
+            if not isinstance(choices, list) or not choices:
+                raise RuntimeError("relay response is missing choices")
+            if choices[0].get("finish_reason") == "length":
+                raise ResponseTooLarge("relay output truncated")
+            message = choices[0].get("message") if isinstance(choices[0], dict) else None
+            if not isinstance(message, dict) or "content" not in message:
+                raise RuntimeError("relay response is missing message content")
+            content = message["content"]
+            result = json.loads(content) if isinstance(content, str) else content
+            return result, {"usage": body.get("usage"), "model": body.get("model")}
+        return self.runtime.request(self.checkpoint_identity, stage, user_payload, send)
 
     def translate_batch(
         self,
@@ -206,9 +284,12 @@ class OpenAICompatibleClient:
                 "Rows marked as structured text segments contain only readable text: return only "
                 "translated prose for them and never add markup, placeholders, or JSON syntax. "
                 "Return strict JSON: {\"rows\":[{\"request_key\":...,"
-                "\"translations\":{LANG:TEXT}}]}. Do not omit or add rows."
+                "\"translations\":{LANG:TEXT}}]}. Do not omit or add rows. "
+                "If validation_feedback is present, fix only the requested failing cells."
+                + localization_quality_policy(target_langs)
             ),
             {"target_languages": target_langs, "rows": rows},
+            stage="translate",
         )
         result = parsed.get("rows") if isinstance(parsed, dict) else parsed
         if not isinstance(result, list):
@@ -233,6 +314,7 @@ class OpenAICompatibleClient:
                 "Do not rewrite correct text. "
                 + SHORT_TRANSLATION_REVIEW_POLICY
                 +
+                "If validation_feedback is supplied, correct that failure and return only the requested cells. "
                 "For dialogue, distinguish the speaker, addressee, and grammatical antecedent. "
                 "A gender or address change must cite concrete supplied context in reason; never "
                 "guess from an isolated line or assume alternating speakers. If context is insufficient, "
@@ -244,8 +326,10 @@ class OpenAICompatibleClient:
                 "Return strict JSON with one item per row and language: "
                 "{\"rows\":[{\"review_key\":...,\"lang\":...,\"status\":\"KEEP|FIX\","
                 "\"suggested\":...,\"reason\":...}]}."
+                + localization_quality_policy(target_langs)
             ),
             {"target_languages": target_langs, "rows": rows},
+            stage="review",
         )
         result = parsed.get("rows") if isinstance(parsed, dict) else parsed
         if not isinstance(result, list):
@@ -259,6 +343,14 @@ class OpenAICompatibleClient:
         blind_rows = [{"review_key": row["review_key"], "lang": row["lang"], "text": row["suggested"]}
                       for row in suggestions if row.get("semantic_check_required")]
         readings = {}
+        runtime = getattr(self, 'runtime', None)
+        blind_keys = { (row['review_key'], row['lang']): runtime.keys(self.checkpoint_identity, 'blind', {'rows': [row]})[0]
+                       for row in blind_rows } if runtime else {}
+        if runtime:
+            for key, cache_key in blind_keys.items():
+                if cache_key in runtime.blind_readings:
+                    readings[key] = runtime.blind_readings[cache_key]
+            blind_rows = [row for row in blind_rows if (row['review_key'], row['lang']) not in readings]
         if blind_rows:
             blind = self._chat_json(
                 "Read these target-language sentences independently, without assuming an intended source. "
@@ -268,6 +360,7 @@ class OpenAICompatibleClient:
                 "or body part from worrying about a situation. Return JSON {\"rows\":[{\"review_key\":...,"
                 "\"lang\":...,\"meaning\":...,\"predicate_object\":...,\"tone\":...}]}.",
                 {"rows": blind_rows},
+                stage="blind",
             )
             blind = blind.get("rows") if isinstance(blind, dict) else blind
             if not isinstance(blind, list) or len(blind) != len(blind_rows):
@@ -278,8 +371,10 @@ class OpenAICompatibleClient:
                                           for field in ("meaning", "predicate_object", "tone")):
                     raise ValueError("invalid blind semantic reading")
                 readings[key] = reading
-            if set(readings) != {(str(row["review_key"]), str(row["lang"]).upper()) for row in blind_rows}:
+            if not {(str(row["review_key"]), str(row["lang"]).upper()) for row in blind_rows}.issubset(readings):
                 raise ValueError("blind semantic reading key mismatch")
+            if runtime:
+                runtime.save_blind_readings({blind_keys[key]: value for key, value in readings.items() if key in blind_keys})
         audit_input = [{**row, "independent_target_reading": readings.get((str(row["review_key"]), str(row["lang"]).upper()))}
                        for row in suggestions]
         parsed = self._chat_json(
@@ -288,6 +383,7 @@ class OpenAICompatibleClient:
                 + SHORT_TRANSLATION_REVIEW_POLICY
                 + "For existing short copy, REVERT expansions that only restore reasonably omitted "
                 "wording or change style without fixing a concrete player-facing or language defect. "
+                "If validation_feedback is supplied, fix that failure and return only the requested cells. "
                 "Revert changes that narrow "
                 "meaning, force terminology into the wrong context, damage tokens/numbers, or are "
                 "not a clear improvement. "
@@ -297,6 +393,9 @@ class OpenAICompatibleClient:
                 "ownership, negation, limits, per-hit effects, and quantities against the source. "
                 "Use the controller-supplied source, current translation, and context to check each "
                 "suggestion independently; the reviewer reason is a claim to verify, not evidence. "
+                "If context includes whole_cell_proposed, check that complete reconstructed prose for "
+                "omissions, duplicated clauses, word joins and grammar, not only this segment. "
+                "Return only this segment's final text; never copy the whole cell into a segment. "
                 "For dialogue gender/address changes require explicit speaker/addressee evidence; "
                 "REVERT speculative changes based only on a likely speaker. Compare idioms by meaning "
                 "and tone, not by literal imagery. First paraphrase the primary source WITHOUT its metaphor, "
@@ -317,8 +416,10 @@ class OpenAICompatibleClient:
                 "\"reason\":...,\"semantic_check\":{\"source_meaning\":...,\"final_meaning\":...,"
                 "\"meaning_preserved\":true,\"roles_preserved\":true,\"tone_preserved\":true}}]}. "
                 "Always return final explicitly, including for ACCEPT."
+                + localization_quality_policy([row.get('lang', '') for row in suggestions])
             ),
             {"suggestions": audit_input},
+            stage="audit",
         )
         result = parsed.get("rows") if isinstance(parsed, dict) else parsed
         if not isinstance(result, list):
@@ -367,7 +468,7 @@ def _request_row(row: dict[str, Any], request_key: str) -> dict[str, object]:
         "source_mode": str(row.get("source_mode") or "cn"),
         "reference_en": str(row.get("reference_en") or ""),
         "reference_en_status": str(row.get("reference_en_status") or "not_requested"),
-        "context": str(row.get("context") or ""),
+        "context": row.get("context") or "",
         "protected_tokens": row.get("tokens") or [],
         "term_hits": row.get("term_hits") or [],
     }
@@ -416,8 +517,12 @@ def _validate_response(
         translations = row.get("translations")
         if not isinstance(translations, dict):
             raise ValueError(f"missing translations object for {request_key}")
-        normalized = {str(key).upper(): str(value or "").strip() for key, value in translations.items()}
-        missing = [lang for lang in target_langs if not normalized.get(lang)]
+        if any(isinstance(value, (dict, list)) for value in translations.values()):
+            raise ValueError('translation values must be text, not context references or objects')
+        if any(not isinstance(value, str) for value in translations.values()):
+            raise ValueError("translation values must be strings")
+        normalized = {str(key).upper(): value for key, value in translations.items()}
+        missing = [lang for lang in target_langs if not normalized.get(lang, "").strip()]
         extras = sorted(set(normalized) - set(target_langs))
         if missing or extras:
             raise ValueError(
@@ -443,18 +548,28 @@ def _partition_requests(
     *,
     max_rows: int,
     max_chars: int,
+    compact_contexts: bool = True,
+    output_languages: int = 0,
 ) -> list[list[dict[str, object]]]:
     batches: list[list[dict[str, object]]] = []
     current: list[dict[str, object]] = []
     current_chars = 0
+    current_output = 0
     for row in rows:
         row_chars = len(json.dumps(row, ensure_ascii=False, separators=(",", ":")))
-        if current and (len(current) >= max_rows or current_chars + row_chars > max_chars):
+        over_chars = current_chars + row_chars > max_chars
+        if compact_contexts and current and over_chars and len(current) < max_rows:
+            candidate = _compact_shared_context({'rows': [*current, row]})
+            over_chars = len(json.dumps(candidate, ensure_ascii=False, separators=(',', ':'))) > max_chars
+        output_chars = (80 + output_languages * (24 + 3 * len(str(row.get('cn', ''))))) if output_languages else 0
+        if current and (len(current) >= max_rows or over_chars or current_output + output_chars > max_chars):
             batches.append(current)
             current = []
             current_chars = 0
+            current_output = 0
         current.append(row)
         current_chars += row_chars
+        current_output += output_chars
     if current:
         batches.append(current)
     return batches
@@ -475,10 +590,14 @@ def _cached_requests(
             key = str(row.get('request_key') or '')
             if key not in by_key:
                 continue
-            value = _validate_response([by_key[key]], [row], target_langs)[key]
-            if key in cached and cached[key] != value:
+            languages = list((row.get('translations') or {}).keys())
+            if not languages or set(languages) - set(target_langs):
+                continue
+            value = _validate_response([by_key[key]], [row], languages)[key]
+            existing = cached.setdefault(key, {})
+            if any(lang in existing and existing[lang] != text for lang, text in value.items()):
                 raise ValueError(f'conflicting translation checkpoints for {key}')
-            cached[key] = value
+            existing.update(value)
     return cached
 
 
@@ -491,57 +610,84 @@ def _execute_batch(
     cached_requests: dict[str, dict[str, str]] | None = None,
 ) -> tuple[dict[str, dict[str, str]], bool]:
     checkpoint = checkpoint_dir / _checkpoint_name(batch)
-    split_marker = checkpoint.with_suffix(".split.json")
-    if checkpoint.exists():
-        saved = _read_json(checkpoint)
-        return _validate_response(batch, saved.get("rows") or [], target_langs), True
-    cached_requests = cached_requests or {}
-    reused = {str(row['request_key']): cached_requests[str(row['request_key'])]
-              for row in batch if str(row['request_key']) in cached_requests}
-    if reused:
-        missing = [row for row in batch if str(row['request_key']) not in reused]
-        if not missing:
-            return reused, True
-        values, _ = _execute_batch(client, missing, target_langs, checkpoint_dir, max_attempts)
-        return {**reused, **values}, False
-    if split_marker.exists() and len(batch) > 1:
-        midpoint = len(batch) // 2
-        left, left_reused = _execute_batch(
-            client, batch[:midpoint], target_langs, checkpoint_dir, max_attempts
-        )
-        right, right_reused = _execute_batch(
-            client, batch[midpoint:], target_langs, checkpoint_dir, max_attempts
-        )
-        return {**left, **right}, left_reused and right_reused
-    last_error: BaseException | None = None
-    for attempt in range(max_attempts):
-        try:
-            response = client.translate_batch(batch, target_langs)
-            validated = _validate_response(batch, response, target_langs)
-            _atomic_write_text(
-                checkpoint,
-                json.dumps({"rows": response}, ensure_ascii=False, indent=2),
-            )
-            return validated, False
-        except BaseException as exc:  # retries include malformed provider responses
-            last_error = exc
-            if attempt + 1 < max_attempts:
-                time.sleep(min(0.25 * (2**attempt), 1.0))
-    assert last_error is not None
-    if len(batch) > 1:
-        _atomic_write_text(
-            split_marker,
-            json.dumps({"split": len(batch) // 2, "rows": len(batch)}, indent=2),
-        )
-        midpoint = len(batch) // 2
-        left, left_reused = _execute_batch(
-            client, batch[:midpoint], target_langs, checkpoint_dir, max_attempts
-        )
-        right, right_reused = _execute_batch(
-            client, batch[midpoint:], target_langs, checkpoint_dir, max_attempts
-        )
-        return {**left, **right}, left_reused and right_reused
-    raise last_error
+    cached_requests = cached_requests if cached_requests is not None else _cached_requests(checkpoint_dir, batch, target_langs)
+    accepted = {str(row['request_key']): dict(cached_requests.get(str(row['request_key']), {})) for row in batch}
+    feedback: dict[tuple[str, str], str] = {}
+    blocked: set[tuple[str, str]] = set()
+    called = False
+    for _attempt in range(max_attempts):
+        groups: dict[tuple[str, ...], list[dict[str, object]]] = {}
+        for row in batch:
+            key = str(row['request_key'])
+            missing = tuple(lang for lang in target_langs if lang not in accepted[key] and (key, lang) not in blocked)
+            if missing:
+                pending = dict(row)
+                errors = [feedback[(key, lang)] for lang in missing if (key, lang) in feedback]
+                if errors:
+                    pending['validation_feedback'] = '; '.join(dict.fromkeys(errors))
+                groups.setdefault(missing, []).append(pending)
+        if not groups:
+            break
+        for languages, pending in groups.items():
+            called = True
+            try:
+                response = client.translate_batch(pending, list(languages))
+            except FatalRelayError:
+                raise
+            except ResponseTooLarge:
+                if len(pending) <= 1 or _attempt + 1 >= max_attempts:
+                    raise
+                midpoint = len(pending) // 2
+                for child in (pending[:midpoint], pending[midpoint:]):
+                    values, _ = _execute_batch(client, child, list(languages), checkpoint_dir,
+                                               max_attempts - _attempt - 1, accepted)
+                    for key, translations in values.items():
+                        accepted[key].update(translations)
+                continue
+            except Exception as exc:
+                for row in pending:
+                    for lang in languages:
+                        cell = (str(row['request_key']), lang)
+                        if isinstance(exc, RequestBudgetExceeded) and exc.cells and cell not in exc.cells:
+                            continue
+                        feedback[cell] = str(exc)
+                        if isinstance(exc, RequestBudgetExceeded) or not isinstance(exc, ValueError):
+                            blocked.add(cell)
+                continue
+            by_key = {str(row['request_key']): row for row in pending}
+            returned: dict[str, list[dict]] = {}
+            invalid_envelope = not isinstance(response, list)
+            for item in response if isinstance(response, list) else []:
+                if not isinstance(item, dict) or str(item.get('request_key', '')) not in by_key:
+                    invalid_envelope = True
+                    continue
+                returned.setdefault(str(item['request_key']), []).append(item)
+            for key, trusted in by_key.items():
+                matches = returned.get(key, [])
+                for lang in languages:
+                    try:
+                        if invalid_envelope or len(matches) != 1:
+                            raise ValueError('response keys missing, duplicate or unbound')
+                        translations = matches[0].get('translations')
+                        if not isinstance(translations, dict) or set(translations) - set(languages):
+                            raise ValueError('unexpected translation languages')
+                        value = _validate_response([trusted], [{'request_key': key, 'translations': {lang: translations.get(lang)}}], [lang])[key][lang]
+                        accepted[key][lang] = value
+                        feedback.pop((key, lang), None)
+                    except ValueError as exc:
+                        previous = feedback.get((key, lang))
+                        feedback[(key, lang)] = str(exc)
+                        if previous == str(exc):
+                            blocked.add((key, lang))
+            _atomic_write_text(checkpoint, json.dumps({'rows': [
+                {'request_key': key, 'translations': value} for key, value in accepted.items() if value
+            ]}, ensure_ascii=False))
+            if getattr(client, 'runtime', None):
+                client.runtime.note_validation('translate', feedback)
+    missing = [(key, lang) for key in accepted for lang in target_langs if lang not in accepted[key]]
+    if missing:
+        raise IncompletePhase(f'translation cells unresolved: {missing[:10]}; accepted cells checkpointed; {list(feedback.values())[:1]}')
+    return accepted, not called
 
 
 def translate_manifest(
@@ -603,22 +749,27 @@ def translate_manifest(
             else:
                 request_by_key.setdefault(signature, _request_row(row, signature))
         request_rows = list(request_by_key.values())
+        if client is None:
+            if relay_config is None:
+                raise ValueError("relay_config is required when client is not injected")
+            client = OpenAICompatibleClient(relay_config, runtime=RelayRuntime(work_dir, limit=min(5, workers)))
+        partition_options = {'output_languages': len(target_langs)}
+        if not isinstance(client, OpenAICompatibleClient):
+            partition_options['compact_contexts'] = False
         smoke_size = min(20, batch_size)
         smoke_candidates = _partition_requests(
             request_rows[:smoke_size],
             max_rows=smoke_size,
             max_chars=max_batch_chars,
+            **partition_options,
         )
         smoke_batch = smoke_candidates[0] if smoke_candidates else []
         batches = _partition_requests(
             request_rows[len(smoke_batch):],
             max_rows=batch_size,
             max_chars=max_batch_chars,
+            **partition_options,
         )
-        if client is None:
-            if relay_config is None:
-                raise ValueError("relay_config is required when client is not injected")
-            client = OpenAICompatibleClient(relay_config)
         client_identity = str(
             getattr(
                 client,
@@ -669,23 +820,19 @@ def translate_manifest(
             }
             save_manifest(manifest)
         if batches:
-            with ThreadPoolExecutor(max_workers=max(1, min(workers, len(batches)))) as pool:
-                futures = {
-                    pool.submit(
-                        _execute_batch,
-                        client,
-                        batch,
-                        target_langs,
-                        checkpoint_dir,
-                        max_attempts,
-                        cached_requests,
-                    ): batch
-                    for batch in batches
-                }
-                for future in as_completed(futures):
-                    values, reused = future.result()
+            failures = []
+            def execute(batch):
+                return _execute_batch(client, batch, target_langs, checkpoint_dir, max_attempts, cached_requests)
+            for batch, result, error in bounded_results(execute, batches, workers=workers):
+                if error:
+                    failures.append({'keys': [row['request_key'] for row in batch], 'error': str(error)})
+                else:
+                    values, reused = result
                     translated.update(values)
                     reused_batches += int(reused)
+            _atomic_write_text(work_dir / 'translation_failures.json', json.dumps(failures, ensure_ascii=False))
+            if failures:
+                raise IncompletePhase(f'{len(failures)} translation batches unresolved; healthy batches saved')
         rebuilt: dict[str, dict[str, str]] = {}
         for signature, (template, slots) in template_specs.items():
             rebuilt[signature] = {

@@ -13,6 +13,7 @@ from utils.large_text_multilingual_executor import (
 )
 from utils.large_text_multilingual_runner import build_manifest
 from utils.structured_text_template import technical_tokens
+from utils.relay_runtime import RelayRuntime, ResponseTooLarge
 
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -56,7 +57,7 @@ class SplitClient(FakeClient):
     def translate_batch(self, rows, target_langs):  # type: ignore[no-untyped-def]
         self.calls.append(rows)
         if len(rows) > 1:
-            raise RuntimeError("provider rejects large batch")
+            raise ResponseTooLarge("provider output truncated")
         return [
             {
                 "request_key": rows[0]["request_key"],
@@ -100,6 +101,85 @@ class LargeTextMultilingualExecutorTests(unittest.TestCase):
             self.assertIn("REVERT expansions", system)
             self.assertEqual(payload["suggestions"][0]["current"], "No rewards")
             self.assertEqual(actual[0]["final"], "No rewards")
+
+    def test_shared_scene_payload_preserves_evidence_and_avoids_fragmentation(self) -> None:
+        from utils.large_text_multilingual_executor import _compact_shared_context
+
+        turns = [{'id': str(i), 'cn': 'Scene evidence ' * 8, 'translations': {'EN': 'Target evidence ' * 8}}
+                 for i in range(12)]
+        rows = [{'request_key': str(i), 'cn': f'Line {i}',
+                 'context': {'scene': 'one', 'speaker': f'person-{i}', 'scene_cn': turns},
+                 'dialogue_evidence': {'turns': turns, 'speaker': f'person-{i}'}}
+                for i in range(6)]
+        payload = {'target_languages': ['EN'], 'rows': rows}
+        before = json.dumps(payload, ensure_ascii=False)
+        compact = _compact_shared_context(payload)
+        shared = compact['shared_contexts']
+
+        def expand(value):
+            if isinstance(value, dict):
+                if set(value) == {'$context_ref'}:
+                    return expand(shared[value['$context_ref']])
+                return {key: expand(item) for key, item in value.items() if key != 'shared_contexts'}
+            if isinstance(value, list):
+                return [expand(item) for item in value]
+            return value
+
+        self.assertEqual(expand(compact), payload)
+        self.assertEqual(json.dumps(payload, ensure_ascii=False), before)
+        self.assertLess(len(json.dumps(compact, ensure_ascii=False)), len(before) // 2)
+        budget = len(json.dumps(rows[0], ensure_ascii=False)) * 2
+        batches = _partition_requests(rows, max_rows=60, max_chars=budget)
+        self.assertEqual(len(batches), 1)
+        self.assertGreater(len(_partition_requests(rows, max_rows=60, max_chars=budget, compact_contexts=False)), 1)
+
+    def test_context_reference_collisions_and_small_payloads_remain_unchanged(self) -> None:
+        from utils.large_text_multilingual_executor import _compact_shared_context
+
+        for payload in [
+            {'rows': [{'context': 'ui', 'cn': 'Hello'}]},
+            {'shared_contexts': {'private': 'existing'}, 'rows': [{'context': 'long ' * 100}] * 2},
+            {'rows': [{'context': {'$context_ref': 'source-owned', 'text': 'long ' * 100}}] * 2},
+        ]:
+            self.assertEqual(_compact_shared_context(payload), payload)
+
+    def test_http_transport_resolves_complete_shared_context_without_changing_response_schema(self) -> None:
+        import io
+
+        evidence = [{'id': str(i), 'cn': '完整源文语境 ' * 20} for i in range(8)]
+        rows = [{'request_key': str(i), 'cn': f'Line {i}',
+                 'context': json.dumps({'speaker': f'person-{i}', 'scene_cn': evidence}, ensure_ascii=False)}
+                for i in range(4)]
+        client = OpenAICompatibleClient.__new__(OpenAICompatibleClient)
+        client.model, client.base_url, client.api_key, client.timeout = 'test', 'https://example.invalid', '', 1
+        client.runtime = RelayRuntime()
+        client.checkpoint_identity = 'shared-context-test'
+
+        def response(request, **kwargs):
+            body = json.loads(request.data)
+            self.assertIn('recursively resolve', body['messages'][0]['content'])
+            wire = json.loads(body['messages'][1]['content'])
+            self.assertIn('shared_contexts', wire)
+
+            def expand(value):
+                if isinstance(value, dict):
+                    if set(value) == {'$context_ref'}:
+                        return expand(wire['shared_contexts'][value['$context_ref']])
+                    return {key: expand(item) for key, item in value.items()}
+                if isinstance(value, list):
+                    return [expand(item) for item in value]
+                return value
+
+            for actual, original in zip(wire['rows'], rows, strict=True):
+                self.assertEqual(actual['request_key'], original['request_key'])
+                self.assertEqual(actual['cn'], original['cn'])
+                self.assertEqual(expand(actual['context']), json.loads(original['context']))
+            result = {'rows': [{'request_key': row['request_key'], 'translations': {'EN': row['cn']}} for row in wire['rows']]}
+            return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps(result)}}]}).encode('utf-8'))
+
+        with patch('urllib.request.urlopen', side_effect=response):
+            actual = client.translate_batch(rows, ['EN'])
+        self.assertEqual(actual, [{'request_key': row['request_key'], 'translations': {'EN': row['cn']}} for row in rows])
 
     def test_rebatch_and_one_row_edit_reuse_unchanged_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -458,7 +538,7 @@ class LargeTextMultilingualExecutorTests(unittest.TestCase):
                 relay_config=None,
                 client=client,
                 batch_size=20,
-                max_attempts=1,
+                max_attempts=3,
             )
             second = translate_manifest(
                 manifest_path,

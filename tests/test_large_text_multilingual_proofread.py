@@ -81,6 +81,152 @@ class FailingAuditor:
 
 
 class LargeTextMultilingualProofreadTests(unittest.TestCase):
+    def test_review_and_audit_retry_only_failed_cells_with_feedback(self) -> None:
+        class PartialReviewer(Reviewer):
+            checkpoint_identity = 'partial-review'
+
+            def __init__(self):
+                self.requests = []
+
+            def review_batch(self, rows, target_langs):
+                self.requests.append(rows)
+                result = super().review_batch(rows, target_langs)
+                if len(self.requests) == 1:
+                    result[1]['suggested'] = {'invalid': 'not text'}
+                return result
+
+        class PartialAuditor(Auditor):
+            checkpoint_identity = 'partial-audit'
+
+            def __init__(self):
+                self.requests = []
+
+            def audit_batch(self, rows):
+                self.requests.append(rows)
+                result = super().audit_batch(rows)
+                if len(self.requests) == 1:
+                    result[1]['final'] = {'invalid': 'not text'}
+                return result
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [dict(key=str(i), cn=f'Text {i}', context='ui',
+                         translations={'EN': f'Text {i}'}) for i in range(30)]
+            write_jsonl(root / 'items.jsonl', rows)
+            manifest = build_manifest(work_dir=root / 'work', items_jsonl=root / 'items.jsonl',
+                                      source_rows_jsonl=None, target_langs=['EN'], workbook_count=1,
+                                      relay_config=None, proofread_mode='full')
+            reviewer, auditor = PartialReviewer(), PartialAuditor()
+            summary = run_deep_proofread(Path(manifest['manifest_path']),
+                                        initial_cache=root / 'items.jsonl', reviewer=reviewer, auditor=auditor)
+            for requests in (reviewer.requests, auditor.requests):
+                self.assertEqual([len(batch) for batch in requests], [30, 1])
+                self.assertEqual(requests[1][0]['cn'], 'Text 1')
+                self.assertIn('must be text', requests[1][0]['validation_feedback'])
+            self.assertEqual(summary.changed_cells, 0)
+
+    def test_partial_checkpoint_survives_exhausted_review_or_audit(self) -> None:
+        from utils.large_text_multilingual_proofread import _retry_validated_cells
+
+        for phase in ('review', 'audit'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
+                rows = [dict(review_key=str(i), lang='EN') for i in range(3)]
+                calls = []
+
+                def request(pending):
+                    calls.append(pending)
+                    return [{**row, 'valid': row['review_key'] != '1'} for row in pending]
+
+                def validate(trusted, response):
+                    if not response['valid']:
+                        raise ValueError('unresolved semantic evidence')
+                    return {**trusted, 'valid': True}
+
+                checkpoint = Path(tmp) / 'batch.jsonl'
+                with self.assertRaisesRegex(ValueError, 'unresolved semantic evidence'):
+                    _retry_validated_cells(rows, request, validate, checkpoint,
+                                           {(str(i), 'EN'): f'cache-{i}' for i in range(3)}, phase=phase)
+                self.assertEqual([len(batch) for batch in calls], [3, 1])
+                saved = [json.loads(line) for line in checkpoint.read_text(encoding='utf-8').splitlines()]
+                self.assertEqual([row['review_key'] for row in saved], ['0', '2'])
+                self.assertTrue(all('validation_feedback' not in row for row in saved))
+                self.assertEqual([row['cache_key'] for row in saved], ['cache-0', 'cache-2'])
+
+    def test_failed_deep_review_resumes_from_partial_success_checkpoints(self) -> None:
+        for phase in ('review', 'audit'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
+                class PartialReviewer(Reviewer):
+                    checkpoint_identity = 'resume-partial-review'
+
+                    def __init__(self, fail):
+                        self.fail, self.sources = fail, []
+
+                    def review_batch(self, rows, target_langs):
+                        self.sources.extend(row['cn'] for row in rows)
+                        output = super().review_batch(rows, target_langs)
+                        if self.fail:
+                            for trusted, response in zip(rows, output):
+                                if trusted['cn'] == 'Text 1':
+                                    response['suggested'] = {'invalid': True}
+                        return output
+
+                class PartialAuditor(Auditor):
+                    checkpoint_identity = 'resume-partial-audit'
+
+                    def __init__(self, fail):
+                        self.fail, self.sources = fail, []
+
+                    def audit_batch(self, rows):
+                        self.sources.extend(row['cn'] for row in rows)
+                        output = super().audit_batch(rows)
+                        if self.fail:
+                            for trusted, response in zip(rows, output):
+                                if trusted['cn'] == 'Text 1':
+                                    response['final'] = {'invalid': True}
+                        return output
+
+                root = Path(tmp)
+                rows = [dict(key=str(i), cn=f'Text {i}', context='ui',
+                             translations={'EN': f'Text {i}'}) for i in range(3)]
+                write_jsonl(root / 'items.jsonl', rows)
+                manifest = build_manifest(work_dir=root / 'work', items_jsonl=root / 'items.jsonl',
+                                          source_rows_jsonl=None, target_langs=['EN'], workbook_count=1,
+                                          relay_config=None, proofread_mode='full')
+                with self.assertRaisesRegex(ValueError, 'must be text'):
+                    run_deep_proofread(Path(manifest['manifest_path']), initial_cache=root / 'items.jsonl',
+                                       reviewer=PartialReviewer(phase == 'review'),
+                                       auditor=PartialAuditor(phase == 'audit'))
+                reviewer, auditor = PartialReviewer(False), PartialAuditor(False)
+                summary = run_deep_proofread(Path(manifest['manifest_path']), initial_cache=root / 'items.jsonl',
+                                            reviewer=reviewer, auditor=auditor, batch_size=2)
+                if phase == 'review':
+                    self.assertEqual(reviewer.sources, ['Text 1'])
+                    self.assertCountEqual(auditor.sources, ['Text 0', 'Text 1', 'Text 2'])
+                else:
+                    self.assertEqual(reviewer.sources, [])
+                    self.assertEqual(auditor.sources, ['Text 1'])
+                self.assertEqual(summary.changed_cells, 0)
+
+    def test_retry_does_not_silently_accept_duplicate_or_unknown_response_keys(self) -> None:
+        from utils.large_text_multilingual_proofread import _retry_validated_cells
+
+        for problem in ('duplicate', 'extra', 'non-object'):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as tmp:
+                row = dict(review_key='1', lang='EN')
+
+                def request(pending):
+                    if problem == 'duplicate':
+                        return [row, row]
+                    if problem == 'extra':
+                        return [row, dict(review_key='unknown', lang='EN')]
+                    return [row, 'not an object']
+
+                checkpoint = Path(tmp) / 'batch.jsonl'
+                with self.assertRaisesRegex(ValueError, 'coverage mismatch'):
+                    _retry_validated_cells([row], request, lambda trusted, response: response,
+                                           checkpoint, {('1', 'EN'): 'cache-1'})
+                self.assertFalse(checkpoint.exists())
+
     def test_auditor_receives_trusted_source_current_and_dialogue_context(self) -> None:
         testcase = self
         class GenderReviewer:
@@ -723,10 +869,65 @@ class LargeTextMultilingualProofreadTests(unittest.TestCase):
                 manifest_path,
                 initial_cache=initial,
                 reviewer=MustReuseReviewer(),
-                auditor=Auditor(),
+                auditor=FailingAuditor(),
                 batch_size=1,
                 workers=2,
             )
+
+    def test_language_edit_only_rechecks_that_languages_related_scene(self) -> None:
+        class KeepReviewer:
+            checkpoint_identity = "language-isolated-reviewer"
+
+            def __init__(self):
+                self.cells = []
+
+            def review_batch(self, rows, target_langs):
+                self.cells.extend((row['cn'], lang) for row in rows for lang in target_langs)
+                return [{'review_key': row['review_key'], 'lang': lang, 'status': 'KEEP',
+                         'suggested': row['translations'][lang], 'reason': 'meaning preserved'}
+                        for row in rows for lang in target_langs]
+
+        class KeepAuditor:
+            checkpoint_identity = "language-isolated-auditor"
+
+            def __init__(self):
+                self.cells = []
+
+            def audit_batch(self, rows):
+                self.cells.extend((row['cn'], row['lang']) for row in rows)
+                return [{'review_key': row['review_key'], 'lang': row['lang'], 'decision': 'ACCEPT',
+                         'final': row['current'], 'reason': 'meaning preserved',
+                         'semantic_check': {'source_meaning': row['cn'], 'final_meaning': row['cn'],
+                                            'meaning_preserved': True, 'roles_preserved': True, 'tone_preserved': True}}
+                        for row in rows]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            initial = root / 'initial.jsonl'
+            rows = [{'key': str(i), 'row': i + 2, 'cn': f'Line {i}',
+                     'context': {'type': 'dialogue', 'scene': 'a' if i < 2 else 'b'},
+                     'translations': {'EN': f'Line {i}', 'FR': f'Ligne {i}'}}
+                    for i in range(3)]
+            write_jsonl(initial, rows)
+            manifest = build_manifest(work_dir=root / 'work', items_jsonl=initial, source_rows_jsonl=None,
+                                      target_langs=['EN', 'FR'], workbook_count=1, relay_config=None,
+                                      proofread_mode='full')
+            path = Path(manifest['manifest_path'])
+            first = run_deep_proofread(path, initial_cache=initial, reviewer=KeepReviewer(),
+                                       auditor=KeepAuditor(), batch_size=2)
+            self.assertEqual(first.reviewed_cells, 6)
+            rows[0]['translations']['FR'] = 'Première ligne'
+            write_jsonl(initial, rows)
+            reviewer, auditor = KeepReviewer(), KeepAuditor()
+            result = run_deep_proofread(path, initial_cache=initial, reviewer=reviewer,
+                                        auditor=auditor, batch_size=1)
+            expected = [('Line 0', 'FR'), ('Line 1', 'FR')]
+            self.assertEqual(sorted(reviewer.cells), expected)
+            self.assertEqual(sorted(auditor.cells), expected)
+            self.assertEqual(result.reviewed_cells, 6)
+            final = [json.loads(line) for line in result.final_cache.read_text(encoding='utf-8').splitlines()]
+            self.assertEqual(final[0]['translations']['EN'], 'Line 0')
+            self.assertEqual(final[0]['translations']['FR'], 'Première ligne')
 
     def test_changing_reviewer_identity_does_not_reuse_old_suggestions(self) -> None:
         class OtherReviewer(Reviewer):
@@ -833,6 +1034,13 @@ class LargeTextMultilingualProofreadTests(unittest.TestCase):
             self.assertEqual(saved_manifest["phase_status"]["subagent_review"], "done")
             self.assertEqual(saved_manifest["phase_status"]["controller_merge"], "done")
 
+            # Legacy batches have no cell cache key; exact input batches remain reusable.
+            for phase in ('review_batches', 'audit_batches'):
+                for checkpoint in (root / 'work' / 'deep_proofread' / phase).rglob('*.jsonl'):
+                    records = [json.loads(line) for line in checkpoint.read_text(encoding='utf-8').splitlines()]
+                    for record in records:
+                        record.pop('cache_key', None)
+                    write_jsonl(checkpoint, records)
             resumed = run_deep_proofread(
                 manifest_path,
                 initial_cache=initial,
@@ -841,6 +1049,36 @@ class LargeTextMultilingualProofreadTests(unittest.TestCase):
                 batch_size=20,
             )
             self.assertEqual(resumed.changed_cells, 1)
+            promoted = run_deep_proofread(
+                manifest_path, initial_cache=initial, reviewer=FailingReviewer(), auditor=FailingAuditor(), batch_size=1,
+            )
+            self.assertEqual(promoted.changed_cells, 1)
+
+    def test_invalid_audit_item_is_reaudited_instead_of_silently_accepted(self) -> None:
+        class CountingAuditor(Auditor):
+            def __init__(self):
+                self.calls = 0
+
+            def audit_batch(self, rows):
+                self.calls += 1
+                return super().audit_batch(rows)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            initial = root / 'initial.jsonl'
+            write_jsonl(initial, [{'key': '1', 'cn': 'Attack', 'context': 'ui', 'translations': {'EN': 'Attack'}}])
+            manifest = build_manifest(work_dir=root / 'work', items_jsonl=initial, source_rows_jsonl=None,
+                                      target_langs=['EN'], workbook_count=1, relay_config=None, proofread_mode='full')
+            path = Path(manifest['manifest_path'])
+            run_deep_proofread(path, initial_cache=initial, reviewer=Reviewer(), auditor=Auditor())
+            for checkpoint in (root / 'work' / 'deep_proofread' / 'audit_batches').rglob('*.jsonl'):
+                records = [json.loads(line) for line in checkpoint.read_text(encoding='utf-8').splitlines()]
+                records[0].update(final='Incorrect cached text', unresolved_issues=['unresolved omission'])
+                write_jsonl(checkpoint, records)
+            auditor = CountingAuditor()
+            result = run_deep_proofread(path, initial_cache=initial, reviewer=FailingReviewer(), auditor=auditor)
+            self.assertEqual(auditor.calls, 1)
+            self.assertEqual(json.loads(result.final_cache.read_text(encoding='utf-8'))['translations']['EN'], 'Attack now')
 
     def test_review_rejects_incomplete_suggestion_contract(self) -> None:
         class BadReviewer:

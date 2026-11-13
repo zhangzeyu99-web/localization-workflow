@@ -256,10 +256,13 @@ def prepare_pack(
     target_langs: list[str],
     work_dir: Path,
     source_mode: str = "cn",
+    task_mode: str = "translate",
 ) -> PackArtifacts:
     started = time.perf_counter()
     target_langs = [str(lang).upper() for lang in target_langs]
     source_mode = normalize_source_mode(source_mode)
+    if task_mode not in {"translate", "review"}:
+        raise ValueError("task_mode must be translate or review")
     if source_mode != "cn" and "EN" in target_langs:
         raise ValueError("source_mode cn+en/en requires EN to be a reference, not a target language")
     terms = _load_terms(term_base, target_langs)
@@ -301,13 +304,16 @@ def prepare_pack(
                 for row_index, values in enumerate(iterator, 2):
                     source = values[source_col] if source_col < len(values) else None
                     row_id = values[id_col] if id_col is not None and id_col < len(values) else row_index
-                    if source in (None, "") and row_id in (None, ""):
+                    if source in (None, "") and (row_id in (None, "") or task_mode == "review"):
                         continue
                     if source in (None, ""):
                         raise ValueError(f"blank source text: {input_path.name}:{sheet.title}!R{row_index}")
+                    current_translations = {}
                     for lang, column in language_columns.items():
                         target = values[column] if column < len(values) else None
-                        if target not in (None, ""):
+                        if task_mode == "review":
+                            current_translations[lang] = str(target or "")
+                        elif target not in (None, ""):
                             raise ValueError(
                                 f"target column is not empty: {input_path.name}:{sheet.title}!R{row_index}:{lang}"
                             )
@@ -354,8 +360,8 @@ def prepare_pack(
                         "reference_en_status": reference_status,
                         "tokens": protected_tokens({"cn": source_text}),
                         "term_hits": _term_hits(source_text, terms, source_en=translation_source if source_mode == "en" else None),
-                        "seed_origin": seed_origin,
-                        "translations": {},
+                        "seed_origin": "existing" if task_mode == "review" else seed_origin,
+                        "translations": current_translations,
                     }
                     rows.append(row)
         finally:

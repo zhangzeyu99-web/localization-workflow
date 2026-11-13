@@ -92,10 +92,11 @@ def build_api_strategy(relay: dict[str, Any], preflight_result: dict[str, Any]) 
             "long_text_starts_with_main_translation": True,
         },
         "retry_policy": {
-            "max_attempts_per_batch": 3,
-            "on_provider_500": "halve_batch_then_retry",
-            "on_timeout": "halve_batch_then_retry",
-            "on_json_error": "retry_once_then_split",
+            "max_attempts_per_cell_stage": 3,
+            "on_provider_500": "shared_backoff_no_split",
+            "on_timeout": "shared_backoff_no_split",
+            "on_json_error": "bounded_retry_no_split",
+            "on_truncation": "split_with_remaining_budget",
             "cache_successful_keys": True,
         },
     }
@@ -413,6 +414,12 @@ def main(argv: list[str] | None = None) -> int:
     status.add_argument("--manifest", required=True, type=Path)
     status.add_argument("--out", type=Path)
 
+    resume = sub.add_parser("resume", help="Resume saved API task without resending accepted cells.")
+    resume.add_argument("--manifest", required=True, type=Path)
+    resume.add_argument("--retry-failed", action="store_true")
+    resume.add_argument("--api-concurrency", type=int, choices=range(1, 6))
+    resume.add_argument("--out", type=Path)
+
     reconcile = sub.add_parser(
         "reconcile",
         help="Close a recovered failed run from verified cache, QA, writeback, and readback artifacts.",
@@ -435,12 +442,17 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--target-langs", required=True)
     run.add_argument("--task-dir", required=True, type=Path)
     run.add_argument("--relay-config", required=True, type=Path)
+    run.add_argument("--review-relay-config", type=Path)
+    run.add_argument("--audit-relay-config", type=Path)
+    run.add_argument("--task-mode", choices=["translate", "review"], default="translate")
+    run.add_argument("--api-concurrency", type=int, choices=range(1, 6), default=4)
+    run.add_argument("--retry-failed", action="store_true")
     run.add_argument("--proofread-mode", choices=["basic", "sampled", "full"], default="basic")
     run.add_argument("--delivery-dir", type=Path)
     run.add_argument("--batch-size", type=int, default=60)
     run.add_argument("--workers", type=int, default=4)
     run.add_argument("--proofread-batch-size", type=int, default=30)
-    run.add_argument("--proofread-workers", type=int, default=8)
+    run.add_argument("--proofread-workers", type=int, default=4)
     run.add_argument("--source-mode", choices=["cn", "cn+en", "en"], default="cn")
     run.add_argument("--out", type=Path)
 
@@ -489,7 +501,17 @@ def main(argv: list[str] | None = None) -> int:
         write_or_print(payload, args.out)
         return 0 if manifest["status"] == "api_smoke_passed" else 1
     if args.command == "status":
-        write_or_print(workflow_status(load_manifest(args.manifest)), args.out)
+        payload = workflow_status(load_manifest(args.manifest))
+        progress = args.manifest.parent / 'relay_progress.json'
+        if progress.exists():
+            payload['relay'] = read_json(progress)
+        write_or_print(payload, args.out)
+        return 0
+    if args.command == "resume":
+        from dataclasses import asdict
+        from utils.large_text_multilingual_pipeline import resume_pipeline
+        result = resume_pipeline(args.manifest, retry_failed=args.retry_failed, api_concurrency=args.api_concurrency)
+        write_or_print({key: str(value) if isinstance(value, Path) else value for key, value in asdict(result).items()}, args.out)
         return 0
     if args.command == "reconcile":
         manifest = finalize_recovered_manifest(
@@ -527,6 +549,11 @@ def main(argv: list[str] | None = None) -> int:
             proofread_workers=args.proofread_workers,
             source_mode=args.source_mode,
             glossary_receipt=args.glossary_receipt,
+            task_mode=args.task_mode,
+            api_concurrency=args.api_concurrency,
+            retry_failed=args.retry_failed,
+            review_relay_config=args.review_relay_config,
+            audit_relay_config=args.audit_relay_config,
         )
         payload = asdict(result)
         write_or_print({key: str(value) if isinstance(value, Path) else value for key, value in payload.items()}, args.out)
