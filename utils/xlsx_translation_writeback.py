@@ -203,7 +203,8 @@ def validate_xlsx(path: Path, *, expected_cells: dict[str, list[tuple[int, int, 
     with zipfile.ZipFile(path, "r") as archive:
         entries = {name: archive.read(name) for name in archive.namelist()}
     invalid = _style_validation(entries)
-    workbook = load_workbook(path, read_only=False, data_only=False)
+    with path.open('rb') as stream:
+        workbook = load_workbook(stream, read_only=False, data_only=False)
     try:
         sheet_count = len(workbook.sheetnames)
         for sheet_name, changes in (expected_cells or {}).items():

@@ -135,15 +135,15 @@ def read_language_file(
         raise FileNotFoundError(f"File not found: {file_path}")
 
     if path.suffix.lower() in ('.xlsx', '.xls'):
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        df = pd.read_excel(file_path, sheet_name=sheet_name, dtype=object, keep_default_na=False)
     elif path.suffix.lower() == '.csv':
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, dtype=str, keep_default_na=False, encoding='utf-8-sig')
     else:
         raise ValueError(f"Unsupported file format: {path.suffix}")
 
     # Ensure string types for text columns (skip ID)
     for col in df.columns[1:]:
-        df[col] = df[col].astype(str).replace('nan', '')
+        df[col] = df[col].fillna('').astype(str)
 
     column_map = detect_columns(df)
     return df, column_map
@@ -186,7 +186,7 @@ def get_text_pairs(
     })
 
     if note_col and note_col in df.columns:
-        result['note'] = df[note_col].astype(str).replace('nan', '')
+        result['note'] = df[note_col].fillna('').astype(str)
     else:
         result['note'] = ''
 

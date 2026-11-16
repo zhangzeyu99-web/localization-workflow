@@ -13,6 +13,8 @@
 
 按 `docs/RELAY_EFFICIENCY_AND_REPORTING.md` 执行：异常结束响应、漏槽、标签/换行损坏、超长或不可保真文本必须在正式文件生成前失败；禁止自动裁短修过检查。整批暂存和精确读回通过才产出，不用缓存成功或 XML 可解析替代 Excel 普通打开验收。
 
+普通导入须把 workpack 的 ID、源文和格式契约重新绑定实际源表，核对实际写入覆盖；读取保留文本 ID 的前导零及 `NA`/`NULL` 字面。公告中间表和主处理器导出同样先校验载体、暂存并读回；不得清理其他语言结果。正式 fixture 纳入常规回归，不仅运行内联样本。
+
 ## 新任务必读与优化落档
 
 - 每个新线程进入本仓库后必须先读 `docs/workflow-execution-thread-handoff.md` 和 `docs/WORKFLOW_OPTIMIZATION_LOG.md`，不得只依赖线程 handoff、聊天上下文或旧提示词。

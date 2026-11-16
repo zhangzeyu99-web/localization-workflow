@@ -5,12 +5,16 @@ through process_language to keep the public surface stable.
 """
 from collections import Counter, defaultdict
 from datetime import datetime
+from itertools import chain
 from pathlib import Path
+import shutil
+import tempfile
 
 import pandas as pd
 
 from utils.process_language_review import RowId, RowState, _coerce_row_id
 from utils.term_checker import TERM_REVIEW_ISSUE_TYPES
+from utils.xlsx_translation_writeback import cell_text_issues, validate_xlsx
 
 
 # ─────────────────────────────────────────────────────────────
@@ -33,15 +37,16 @@ def _build_result_full(
         result[note_col] = ''
 
     normalized_ids = result[id_col].map(_coerce_row_id)
-    for index, row in result.iterrows():
-        rid = normalized_ids.loc[index]
+    trans_position = result.columns.get_loc(trans_col)
+    note_position = result.columns.get_loc(note_col)
+    for position, rid in enumerate(normalized_ids):
         state = states.get(rid)
         if not state:
             continue
         if state.fixed_translation != state.translation:
-            result.loc[normalized_ids == rid, trans_col] = state.fixed_translation
+            result.iat[position, trans_position] = state.fixed_translation
         if state.notes:
-            result.loc[normalized_ids == rid, note_col] = '; '.join(state.notes)
+            result.iat[position, note_position] = '; '.join(state.notes)
 
     return result
 
@@ -279,6 +284,30 @@ def _build_report_sheets(
     }
 
 
+def _write_checked_frames(path: Path, sheets: dict[str, pd.DataFrame]) -> None:
+    expected = {}
+    for name, frame in sheets.items():
+        cells = []
+        rows = chain([tuple(frame.columns)], frame.itertuples(index=False, name=None))
+        for row_number, values in enumerate(rows, 1):
+            for column, value in enumerate(values, 1):
+                if isinstance(value, str):
+                    if issues := cell_text_issues(value):
+                        raise ValueError(f'invalid output text {name}!R{row_number}C{column}: {issues}')
+                    if value:
+                        cells.append((row_number, column, value))
+        expected[name] = cells
+    with pd.ExcelWriter(path, engine='openpyxl') as writer:
+        for name, frame in sheets.items():
+            frame.to_excel(writer, sheet_name=name, index=False)
+            for row_number, column, value in expected[name]:
+                cell = writer.sheets[name].cell(row_number, column)
+                cell.value = value
+                cell.data_type = 's'
+    if not validate_xlsx(path, expected_cells=expected)['ok']:
+        raise ValueError(f'output workbook validation failed: {path.name}')
+
+
 def write_outputs(
     df: pd.DataFrame,
     col_map: dict,
@@ -303,36 +332,35 @@ def write_outputs(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # Clean old result/report files from root before writing new ones
-    for old_file in out.glob('result_*.xlsx'):
-        old_file.unlink()
-    for old_file in out.glob('report_*.xlsx'):
-        old_file.unlink()
-
     # Archive subfolder: output/{source}_{lang}_{timestamp}/
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     source_name = Path(input_path).stem
     archive_dir = out / f"{source_name}_{lang}_{timestamp}"
-    archive_dir.mkdir(parents=True, exist_ok=True)
 
     full_df = _build_result_full(df, col_map, states, lang_index)
     review_df = _build_result_review(states, ai_reviewed_ids, ai_corrected_ids)
     term_only_df = _build_term_only_view(states, term_lookup) if term_only_view else None
     report_sheets = _build_report_sheets(states, groups, input_path, lang)
 
-    # Write to both locations
-    for target_dir, label in [(out, "最新"), (archive_dir, "归档")]:
-        result_path = target_dir / f"result_{lang}.xlsx"
-        with pd.ExcelWriter(result_path, engine='openpyxl') as writer:
-            full_df.to_excel(writer, sheet_name='完整结果', index=False)
-            review_df.to_excel(writer, sheet_name='需确认', index=False)
-            if term_only_df is not None:
-                term_only_df.to_excel(writer, sheet_name='术语行筛选', index=False)
-
-        report_path = target_dir / f"report_{lang}.xlsx"
-        with pd.ExcelWriter(report_path, engine='openpyxl') as writer:
-            for sheet_name, sheet_df in report_sheets.items():
-                sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+    for state in states.values():
+        if issues := cell_text_issues(state.fixed_translation):
+            raise ValueError(f'invalid target for ID {state.row_id}: {issues}')
+    result_sheets = {'完整结果': full_df, '需确认': review_df}
+    if term_only_df is not None:
+        result_sheets['术语行筛选'] = term_only_df
+    # Build and verify both files before replacing this language's latest output.
+    with tempfile.TemporaryDirectory(prefix='.output-stage-', dir=out) as directory:
+        stage = Path(directory)
+        ready = stage / 'ready'
+        ready.mkdir()
+        names = [f'result_{lang}.xlsx', f'report_{lang}.xlsx']
+        _write_checked_frames(ready / names[0], result_sheets)
+        _write_checked_frames(ready / names[1], report_sheets)
+        for name in names:
+            shutil.copy2(ready / name, stage / name)
+        ready.rename(archive_dir)
+        for name in names:
+            (stage / name).replace(out / name)
 
     result_path = out / f"result_{lang}.xlsx"
     report_path = out / f"report_{lang}.xlsx"

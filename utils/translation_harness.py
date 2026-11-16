@@ -260,6 +260,19 @@ def apply_translation_response(
 
     workpack_path = manifest_path.parent / "translation_workpack.jsonl"
     workpack = _read_jsonl(workpack_path)
+    if not workpack or [row.get('id') for row in workpack] != manifest.get('row_ids'):
+        raise ValueError('workpack coverage differs from manifest')
+    source_frame, source_columns = read_language_file(str(input_path))
+    source_pairs = get_text_pairs(source_frame, source_columns, lang_index=int(manifest.get('lang_index', 0)))
+    bound_rows = [(_coerce_row_id(pair['id']), str(pair['original'])) for _, pair in source_pairs.iterrows()
+                  if _coerce_row_id(pair['id']) is not None]
+    if [(row.get('id'), row.get('source')) for row in workpack] != bound_rows:
+        raise ValueError('workpack source/ID binding differs from input workbook')
+    for row in workpack:
+        source = row['source']
+        if (row.get('source_cn', source) != source or row.get('placeholders') != extract_vars(source)
+                or row.get('tags') != _extract_tags(source) or row.get('newline_shape') != _newline_shape(source)):
+            raise ValueError('workpack format contract differs from input workbook')
     expected_ids = [_coerce_row_id(row["id"]) for row in workpack]
     responses = parse_translation_response(response_path)
     _validate_response_ids(expected_ids, responses)
@@ -556,10 +569,14 @@ def _write_translations_to_workbook(workbook_path: Path, responses: dict[RowId, 
     id_col = headers.index(id_col_name) + 1
     trans_col = headers.index(trans_col_name) + 1
     changed = []
+    matched = set()
     try:
         for row_idx in range(2, ws.max_row + 1):
             row_id = _coerce_row_id(ws.cell(row_idx, id_col).value)
             if row_id in responses:
+                if row_id in matched:
+                    raise ValueError(f'duplicate target row ID: {row_id}')
+                matched.add(row_id)
                 from utils.xlsx_translation_writeback import cell_text_issues
                 if storage := cell_text_issues(responses[row_id]):
                     raise ValueError(f'invalid target for ID {row_id}: {storage}')
@@ -567,6 +584,8 @@ def _write_translations_to_workbook(workbook_path: Path, responses: dict[RowId, 
                 cell.value = responses[row_id]
                 cell.data_type = 's'
                 changed.append((row_idx, responses[row_id]))
+        if matched != set(responses):
+            raise ValueError('response IDs were not all written to the workbook')
         wb.save(workbook_path)
     finally:
         wb.close()

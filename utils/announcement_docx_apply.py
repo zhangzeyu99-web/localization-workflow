@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import tempfile
+import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +19,8 @@ from typing import Any
 
 from docx import Document
 from openpyxl import Workbook, load_workbook
+from utils.structured_text_template import _strict_json_loads
+from utils.xlsx_translation_writeback import _patch_workbook, cell_text_issues, validate_xlsx
 
 from utils.announcement_docx_common import (
     AI_RESPONSE_PREFIX,
@@ -245,7 +249,7 @@ def _read_translation_rows(path: Path, target_languages: list[tuple[str, str]]) 
                 if SENTENCE_ADAPTATIONS_COLUMN in header_index
                 else [],
                 "translations": {
-                    header: _clean_cell(ws.cell(row_idx, header_index[header]).value)
+                    header: _translation_text(ws.cell(row_idx, header_index[header]).value)
                     for header, _ in target_languages
                 },
             }
@@ -303,23 +307,33 @@ def _validate_all_translations(
     return issues
 
 
+def _translation_text(value: Any) -> str:
+    if value is None:
+        return ''
+    if issues := cell_text_issues(value):
+        raise ValueError(f'invalid announcement translation: {issues}')
+    return value
+
+
 def _read_ai_response_rows(response_path: Path, expected_rows: list[dict[str, Any]]) -> list[dict[str, str]]:
     if not response_path.exists():
         raise ValueError(f"AI response not found: {response_path}")
 
     rows: list[dict[str, str]] = []
     seen: set[str] = set()
-    for line_no, line in enumerate(response_path.read_text(encoding="utf-8-sig").splitlines(), start=1):
+    for line_no, line in enumerate(response_path.read_text(encoding="utf-8-sig").split('\n'), start=1):
         if not line.strip():
             continue
         try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
+            row = _strict_json_loads(line)
+        except ValueError as exc:
             raise ValueError(f"invalid JSON in {response_path.name}:{line_no}: {exc}") from exc
-        if set(row) != {"para_id", "translation"}:
+        if not isinstance(row, dict) or set(row) != {"para_id", "translation"}:
             raise ValueError(f"AI response row {line_no} must contain only para_id and translation")
         para_id = _clean_cell(row.get("para_id"))
-        translation = _clean_cell(row.get("translation"))
+        if not isinstance(row['translation'], str):
+            raise ValueError(f'AI response row {line_no} translation must be text')
+        translation = _translation_text(row['translation'])
         if not para_id:
             raise ValueError(f"AI response row {line_no} missing para_id")
         if para_id in seen:
@@ -345,27 +359,51 @@ def _write_ai_responses_to_workbook(
     expected: dict[str, dict[str, Any]],
     translations_by_header: dict[str, dict[str, str]],
 ) -> None:
-    wb = load_workbook(workbook_path)
+    with workbook_path.open('rb') as stream:
+        wb = load_workbook(stream)
+    changes = []
     try:
         ws = wb["Translations"]
         headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
         header_index = {str(header): idx + 1 for idx, header in enumerate(headers)}
+        if len(header_index) != len(headers):
+            raise ValueError('translation workbook has duplicate headers')
         row_by_para_id = {}
         for row_idx in range(2, ws.max_row + 1):
             para_id = _clean_cell(ws.cell(row_idx, header_index["para_id"]).value)
             if para_id:
+                if para_id in row_by_para_id:
+                    raise ValueError(f'duplicate paragraph ID: {para_id}')
                 row_by_para_id[para_id] = row_idx
         missing_in_workbook = sorted(set(expected) - set(row_by_para_id))
         if missing_in_workbook:
             raise ValueError(f"translation workbook missing paragraph IDs: {missing_in_workbook}")
         for header, translations in translations_by_header.items():
+            if set(translations) != set(expected):
+                raise ValueError('translation coverage differs from expected paragraph IDs')
             if header not in header_index:
                 raise ValueError(f"translation workbook missing language column: {header}")
             for para_id, translation in translations.items():
-                ws.cell(row_by_para_id[para_id], header_index[header]).value = translation
-        wb.save(workbook_path)
+                if not isinstance(translation, str) or not _translation_text(translation).strip():
+                    raise ValueError(f'invalid translation for {para_id}/{header}')
+                changes.append((row_by_para_id[para_id], header_index[header], translation))
     finally:
         wb.close()
+    with tempfile.TemporaryDirectory(prefix='.announcement-import-', dir=workbook_path.parent) as directory:
+        staged = Path(directory) / workbook_path.name
+        expected_cells = {'Translations': changes}
+        _patch_workbook(workbook_path, staged, expected_cells)
+        if not validate_xlsx(staged, expected_cells=expected_cells)['ok']:
+            raise ValueError('announcement workbook validation failed')
+        # Windows may briefly deny replacement of a just-read workbook.
+        for attempt in range(3):
+            try:
+                staged.replace(workbook_path)
+                break
+            except PermissionError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.2)
 
 
 def _validate_translation(

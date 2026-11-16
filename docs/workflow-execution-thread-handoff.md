@@ -9,6 +9,8 @@
 
 按 `RELAY_EFFICIENCY_AND_REPORTING.md` 的损坏/截断反向验证执行。模型响应、槽位、旧缓存、普通导入和 V2 写回均不得靠裁短或字符清洗放行；整批暂存及目标精确读回通过再生成输出。保留已完成任务和历史凭据，不为新门禁重开旧任务。
 
+普通导入还须校验 workpack 与实际源表的 ID/源文/格式契约及实际写入覆盖，防止缺包或文本 ID 类型变化导致零格写入却报成功。公告中间 XLSX 和主处理器结果也执行载体检查、字符串保真及暂存读回；主处理器只更新当前语言文件，保留其他语言。完整质量 fixture 已接入 pytest，正式 CLI 仍是交付验收入口。
+
 ## 中转 API 稳定执行入口
 
 大文本新译和已有译文校对统一按 `RELAY_STABLE_EXECUTION.md` 执行。API 总并发默认4、最多5；初译、reviewer、auditor 共用上限，失败不回退 Codex 批量审读。已有译文使用 runner 的 `--task-mode review`；恢复用 `resume --manifest`，查状态用 `status --manifest`。已验收缓存不清空；仅明确诊断后使用 `--retry-failed` 重开耗尽预算的失败项。本入口不新增远端回填授权。

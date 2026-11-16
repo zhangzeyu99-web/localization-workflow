@@ -10,6 +10,11 @@ from utils.quality_harness import load_fixture, run_fixture, scan_workbook
 
 
 class QualityHarnessTests(unittest.TestCase):
+    def test_repository_release_fixture(self):
+        fixture = Path(__file__).resolve().parents[1] / 'fixtures' / 'quality_regression.json'
+        result = run_fixture(load_fixture(fixture))
+        self.assertTrue(result.passed, result.failures)
+
     def test_fixture_detects_known_bad_and_good_cases(self):
         fixture = {
             "cases": [
