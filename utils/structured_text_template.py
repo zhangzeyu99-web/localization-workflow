@@ -373,6 +373,14 @@ def render_template(
     return result
 
 
+def _validate_slot_values(slots: list[TranslationSlot] | list[ReviewSlot], values: dict[str, str]) -> None:
+    keys = {slot.slot_key for slot in slots}
+    if len(keys) != len(slots) or set(values) != keys:
+        raise ValueError('template slot keys missing, duplicate or unexpected')
+    if any(not isinstance(value, str) or not value.strip() for value in values.values()):
+        raise ValueError('template slot translation must be nonblank text')
+
+
 def render_translations(
     template: ParsedTemplate,
     slots: list[TranslationSlot],
@@ -380,6 +388,7 @@ def render_translations(
     *, lang: str | None = None,
 ) -> str:
     from utils.punctuation_policy import repair_punctuation
+    _validate_slot_values(slots, values)
 
     def fixed_text(value: str) -> str:
         if not lang:
@@ -454,6 +463,7 @@ def render_reviewed_target(
     slots: list[ReviewSlot],
     values: dict[str, str],
 ) -> str:
+    _validate_slot_values(slots, values)
     replacements = {
         (slot.path, slot.part_index): slot.target_prefix + values[slot.slot_key] + slot.target_suffix
         for slot in slots

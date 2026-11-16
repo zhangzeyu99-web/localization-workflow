@@ -27,6 +27,22 @@ ET.register_namespace("", MAIN_NS)
 ET.register_namespace("r", REL_NS)
 
 
+def cell_text_issues(value: object) -> list[tuple[str, str]]:
+    """Reject values Excel cannot preserve; never coerce, sanitize or clip."""
+    if not isinstance(value, str):
+        return [('translation_not_text', 'translation must be a string')]
+    invalid = re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]', value)
+    if invalid:
+        return [('invalid_xml_character', f'invalid XML character U+{ord(invalid[0]):04X} at offset {invalid.start()}')]
+    if re.search(r'_x[0-9A-Fa-f]{4}_', value):
+        return [('excel_escape_literal', 'reserved _xHHHH_ text differs between Excel and XML readers; requires explicit encoding handling')]
+    # Use the conservative UTF-16 limit for Windows Excel interoperability.
+    units = len(value.encode('utf-16-le')) // 2
+    if units > 32767:
+        return [('excel_text_too_long', f'cell needs {units} UTF-16 units; maximum is 32767; no truncation allowed')]
+    return []
+
+
 @dataclass(frozen=True)
 class WritebackResult:
     output_dir: Path
@@ -146,6 +162,8 @@ def _patch_sheet(xml: bytes, changes: list[tuple[int, int, str]]) -> bytes:
         get_column_letter(column)
         if not isinstance(value, str):
             raise TypeError("worksheet replacement must be text")
+        if issues := cell_text_issues(value):
+            raise ValueError(f"invalid cell text R{row}C{column}: {issues}")
         grouped[str(row)].append((row, column, value))
     # Scan/copy the large XML once; retain every non-target byte and namespace.
     chunks, cursor = [], 0
@@ -181,13 +199,19 @@ def _style_validation(entries: dict[str, bytes]) -> int:
     return invalid
 
 
-def validate_xlsx(path: Path) -> dict[str, Any]:
+def validate_xlsx(path: Path, *, expected_cells: dict[str, list[tuple[int, int, str]]] | None = None) -> dict[str, Any]:
     with zipfile.ZipFile(path, "r") as archive:
         entries = {name: archive.read(name) for name in archive.namelist()}
     invalid = _style_validation(entries)
     workbook = load_workbook(path, read_only=False, data_only=False)
     try:
         sheet_count = len(workbook.sheetnames)
+        for sheet_name, changes in (expected_cells or {}).items():
+            sheet = workbook[sheet_name]
+            for row, column, value in changes:
+                cell = sheet.cell(row, column)
+                if cell.value != value or cell.data_type != 's':
+                    raise ValueError(f"target readback mismatch: {path.name}:{sheet_name}!{cell.coordinate}")
     finally:
         workbook.close()
     return {
@@ -237,8 +261,32 @@ def write_translation_workbooks(
     target_langs: list[str],
     output_dir: Path,
 ) -> WritebackResult:
+    output_dir = output_dir.resolve()
+    sources = {source.resolve() for source in inputs}
+    if any((output_dir / source.name).resolve() in sources for source in inputs):
+        raise ValueError('output must not overwrite a source workbook')
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    # No importable output until every workbook passes exact readback.
+    with tempfile.TemporaryDirectory(prefix='.translation-stage-', dir=output_dir.parent) as directory:
+        staged = Path(directory) / 'ready'
+        result = _write_translation_workbooks(inputs=inputs, cache_jsonl=cache_jsonl,
+                                              target_langs=target_langs, output_dir=staged)
+        if output_dir.exists():
+            if not output_dir.is_dir() or any(output_dir.iterdir()):
+                raise FileExistsError(f'output directory is not empty: {output_dir}')
+            output_dir.rmdir()  # Empty destination only; never remove a prior delivery.
+        staged.rename(output_dir)
+    return WritebackResult(output_dir, result.output_files, result.source_rows,
+                           result.written_cells, result.invalid_style_refs)
+
+
+def _write_translation_workbooks(
+    *, inputs: list[Path], cache_jsonl: Path, target_langs: list[str], output_dir: Path,
+) -> WritebackResult:
     target_langs = [str(lang).upper() for lang in target_langs]
     cache_rows = _read_jsonl(cache_jsonl)
+    if not inputs or not cache_rows or not target_langs or len(set(target_langs)) != len(target_langs):
+        raise ValueError('writeback requires nonempty inputs/cache and unique target languages')
     inputs_by_name = {path.name: path for path in inputs}
     if len(inputs_by_name) != len(inputs):
         raise ValueError("input workbooks must have unique file names")
@@ -257,6 +305,8 @@ def write_translation_workbooks(
         changes_by_sheet: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
         try:
             columns_by_sheet: dict[str, tuple[int | None, int, dict[str, int]]] = {}
+            max_rows_by_sheet: dict[str, int] = {}
+            seen = set()
             for row in grouped.get(name, []):
                 sheet_name = str(row.get("sheet") or "")
                 if sheet_name not in workbook.sheetnames:
@@ -264,6 +314,7 @@ def write_translation_workbooks(
                 sheet = workbook[sheet_name]
                 if sheet_name not in columns_by_sheet:
                     headers = _headers(sheet)
+                    max_rows_by_sheet[sheet_name] = sheet.max_row
                     id_column = next(
                         (index + 1 for index, header in enumerate(headers) if header in {"id", "key"}),
                         None,
@@ -275,6 +326,11 @@ def write_translation_workbooks(
                     )
                 id_column, source_column, target_columns = columns_by_sheet[sheet_name]
                 row_number = int(row["row"])
+                if (sheet_name, row_number) in seen:
+                    raise ValueError(f"duplicate cache row: {name}:{sheet_name}!R{row_number}")
+                seen.add((sheet_name, row_number))
+                if row_number < 2 or row_number > max_rows_by_sheet[sheet_name]:
+                    raise ValueError(f"source row outside data range: {name}:{sheet_name}!R{row_number}")
                 current_id = sheet.cell(row=row_number, column=id_column).value if id_column else row_number
                 if str(current_id) != str(row.get("id") or row_number):
                     raise ValueError(
@@ -294,7 +350,9 @@ def write_translation_workbooks(
                     )
                 translations = row.get("translations") or {}
                 for lang in target_langs:
-                    target = str(translations.get(lang) or "")
+                    target = translations.get(lang)
+                    if issues := cell_text_issues(target):
+                        raise ValueError(f"invalid target: {name}:{sheet_name}!R{row_number}:{lang}: {issues}")
                     if not target.strip():
                         raise ValueError(
                             f"blank target translation: {name}:{sheet_name}!R{row_number}:{lang}"
@@ -307,7 +365,7 @@ def write_translation_workbooks(
             workbook.close()
         output = output_dir / name
         invalid_style_refs += _patch_workbook(source, output, changes_by_sheet)
-        validation = validate_xlsx(output)
+        validation = validate_xlsx(output, expected_cells=changes_by_sheet)
         if not validation["ok"]:
             raise ValueError(f"writeback validation failed: {validation}")
 

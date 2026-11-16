@@ -812,7 +812,7 @@ class QualityHarnessTests(unittest.TestCase):
                     "id": "html-color-mismatch",
                     "source": "<color=#608F01>##1</color>\u5956\u52b1",
                     "translation": "<color=#FF0000>##1</color> rewards",
-                    "expected_issues": ["bbcode_color_mismatch"],
+                    "expected_issues": ["bbcode_color_mismatch", "markup_binding_mismatch"],
                 }
             ]
         }

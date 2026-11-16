@@ -414,7 +414,7 @@ def _validate_suggestions(
         status = str(row.get("status") or "").upper()
         if status not in {"KEEP", "FIX"}:
             raise ValueError(f"invalid review status: {status}")
-        if isinstance(row.get('suggested'), (dict, list)):
+        if row.get('suggested') is not None and not isinstance(row['suggested'], str):
             raise ValueError('review suggestion must be text, not context references or objects')
         suggested = str(row.get("suggested") or "")
         if not suggested.strip():
@@ -427,6 +427,9 @@ def _validate_suggestions(
         if status == "KEEP" and current and suggested != current:
             raise ValueError("KEEP must preserve the current target exactly; use FIX for a change")
         from utils.structured_text_template import json_structure_issues
+        from utils.xlsx_translation_writeback import cell_text_issues
+        if storage := cell_text_issues(suggested):
+            raise ValueError(f'review suggestion storage integrity failed: {storage}')
         trusted = trusted_by_key[str(row['review_key'])]
         integrity = json_structure_issues(str(trusted.get('cn') or ''), suggested)
         if integrity:
@@ -467,7 +470,7 @@ def _validate_audit(
         decision = str(row.get("decision") or "").upper()
         if decision not in {"ACCEPT", "REVERT", "REVISE"}:
             raise ValueError(f"invalid audit decision: {decision}")
-        if isinstance(row.get('final'), (dict, list)):
+        if row.get('final') is not None and not isinstance(row['final'], str):
             raise ValueError('audit final must be text, not context references or objects')
         final = str(row.get("final") or "")
         if decision in {"ACCEPT", "REVISE"} and not final.strip():
@@ -475,6 +478,9 @@ def _validate_audit(
         fix = trusted_fixes[(str(row["review_key"]), str(row["lang"]).upper())]
         from utils.structured_text_template import json_structure_issues
         selected = str(fix.get('current', fix.get('original', '')) or '') if decision == 'REVERT' else final
+        from utils.xlsx_translation_writeback import cell_text_issues
+        if storage := cell_text_issues(selected):
+            raise ValueError(f'audit final storage integrity failed: {storage}')
         integrity = json_structure_issues(str(fix.get('cn') or ''), selected)
         if integrity:
             raise ValueError(f"audit {decision} JSON integrity failed: {integrity}")

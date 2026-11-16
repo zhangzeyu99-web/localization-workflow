@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 import shutil
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -265,12 +266,17 @@ def apply_translation_response(
     _validate_response_surface(workpack, responses)
 
     final_path = output_dir / f"{input_path.stem}_\u6700\u7ec8\u7248.xlsx"
-    shutil.copy2(input_path, final_path)
-    _write_translations_to_workbook(
-        workbook_path=final_path,
-        responses=responses,
-        lang_index=int(manifest.get("lang_index", 0)),
-    )
+    if final_path.exists():
+        raise FileExistsError(f'output already exists: {final_path}')
+    with tempfile.TemporaryDirectory(prefix='.translation-stage-', dir=output_dir) as directory:
+        staged = Path(directory) / final_path.name
+        shutil.copy2(input_path, staged)
+        _write_translations_to_workbook(
+            workbook_path=staged,
+            responses=responses,
+            lang_index=int(manifest.get("lang_index", 0)),
+        )
+        staged.rename(final_path)
 
     style_profile = manifest.get("style_profile", {})
     style_hint = ""
@@ -360,9 +366,12 @@ def parse_translation_response(response_path: str | Path) -> dict[RowId, str]:
         row_id: RowId | None
         translation: str
         try:
-            item = json.loads(line)
+            from utils.structured_text_template import _strict_json_loads
+            item = _strict_json_loads(line)
             row_id = _coerce_row_id(item["id"])
-            translation = str(item["translation"])
+            translation = item["translation"]
+            if not isinstance(translation, str):
+                raise ValueError('translation response values must be strings')
         except json.JSONDecodeError:
             match = re.match(r"^(\d+)\s*\|\s*(.+)$", line)
             if not match:
@@ -509,6 +518,9 @@ def _validate_response_surface(workpack: list[dict[str, Any]], responses: dict[R
         if row_id is None:
             raise ValueError(f"invalid workpack ID: {row.get('id')}")
         translation = responses[row_id]
+        from utils.xlsx_translation_writeback import cell_text_issues
+        if storage := cell_text_issues(translation):
+            raise ValueError(f'invalid target for ID {row_id}: {storage}')
         if not translation.strip():
             raise ValueError(f"empty translation for ID {row_id}")
         expected_vars = Counter(row.get("placeholders", []))
@@ -522,6 +534,15 @@ def _validate_response_surface(workpack: list[dict[str, Any]], responses: dict[R
         expected_newlines = row.get("newline_shape", {})
         if _newline_shape(translation) != expected_newlines:
             raise ValueError(f"newline mismatch for ID {row_id}")
+        from utils.large_text_multilingual_gate import pair_integrity_issues
+        from utils.structured_text_template import JSON_HARD_ISSUES
+        format_types = JSON_HARD_ISSUES | {'markup_binding_mismatch', 'newline_mismatch',
+                                          'protected_token_missing', 'protected_token_extra'}
+        source = str(row.get('source_cn', row.get('source', '')))
+        failures = [(kind, detail) for kind, detail in pair_integrity_issues({'cn': source}, '', translation)
+                    if kind in format_types]
+        if failures:
+            raise ValueError(f'format integrity failed for ID {row_id}: {failures}')
 
 
 def _write_translations_to_workbook(workbook_path: Path, responses: dict[RowId, str], lang_index: int) -> None:
@@ -534,12 +555,29 @@ def _write_translations_to_workbook(workbook_path: Path, responses: dict[RowId, 
     headers = [ws.cell(1, col).value for col in range(1, ws.max_column + 1)]
     id_col = headers.index(id_col_name) + 1
     trans_col = headers.index(trans_col_name) + 1
-    for row_idx in range(2, ws.max_row + 1):
-        row_id = _coerce_row_id(ws.cell(row_idx, id_col).value)
-        if row_id in responses:
-            ws.cell(row_idx, trans_col).value = responses[row_id]
-    wb.save(workbook_path)
-    wb.close()
+    changed = []
+    try:
+        for row_idx in range(2, ws.max_row + 1):
+            row_id = _coerce_row_id(ws.cell(row_idx, id_col).value)
+            if row_id in responses:
+                from utils.xlsx_translation_writeback import cell_text_issues
+                if storage := cell_text_issues(responses[row_id]):
+                    raise ValueError(f'invalid target for ID {row_id}: {storage}')
+                cell = ws.cell(row_idx, trans_col)
+                cell.value = responses[row_id]
+                cell.data_type = 's'
+                changed.append((row_idx, responses[row_id]))
+        wb.save(workbook_path)
+    finally:
+        wb.close()
+    readback = load_workbook(workbook_path)
+    try:
+        for row_idx, expected in changed:
+            cell = readback.worksheets[0].cell(row_idx, trans_col)
+            if cell.value != expected or cell.data_type != 's':
+                raise ValueError(f'target readback mismatch at row {row_idx}')
+    finally:
+        readback.close()
 
 
 def _load_translation_cache(

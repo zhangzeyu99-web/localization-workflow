@@ -436,6 +436,8 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
     """Shared source/target checks for cache validation and actual file readback."""
     source = source_text(row)
     issues = json_structure_issues(source, target)
+    from utils.xlsx_translation_writeback import cell_text_issues
+    issues.extend(cell_text_issues(target))
     issues.extend(punctuation_issues(target, lang, punctuation_mode).items())
     if lang.upper() not in CJK_ALLOWED_LANGS and CJK_RE.search(target):
         issues.append(("cjk_residue", "target still contains CJK ideographs"))
@@ -452,6 +454,14 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
         elif actual > required:
             issues.append(("protected_token_extra", f"extra protected token {token}: expected {required}, got {actual}"))
     source_markup = any(re.match(r"</?[A-Za-z]", token) for token in tokens)
+    readable_angle_names = bool(re.search(r'<[^<>]*[\u3400-\u9fff][^<>]*>', source))
+    if source_markup and not readable_angle_names:
+        from utils.structured_text_template import _json_token_binding, tokenize_template
+        try:
+            if _json_token_binding(tokenize_template(source)) != _json_token_binding(tokenize_template(target)):
+                issues.append(('markup_binding_mismatch', 'technical tag order or variable formatting scope changed'))
+        except ValueError:
+            issues.append(('markup_binding_mismatch', 'unterminated technical tag'))
     for token in set(TOKEN_RE.findall(target)) - set(tokens):
         if not is_auto_protected_token(token):
             continue
@@ -488,6 +498,8 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
     issues.extend((issue.check_type, issue.message) for issue in check_bbcode_tags(0, source, target) + check_newlines(0, source, target))
     if source.count('\n') != target.count('\n'):
         issues.append(('newline_mismatch', f"Physical newline count mismatch: source={source.count(chr(10))}, target={target.count(chr(10))}"))
+    if re.findall(r'\r\n|\r|\n', source) != re.findall(r'\r\n|\r|\n', target):
+        issues.append(('newline_mismatch', 'physical line-ending sequence changed'))
     return list(dict.fromkeys(issues))
 
 
@@ -551,6 +563,9 @@ def cache_lint(
         for lang in target_langs:
             target = row_translation(row, lang)
             if row.get("opaque_payload_preserved") is True:
+                from utils.xlsx_translation_writeback import cell_text_issues
+                for issue_type, detail in cell_text_issues(target):
+                    add_issue(issues, issue_type, key, lang, detail)
                 if target != source_text(row):
                     add_issue(issues, "opaque_payload_changed", key, lang, "opaque source payload must be preserved exactly")
                 continue
@@ -665,7 +680,6 @@ def readback_gate(delivery_dir: Path, *, target_langs: list[str], punctuation_mo
                 if not _looks_like_translation_sheet(headers, target_langs):
                     continue
                 recognized = True
-                col_by_lang = {header: index for index, header in enumerate(headers) if header}
                 source_col = next(
                     (index for index, header in enumerate(headers) if header in SOURCE_HEADERS),
                     None,

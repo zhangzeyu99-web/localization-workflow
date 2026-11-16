@@ -40,6 +40,11 @@ CJK_PATTERN = re.compile(r'[\u3400-\u9fff]')
 MIN_NUMBERED_TERM_GROUP_SIZE = 3
 
 DEFAULT_HARD_ISSUES = {
+    'translation_not_text',
+    'invalid_xml_character',
+    'excel_text_too_long',
+    'excel_escape_literal',
+    'markup_binding_mismatch',
     *JSON_HARD_ISSUES,
     'number_missing',
     'semantic_entity_number_missing',
@@ -110,7 +115,8 @@ def check_row(row_id, source: str, translation: str, lang: str = 'en', punctuati
     results.extend(check_variables(row_id, source, translation))
     from utils.large_text_multilingual_gate import pair_integrity_issues
     for issue_type, detail in pair_integrity_issues({'cn': source}, lang, translation, punctuation_mode):
-        if issue_type in {'number_missing', 'newline_mismatch', *JSON_HARD_ISSUES} and not any(r.check_type == issue_type for r in results):
+        if issue_type in {'translation_not_text', 'invalid_xml_character', 'excel_text_too_long', 'excel_escape_literal', 'markup_binding_mismatch',
+                          'number_missing', 'newline_mismatch', *JSON_HARD_ISSUES} and not any(r.check_type == issue_type for r in results):
             results.append(CheckResult(row_id, issue_type, 'error', detail, source, translation))
     for issue_type, detail in quantity_issues(source, translation, lang) + semantic_constraint_issues(source, translation, lang):
         results.append(CheckResult(row_id, issue_type, 'error', detail, source, translation))

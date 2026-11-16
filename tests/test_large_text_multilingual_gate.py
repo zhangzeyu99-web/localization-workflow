@@ -238,8 +238,9 @@ class LargeTextMultilingualGateTests(unittest.TestCase):
 
             result = cache_lint(cache, target_langs=["RU"])
 
-            self.assertEqual(result["hard_blockers"], 1)
-            self.assertEqual(result["issues"][0]["type"], "opaque_payload_changed")
+            self.assertEqual(result["hard_blockers"], 2)
+            self.assertEqual({item["type"] for item in result["issues"]},
+                             {"opaque_payload_changed", "excel_escape_literal"})
 
     def test_cache_lint_blocks_mojibake_outside_opaque_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -270,7 +271,7 @@ class LargeTextMultilingualGateTests(unittest.TestCase):
                         "key": "rich-unit",
                         "cn": "123.1<font=GameFont_SDF>\u4e07",
                         "translations": {
-                            "EN": "1.231<font=GameFont_SDF>M</font>",
+                            "EN": "1.231<font=GameFont_SDF>M",
                             "IDN": "1.231M<font=GameFont_SDF>",
                             "ES": "1.231M<font=GameFont_SDF>",
                             "PT": "1.231M<font=GameFont_SDF>",

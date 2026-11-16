@@ -60,7 +60,8 @@ def _atomic_write_text(path: Path, text: str) -> None:
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    from utils.structured_text_template import _strict_json_loads
+    return _strict_json_loads(path.read_text(encoding="utf-8-sig"))
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -261,8 +262,9 @@ class OpenAICompatibleClient:
                 },
                 method="POST",
             )
+            from utils.structured_text_template import _strict_json_loads
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
+                body = _strict_json_loads(response.read().decode("utf-8"))
             choices = body.get("choices") if isinstance(body, dict) else None
             if not isinstance(choices, list) or not choices:
                 # Some gateways report exhausted quota inside an HTTP 200 body.
@@ -278,13 +280,20 @@ class OpenAICompatibleClient:
                 ):
                     raise FatalRelayError('balance', 'relay quota exhausted; check provider daily limit/balance')
                 raise RuntimeError("relay response is missing choices")
-            if choices[0].get("finish_reason") == "length":
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                raise ValueError('relay choice must be an object')
+            if choice.get("finish_reason") == "length":
                 raise ResponseTooLarge("relay output truncated")
-            message = choices[0].get("message") if isinstance(choices[0], dict) else None
+            if 'finish_reason' in choice and choice['finish_reason'] != 'stop':
+                raise FatalRelayError('incomplete_response', 'relay did not finish normally; inspect provider response status')
+            message = choice.get("message")
             if not isinstance(message, dict) or "content" not in message:
                 raise RuntimeError("relay response is missing message content")
+            if message.get('refusal') or message.get('tool_calls') or message.get('function_call'):
+                raise FatalRelayError('incomplete_response', 'relay returned a refusal or tool call instead of the requested result')
             content = message["content"]
-            result = json.loads(content) if isinstance(content, str) else content
+            result = _strict_json_loads(content) if isinstance(content, str) else content
             return result, {"usage": body.get("usage"), "model": body.get("model")}
         return self.runtime.request(self.checkpoint_identity, stage, user_payload, send)
 
@@ -542,6 +551,8 @@ def _validate_response(
         if any(not isinstance(value, str) for value in translations.values()):
             raise ValueError("translation values must be strings")
         normalized = {str(key).upper(): value for key, value in translations.items()}
+        if len(normalized) != len(translations):
+            raise ValueError(f'duplicate normalized language keys for {request_key}')
         missing = [lang for lang in target_langs if not normalized.get(lang, "").strip()]
         extras = sorted(set(normalized) - set(target_langs))
         if missing or extras:
@@ -551,6 +562,9 @@ def _validate_response(
         from utils.structured_text_template import json_structure_issues
         source = str(trusted_by_key[request_key].get("cn") or "")
         for lang in target_langs:
+            from utils.xlsx_translation_writeback import cell_text_issues
+            if storage := cell_text_issues(normalized[lang]):
+                raise ValueError(f'translation storage integrity failed for {request_key}/{lang}: {storage}')
             integrity = json_structure_issues(source, normalized[lang])
             if integrity:
                 raise ValueError(f"translation JSON integrity failed for {request_key}/{lang}: {integrity}")
@@ -737,12 +751,16 @@ def translate_manifest(
             source = str(row.get("cn") or "")
             seed = seed_memory.get(source)
             normalized_seed = (
-                {str(key).upper(): str(value or "").strip() for key, value in seed.items()}
+                {str(key).upper(): value for key, value in seed.items()}
                 if isinstance(seed, dict)
                 else {}
             )
-            if all(normalized_seed.get(lang) for lang in target_langs):
-                seeded[signature] = {lang: normalized_seed[lang] for lang in target_langs}
+            if all(isinstance(normalized_seed.get(lang), str) and normalized_seed[lang].strip() for lang in target_langs):
+                seeded[signature] = _validate_response(
+                    [_request_row(row, signature)],
+                    [{'request_key': signature, 'translations': {lang: normalized_seed[lang] for lang in target_langs}}],
+                    target_langs,
+                )[signature]
             else:
                 representatives.setdefault(signature, row)
 

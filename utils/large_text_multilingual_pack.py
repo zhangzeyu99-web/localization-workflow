@@ -205,10 +205,10 @@ def _load_history(history_dirs: list[Path], target_langs: list[str]) -> dict[str
                         if source in (None, ""):
                             continue
                         translations = {
-                            lang: str((values[column] if column < len(values) else "") or "").strip()
+                            lang: str((values[column] if column < len(values) else "") or "")
                             for lang, column in language_columns.items()
                         }
-                        if not all(translations.values()):
+                        if not all(value.strip() for value in translations.values()):
                             continue
                         source_text = str(source)
                         if source_text in memory and memory[source_text] != translations:

@@ -5,6 +5,10 @@
 按 `RELAY_EFFICIENCY_AND_REPORTING.md` 执行。首轮未完成必须给条件 ETA、原因、剩余阶段和下一次回报时刻；runner 的 `status`、`record-report` 和只读 `queue-status` 为记录入口，不代发消息或代启动控制器。待确认格不拖住无依赖的已授权任务。缓存 UI/缩略语/编号系列检查前移，原生 pipeline complete 仍须结合项目 publication、真实 Excel 和视觉验收才能报正式交付。旧任务、已完成缓存和已暂停自动化不因本规则恢复。
 
 
+## 导入前格式门禁
+
+按 `RELAY_EFFICIENCY_AND_REPORTING.md` 的损坏/截断反向验证执行。模型响应、槽位、旧缓存、普通导入和 V2 写回均不得靠裁短或字符清洗放行；整批暂存及目标精确读回通过再生成输出。保留已完成任务和历史凭据，不为新门禁重开旧任务。
+
 ## 中转 API 稳定执行入口
 
 大文本新译和已有译文校对统一按 `RELAY_STABLE_EXECUTION.md` 执行。API 总并发默认4、最多5；初译、reviewer、auditor 共用上限，失败不回退 Codex 批量审读。已有译文使用 runner 的 `--task-mode review`；恢复用 `resume --manifest`，查状态用 `status --manifest`。已验收缓存不清空；仅明确诊断后使用 `--retry-failed` 重开耗尽预算的失败项。本入口不新增远端回填授权。

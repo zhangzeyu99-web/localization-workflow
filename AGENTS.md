@@ -9,6 +9,10 @@
 执行 `docs/RELAY_EFFICIENCY_AND_REPORTING.md`：首轮无法完成须报告实际阶段、条件完成区间、阻断原因及下次汇报时刻；默认30分钟检查点，用户约定时刻优先，未完成也要报。读取 runner `status` 的验收进度及 ETA，不把缓存命中当新处理速度。当前项待裁决时，真实进程空闲后推进已授权且无依赖的队列项；不抢占现有控制器。初译后查看 `initial_surface_precheck.json`，二审后通过 `final_surface_precheck.json` 再导出；正式完整 harness、Excel 普通打开/逐格读回与视觉验收不省略。已完成任务不重跑，本维护不自动恢复已暂停巡检。
 
 
+## 导入前格式门禁
+
+按 `docs/RELAY_EFFICIENCY_AND_REPORTING.md` 执行：异常结束响应、漏槽、标签/换行损坏、超长或不可保真文本必须在正式文件生成前失败；禁止自动裁短修过检查。整批暂存和精确读回通过才产出，不用缓存成功或 XML 可解析替代 Excel 普通打开验收。
+
 ## 新任务必读与优化落档
 
 - 每个新线程进入本仓库后必须先读 `docs/workflow-execution-thread-handoff.md` 和 `docs/WORKFLOW_OPTIMIZATION_LOG.md`，不得只依赖线程 handoff、聊天上下文或旧提示词。

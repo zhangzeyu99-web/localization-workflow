@@ -21,7 +21,8 @@ def _time(value: str | None) -> datetime | None:
 
 def update_progress(manifest: dict, phase: str, *, total: int, accepted: int,
                     reused: int, seconds: float) -> None:
-    if not 0 <= reused <= accepted <= total or seconds < 0:
+    if (any(type(value) is not int for value in (total, accepted, reused))
+            or not 0 <= reused <= accepted <= total or not math.isfinite(seconds) or seconds < 0):
         raise ValueError('invalid accepted progress counters')
     manifest.setdefault('phase_progress', {})[phase] = {
         'total_cells': total, 'accepted_cells': accepted, 'reused_cells': reused,
@@ -134,6 +135,6 @@ def queue_status(queue: dict) -> dict:
             ready.append(item['id'])
     return {'active_items': active, 'ready_items': ready, 'blocked_items': blocked,
             'local_acceptance_items': local,
-            'next_runnable': None if active or not ready or queue.get('state') in {'paused', 'complete'} else ready[0],
+            'next_runnable': None if active or not ready or str(queue.get('state', '')).lower() in {'paused', 'complete'} else ready[0],
             'requires_live_process_check': True, 'starts_processes': False,
             'completion_claim_allowed': False}
