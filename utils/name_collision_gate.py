@@ -131,7 +131,7 @@ def audit_changes(rounds: list[list[dict]], final: list[dict]) -> dict:
 
 
 def _read(path: Path) -> list[dict]:
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8-sig").split('\n') if line.strip()]
     if any(not isinstance(row, dict) for row in rows):
         raise ValueError("each JSONL record must be an object")
     return rows

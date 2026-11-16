@@ -17,7 +17,7 @@ def main():
     a = p.parse_args()
     if a.out.exists() or a.out.resolve() in {a.cache_jsonl.resolve(), a.coverage.resolve()}:
         p.error('output must be a new file')
-    rows = [json.loads(s) for s in a.cache_jsonl.read_text(encoding='utf-8-sig').splitlines() if s.strip()]
+    rows = [json.loads(s) for s in a.cache_jsonl.read_text(encoding='utf-8-sig').split('\n') if s.strip()]
     coverage = json.loads(a.coverage.read_text(encoding='utf-8-sig'))
     report = diagnose_scope(rows, a.target_langs.split(','), coverage['reviewed'],
                             unresolved=coverage.get('unresolved', []), sampling=coverage['sampling'])

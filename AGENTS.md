@@ -8,7 +8,6 @@
 
 执行 `docs/RELAY_EFFICIENCY_AND_REPORTING.md`：首轮无法完成须报告实际阶段、条件完成区间、阻断原因及下次汇报时刻；默认30分钟检查点，用户约定时刻优先，未完成也要报。读取 runner `status` 的验收进度及 ETA，不把缓存命中当新处理速度。当前项待裁决时，真实进程空闲后推进已授权且无依赖的队列项；不抢占现有控制器。初译后查看 `initial_surface_precheck.json`，二审后通过 `final_surface_precheck.json` 再导出；正式完整 harness、Excel 普通打开/逐格读回与视觉验收不省略。已完成任务不重跑，本维护不自动恢复已暂停巡检。
 
-
 ## 导入前格式门禁
 
 按 `docs/RELAY_EFFICIENCY_AND_REPORTING.md` 执行：异常结束响应、漏槽、标签/换行损坏、超长或不可保真文本必须在正式文件生成前失败；禁止自动裁短修过检查。整批暂存和精确读回通过才产出，不用缓存成功或 XML 可解析替代 Excel 普通打开验收。
@@ -48,8 +47,10 @@
 - 大文本、多 workbook 或 5 个以上目标语言优先使用 `scripts/run_large_text_multilingual_runner.py run`，详细契约见 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
 - 先按历史交付和精确术语复用，再对唯一文本调用中转 API；禁止把 API 返回直接写进 workbook。
 - API 批次必须落 checkpoint 并支持续跑；manifest 和日志不得保存 API key。
-- 深校默认按单一目标语言分批，翻译与深校分别使用 `--batch-size/--workers` 和 `--proofread-batch-size/--proofread-workers`；深校 checkpoint 按 `review_key + lang` 复用，改变批大小不得重审已完成单元。
+- 深校默认按单一目标语言分批，翻译与深校分别使用 `--batch-size/--workers` 和 `--proofread-batch-size/--proofread-workers`；初审和二审 checkpoint 按语言及实际语义输入逐格复用，改变批大小不重审已完成单元，无关语种修改不使其他语言缓存失效。源文、当前译文、关联话轮、英语参考或命中术语变化仍须重新审校；不清空旧缓存，旧格式只在原输入和原批次可验证时复用并升级。
+- OpenAI-compatible 传输在批内共享重复场景/证据，按共享后的请求体分包；模型必须递归解析共享引用，不能删减原文、话轮或术语。未采用该传输的自定义客户端仍按原始体积保守分包；模型输出及覆盖、语义、结构门禁不变。
 - reviewer 返回 `KEEP` 但省略 `suggested` 时，使用当前译文补齐审校记录；`FIX` 的 `suggested` 为空仍是 hard failure，不得当作通过。
+- 深校初审/二审的响应校验按单元格收口：成功项立即 checkpoint，只将失败/缺失项及 `validation_feedback` 重发，最多三次；同一反馈重试后仍无进展即停止，不原样重复第三次。重复键不采纳该格，额外/不可绑定响应不静默丢弃后放行。失败退出仍保留已验收项，续跑只补缺口。
 - 同一任务目录同时只允许一个深校主进程；命中 `proofread.lock` 时必须停止重复启动，不得让多个进程共享 checkpoint。
 - 深校建议必须经过主控二次审计，最终缓存 `cache-lint` hard blocker 为 0 后才允许精确写回。
 - `sampled` 深校只审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本；`full` 才是全部唯一文本，不得把两种模式混同。
@@ -74,10 +75,10 @@
 ## 下游同步关系（Localization Workflow Studio）
 
 - 本仓库是本地化工作流（翻译校对/大文本多语言/公告 DOCX/本地 QA）的**单一维护源**；`D:\codex\localization-workflow-studio\workflow\localization` 是它的只读同步产物，禁止在那边直接改。
-- 本仓库改动提交后，到 studio 仓库根执行：`python scripts/sync_workflow_sources.py localization`（自动镜像后按文件路径、明确版本和实际内容读回核对，不额外计算或登记散列）。
-- 同步后必须在 studio 跑 `python -m pytest workflow/localization/tests -q` 和 `python -m pytest backend/tests -q`：`process_language.py`、`scripts/run_quality_harness.py`、`scripts/run_translation_harness.py` 是 studio 工作台 backend 的 subprocess 运行时依赖（各文件 docstring 有 `Boundary:` 标注），backend 测试不全绿不得声明同步完成。
-- studio backend 的 `app/workflow/large_text.py` 是从本仓库 `utils/large_text_multilingual_gate.py` port 的受控复制；改 gate 规则后要求 studio 侧 `backend/tests/test_large_text_productization.py` parity 测试通过。
-- 同步范围只含代码与测试（`cli.py`、`process_language.py`、`workspace_runner.py`、`scripts/`、`utils/`、`tests/`、`templates/`、`fixtures/`、`requirements.txt`、`CHANGELOG.md`）；`docs/`、`tools/`、根目录中文文档、样例文件是本仓库私有资产，不同步。
+- 本线程只维护源仓库；通过受影响验证并提交后，如用户要求同步工作台，将版本和变更接口交给工作台线程，在 studio 根执行 `python scripts/sync_workflow_sources.py localization`，读回实际同步内容。不因源仓库修改自动进入 Studio 或宣称产品端生效。
+- 上游测试只在本仓库保留，不同步进 `workflow/localization/tests`。工作台线程仅运行受影响的集成用例；`process_language.py`、`scripts/run_quality_harness.py`、`scripts/run_translation_harness.py` 是 backend 的 subprocess 依赖，接口或门禁变更须在工作台对应入口验证，不重复跑上游整套。
+- studio backend 的 `app/workflow/large_text.py` 是从本仓库 `utils/large_text_multilingual_gate.py` port 的受控复制；改 gate 规则后，由工作台线程在当前集成用例中验证规则一致性。用例位置以 Studio 实际测试目录为准，不恢复已合并或删除的上游测试副本。
+- 同步范围以 Studio 当前 `scripts/sync_workflow_sources.py` 为准；`tests/`、`docs/`、`tools/`、客户文件等不镜像。不要在本说明另维护一份可能漂移的文件清单。
 
 ## 默认执行方式
 
@@ -91,7 +92,9 @@
   6. 复检
   7. 导出最终版
 
-## Subagent 规则
+## 普通入口的 Subagent 规则
+
+以下只适用于普通 CLI、translation harness 和公告 DOCX 的 Agent 审校。大文本 V2 的三个模型阶段统一使用中转 API，按本文开头及 `docs/RELAY_STABLE_EXECUTION.md` 执行，不转交 Codex subagent。
 
 - 基础 QA 默认由主 agent 直接执行，不为了并行而启用 `subagent`。
 - 用户明确说“深校、逐句校对、逐行校对、完整校对、全量审校、LQA”时，视为已授权按目标语言启用 reviewer subagent，无需再次要求“使用 subagent”。
@@ -106,7 +109,7 @@
 ## 稳定性优先
 
 - 首跑优先稳定性，不优先吞吐量。
-- 默认使用小批次，建议 `batch-size=80~100`。
+- 沿用所选正式入口的默认分包；大文本初译和深校分别配置，见 V2 性能策略。不把旧 `80~100` 建议强套到所有入口，也不人为拆成大量极小批。
 - `prepare` 和 `merge` 之间不要替换、重排或改写输入语言表。
 - 如果发现输入漂移、批次错配、词条漏回、响应格式错误，优先保证链路正确，不要强行合并。
 - 如果需要批量翻译，必须持续输出进度，不要长时间无反馈。
@@ -127,9 +130,9 @@
 
 ## 目标列状态规则
 
-- 如果目标语言列已有有效文本，直接进入主工作流收口，不要重建翻译管线。
-- 如果目标语言列为空，或接近全空，则允许直接启动备用翻译管线。
-- 如果目标语言列全空，而用户又希望更稳的处理，可先把中文原文整列复制到目标语言列，再进入主工作流；这通常比“纯空列从零生成”更稳。
+- 普通入口：已有有效译文进入审校；空译或中文种子由 translation harness 的 `target_status` 判断补译范围，保留已批准译文。不主动把中文复制到目标列冒充已有译文。
+- V2 `--task-mode translate`（默认）要求本次目标格为空；已有译文深校用 `--task-mode review`，不得为了适配新译清空或重译。review 默认全量审校，不将它当作基础 QA；缺译在 API 前报告，另按已授权范围补译。
+- 部分空译或混合状态须先按实际语言/范围分流。分流不增加用户未指定的行或语种，合并后核对全部本次目标及非目标内容。
 
 ## 备用翻译管线
 
@@ -172,6 +175,8 @@
 
 ## 质量要求
 
+- 名称和称号先核对中心词、修饰对象及实际含义，再选自然目标语表达；已确认的简洁译法不逐字补齐。V2 的 `run/prepare-pack` 支持 `--style-hint-file <项目私有说明.txt>`，已有项目说明必须显式传入，分槽也保留。明确名称类型/整行术语分类进入语义审计，不凭四字词或 `of` 等句型猜错译。
+- 精确术语复用仍须接受语义审查。仅风格变化可由 auditor 明确回退到经核对的当前主译；语义冲突报 `glossary_semantic_conflict`/未决项，禁止控制器静默恢复坏译。按 `TERM_CHANGE_DELIVERY_SYNC.md` 裁决并同步实际术语后，只复核受影响范围；原任务快照拒绝变更时用新的范围任务目录，保留旧 checkpoint，不自动重跑旧表。名称审计证据必须绑定实际选定文本，包括 REVERT。
 - 变量、占位符、BBCode、换行必须严格保留。
 - 不要为了缩短文案破坏占位符、标签、变量顺序或结构。
 - 短文本长度规则默认启用：
@@ -179,8 +184,6 @@
   - `mode=hard`：紧凑 UI / 按钮 / 标签
   - `mode=soft`：普通短文本软提示
   - `mode=exempt`：编号专名、复杂富文本等豁免
-- 名称和称号先核对中心词、修饰对象及实际含义，再选自然目标语表达；已确认的简洁译法不逐字补齐。V2 的 `run/prepare-pack` 支持 `--style-hint-file <项目私有说明.txt>`，已有项目说明必须显式传入，分槽也保留。明确名称类型/整行术语分类进入语义审计，不凭四字词或 `of` 等句型猜错译。
-- 精确术语复用仍须接受语义审查。仅风格变化可由 auditor 明确回退到经核对的当前主译；语义冲突报 `glossary_semantic_conflict`/未决项，禁止控制器静默恢复坏译。按 `TERM_CHANGE_DELIVERY_SYNC.md` 裁决并同步实际术语后，只复核受影响范围；原任务快照拒绝变更时用新的范围任务目录，保留旧 checkpoint，不自动重跑旧表。名称审计证据必须绑定实际选定文本，包括 REVERT。diff --git a/docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md b/docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md
 - 英语 UI hard 预算：`min(32, max(10, 中文可见长度 * 2 + 14))`。
 - 印尼语 UI hard 预算：`min(34, max(12, 中文可见长度 * 2 + 15))`。
 - 自然可懂优先，长度第二。
@@ -191,6 +194,7 @@
 - 允许稳定游戏缩写：`HP`、`ATK`、`DEF`、`DMG`、`DPS`、`PVP`、`PVE`、`VIP`、`FPS`、`SFX`、`UI`、`Lv`。
 - 如果长度预算和可读性冲突，以自然可懂为准，宁可略长，不用坏缩写。
 - 英文错误、状态、提示类文案默认使用 sentence case，例如 `Too many roles`、`System error`；不要无理由写成 `Too Many Roles`、`System Error`。
+- 正文显式 `文本类型/文案类型/text_type/TextType` 列可标记章节标题、任务标题或名称；没有正文类型时可复用术语表精确整词的技能/地名/建筑分类，不另造分类步骤。仅明确类型豁免 Title Case 误报；未知类型、普通备注、资源 ID 含 title、系统提示和对白不自动豁免，其他质量检查全部保留；支持值见 `docs/quality-harness.md`。
 - Title Case 只用于合理范围：专名、功能名、标题、商店项、术语表明确要求的名称。
 - 术语表 `分类/category/type` 明确为技能名时，按移动端 UI 专名处理：英语优先不超过 2 个可读词 / 24 字符；明确为地名、地点名、地图名、区域名或场景名时，英语优先不超过 2 个核心词 / 28 字符，冠词和介词不计核心词；明确为建筑名或设施名时，英语正式名优先不超过 2 个核心词 / 18 字符，产品支持独立地图标签时目标不超过 14 字符。详细规则见 `docs/UI_NAME_TRANSLATION_STANDARD.md`。
 - 技能名/地名/建筑名压缩只由术语表显式分类触发，不根据中文长度猜测；`技能描述`、`技能效果`、`地图说明`、`地点描述`、`建筑说明`、`建筑效果` 不得套用。
@@ -199,8 +203,8 @@
 - `skill_name_word_count_watch`、`location_name_compactness_watch`、`building_name_compactness_watch`、`name_translation_collision_watch` 必须进入 AI/人工复核，但不作为无条件自动改写或 hard blocker。
 - 颜色标签必须翻译前后保持一致，`[color=#...]` 和 `<color=#...>` 的数量、开闭和色值都不能漂移。
 - 不允许非问句中把分隔符污染成 `?`，例如源文 `重装·普攻I` 不能译成 `Tank ? Basic Attack I`；真实问号键提示如 `Press ? for help` 不按分隔符污染处理。
-- 人名/角色名一致性是所有项目的硬门槛：术语表中 `分类` 含 `人名`、`角色`、`person`、`character`、`name` 的条目，正文命中中文名时必须使用术语表英文名，不能把 `Aria` 写成 `Arya`、`Leon` 写成 `Lyon` 这类近似名。
-- 术语表默认是强约束；只有 `分类/category/type` 显式含 `soft`、`generic`、`common`、`参考`、`泛词`、`通用词` 时才作为软提示，不阻断最终交付。
+- 固定人名/角色名一致性是所有项目的硬门槛：共享 `term_enforcement_kind` 判为 `person` 的条目，正文命中中文名时须保持对应语言身份一致，不能把 `Aria` 写成 `Arya`、`Leon` 写成 `Lyon`。显式 soft、通用角色称谓及亲属称谓沿用共享策略的既有例外；描述类别不得提升为固定姓名。
+- 术语默认按共享策略判为 strong；显式 `soft/generic/common/参考/泛词/通用词` 与既有自动泛词判定作为软提示。普通强术语按整条命中或显式语境强制检查，保留自然词形、批准变体、对白语境和精确格豁免，不机械替换所有正文子串。精确复用种子中 strong/person 或元信息不足的旧记录保持保护；soft/skip 允许经独立审校确认的语境优化，仍须通过语义及技术结构验收。
 - 引号或结构化名称段不能只因“包含主译”就判定通过；主译周围若残留额外修饰词，必须作为 `term_superstring_drift_candidate` 送入 AI 语境复核，不做机械删除。
 - 连续编号词条必须临时沉淀批内术语：同一中文词根反复出现为 `词根-数字` 时，目标译文前缀、大小写和连字符格式必须一致，例如 `消灭怪物-74` 到 `消灭怪物-238` 不能混用 `Kill Monsters` / `Destroy monsters` / `Kill monsters`。
 - 新增任何质量规则时，必须同步补 `fixtures/quality_regression.json`：坏例要被拦住，好例不能被误杀。
@@ -233,7 +237,7 @@
   7. 跑质量回归 harness：`python scripts\run_quality_harness.py fixtures\quality_regression.json --workbook <最终版.xlsx> --lang <语言>`；用户指定最新版术语表时必须显式传 `--term-base <术语表.xlsx>`，避免自动发现旧版。既有内容修改且有历史语言包时，加 `--history <历史语言包.xlsx>`，只读检索当前译文，不导入或重译完整历史表。
   8. 允许保留 `short_text_length_watch` 这类软提示作为说明项，除非用户明确要求清到 0
   9. 在任务目录落一个明确命名的最终版文件，例如 `原文件名_最终版.xlsx`
-  10. 同时输出 `result_{lang}.xlsx` 和 `report_{lang}.xlsx`
+  10. 交付成品及 `QA摘要.xlsx`；所选旧入口已有的逐语种 result/report 保留为过程审校材料，不额外运行其他入口生成重复报告。
 
 ## 交付要求
 
@@ -249,11 +253,7 @@
 
 ## 文档优先级
 
-- 处理前优先参考这些文件：
-  - `README.md`
-  - `CHANGELOG.md`
-  - `工作流说明.md`
-  - `docs/使用说明书.md`
+- 执行约定以用户当前要求、项目规则、本文件及 handoff 为准，再按路由读取对应专项文档。`README.md`、`CHANGELOG.md`、旧工作流说明和使用手册只作参考；出现冲突修订原段，不叠加一条反向规则。
 
 ## 交付目录清理规则
 

@@ -35,15 +35,15 @@ source mode, and delivery location. These examples show only the added controls.
 
 ```powershell
 python scripts/run_large_text_multilingual_runner.py run `
-  --input <source.xlsx> --target-langs EN,DE,FR,ES --task-dir <project-batch> `
-  --relay-config <private-config.json> --proofread-mode full --api-concurrency 5
+  --input "<source.xlsx>" --target-langs EN,DE,FR,ES --task-dir "<project-batch>" `
+  --relay-config "<private-config.json>" --proofread-mode full --api-concurrency 5
 
 python scripts/run_large_text_multilingual_runner.py run `
-  --input <existing-translations.xlsx> --target-langs EN,DE,FR,ES `
-  --task-dir <review-batch> --relay-config <private-config.json> --task-mode review
+  --input "<existing-translations.xlsx>" --target-langs EN,DE,FR,ES `
+  --task-dir "<review-batch>" --relay-config "<private-config.json>" --task-mode review
 
-python scripts/run_large_text_multilingual_runner.py resume --manifest <manifest.json>
-python scripts/run_large_text_multilingual_runner.py status --manifest <manifest.json>
+python scripts/run_large_text_multilingual_runner.py resume --manifest "<manifest.json>"
+python scripts/run_large_text_multilingual_runner.py status --manifest "<manifest.json>"
 ```
 
 Optional `--review-relay-config` and `--audit-relay-config` select separate models or
@@ -63,7 +63,7 @@ translated/exported again. `run_config.json` stores paths/options, never API sec
 
 ## Quality and observation
 
-Source, glossary, target-language policy (`native-baseline-v1`), explicit English
+Source, glossary, the current target-language quality policy, explicit English
 reference, and approved concise wording remain binding. KEEP and FIX both receive
 independent API audit. Structured text is rebuilt by the program; the audit also
 receives complete readable proposed text to catch clause joins and omissions without

@@ -10,9 +10,11 @@ from typing import Any, Iterable
 
 from openpyxl import load_workbook
 
-from utils.language_config import SOURCE_HEADERS, normalize_language_code, target_header_candidates
+from utils.language_config import SOURCE_HEADERS, normalize_language_code, target_header_candidates, variant_header_candidates
 from utils.large_text_multilingual_gate import protected_tokens
-from utils.quality_harness_terms import name_category_from_note
+from utils.quality_harness_terms import (
+    CHARACTER_NAME_CATEGORIES, _split_term_variants, name_category_from_note, term_enforcement_kind,
+)
 from utils.source_reference import (
     EnglishReferenceStatus,
     classify_english_reference,
@@ -21,30 +23,7 @@ from utils.source_reference import (
 
 
 TERM_CATEGORY_HEADERS = {"分类", "类别", "术语分类", "category", "type"}
-STRICT_TERM_CATEGORIES = {
-    "主角",
-    "角色",
-    "角色名",
-    "人名",
-    "人物",
-    "人物名",
-    "英雄名",
-    "怪物名",
-    "boss",
-    "npc",
-    "character",
-    "character name",
-    "person",
-    "person name",
-    "name",
-}
-
-# 这些称谓可作为角色显示名，但正文中允许大小写、格和亲属称呼的自然变化。
-KINSHIP_TERMS = {
-    "grandma", "grandpa", "grandmother", "grandfather", "mother", "father",
-    "mom", "dad", "aunt", "uncle",
-}
-GENERIC_CHARACTER_CATEGORIES = {"角色", "人物", "character", "person"}
+STRICT_TERM_CATEGORIES = CHARACTER_NAME_CATEGORIES
 
 
 @dataclass(frozen=True)
@@ -138,6 +117,8 @@ def _load_terms(path: Path | None, target_langs: list[str]) -> list[dict[str, An
                 )
             except ValueError:
                 continue
+            variant_columns = {lang: _find_header(headers, variant_header_candidates(lang))
+                               for lang in language_columns}
             terms: dict[str, dict[str, Any]] = {}
             for values in iterator:
                 source = values[source_col] if source_col < len(values) else None
@@ -153,20 +134,25 @@ def _load_terms(path: Path | None, target_langs: list[str]) -> list[dict[str, An
                         if category_col is not None
                         else ""
                     )
-                    strict = _is_strict_term_category(category)
                     if category_col is None and note_col is not None and note_col < len(values):
                         category = name_category_from_note(values[note_col])
-                        strict = _is_strict_term_category(category)
                     reference_en = str((values[english_col] if english_col is not None and english_col < len(values) else "") or "").strip()
-                    if category.casefold() in GENERIC_CHARACTER_CATEGORIES and reference_en.casefold() in KINSHIP_TERMS:
-                        strict = False
+                    kinds = {term_enforcement_kind(str(source), target, category, reference_en=reference_en)
+                             for target in translations.values()}
+                    strict = 'person' in kinds
                     terms[str(source).strip()] = {
                         "translations": translations,
                         "category": category,
-                        "required": strict,
+                        "required": bool(kinds & {'person', 'strong'}),
                         "strict": strict,
                         "reference_en": reference_en,
+                        "enforcement": "shared",
                     }
+                    variants = {lang: _split_term_variants(values[column])
+                                for lang, column in variant_columns.items()
+                                if column is not None and column < len(values) and values[column]}
+                    if variants:
+                        terms[str(source).strip()]['accepted_variants'] = variants
             return [
                 {"source": source, **metadata}
                 for source, metadata in sorted(terms.items(), key=lambda item: len(item[0]), reverse=True)

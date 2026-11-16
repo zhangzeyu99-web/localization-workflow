@@ -168,7 +168,7 @@ def build_manifest(
     source_mode = normalize_source_mode(source_mode)
     detected_modes = {
         normalize_source_mode(json.loads(line).get("source_mode", "cn"))
-        for line in items_jsonl.read_text(encoding="utf-8-sig").splitlines()
+        for line in items_jsonl.read_text(encoding="utf-8-sig").split('\n')
         if line.strip()
     }
     if len(detected_modes) > 1:

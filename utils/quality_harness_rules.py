@@ -466,7 +466,8 @@ def _check_surface_regressions(row_id, source: str, translation: str, lang: str 
             translation,
         ))
 
-    for check_type, message in punctuation_issues(translation, lang, punctuation_mode).items():
+    from utils.structured_text_template import json_punctuation_surface
+    for check_type, message in punctuation_issues(json_punctuation_surface(source, translation), lang, punctuation_mode).items():
         results.append(_issue(
             row_id,
             check_type,

@@ -1,15 +1,53 @@
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 from utils.large_text_multilingual_gate import cache_lint
 from utils.structured_text_template import (
     aligned_review_slots, parse_template, render_reviewed_target,
-    render_translations, source_template_diagnostics, translation_slots,
+    render_translations, source_template_diagnostics, translation_slots, json_structure_issues,
 )
 
 
 class StructuredBoundaryTests(unittest.TestCase):
+    def test_json_punctuation_checks_only_translatable_text(self):
+        from utils.large_text_multilingual_gate import pair_integrity_issues
+        from utils.quality_harness import scan_cache_surface
+        from utils.quality_harness_rules import check_row
+
+        source = '{"text": "奖励。", "code": "READY…"}'
+        target = '{"text": "Reward.", "code": "READY…"}'
+        self.assertEqual(pair_integrity_issues({'cn': source}, 'EN', target), [])
+        self.assertEqual(check_row(1, source, target, 'en'), [])
+        self.assertEqual(scan_cache_surface([{'key': 'one', 'cn': source,
+                                              'translations': {'EN': target}}], ['EN'])['hard_blockers'], 0)
+        bad = target.replace('Reward.', 'Reward…')
+        self.assertIn('incompatible_punctuation', {kind for kind, _ in
+                      pair_integrity_issues({'cn': source}, 'EN', bad)})
+        self.assertIn('incompatible_punctuation', {issue.check_type for issue in
+                      check_row(1, source, bad, 'en')})
+        self.assertIn('incompatible_punctuation', {kind for kind, _ in
+                      pair_integrity_issues({'cn': source}, 'EN', target.replace('Reward.', '\u00a0Reward.'))})
+        self.assertIn('json_value_changed', {kind for kind, _ in
+                      pair_integrity_issues({'cn': source}, 'EN', target.replace('READY…', 'READY...'))})
+        self.assertIn('incompatible_punctuation', {kind for kind, _ in
+                      pair_integrity_issues({'cn': '奖励'}, 'EN', 'Reward…')})
+
+    def test_json_fixed_leaves_are_not_rewritten_by_punctuation_repair(self):
+        source = json.dumps({'text': '奖励，', 'code': 'READY…',
+                             'nested': ['https://example.invalid/a—b', '', 3, True]},
+                            ensure_ascii=False)
+        template = parse_template(source)
+        result = render_translations(template, translation_slots(template), {'0': 'Reward'}, lang='EN')
+        expected = json.loads(source)
+        expected['text'] = 'Reward,'
+        self.assertEqual(json.loads(result), expected)
+        self.assertEqual(json_structure_issues(source, result), [])
+        self.assertIn('json_value_changed', {
+            kind for kind, _ in json_structure_issues(source, result.replace('READY…', 'READY...'))
+        })
+
     def test_opaque_payload_requires_exact_boundary_whitespace(self):
         source = ' \t_payload\r\n'
         for target, expected in ((source, 0), (source.strip(), 1)):

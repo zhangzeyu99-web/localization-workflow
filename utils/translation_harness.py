@@ -21,7 +21,7 @@ from openpyxl import load_workbook
 from process_language import _load_term_base
 from utils.excel_reader import get_text_pairs, read_language_file, resolve_language_index
 from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES, normalize_language_code
-from utils.localization_quality_policy import QUALITY_POLICY_VERSION, requires_name_semantic_check
+from utils.localization_quality_policy import QUALITY_POLICY_VERSION, localization_quality_policy, requires_name_semantic_check
 from utils.name_policy import build_name_policy, resolve_name_type
 from utils.source_reference import (
     collect_english_references,
@@ -193,6 +193,8 @@ def prepare_translation_harness(
                 "name_type": name_type,
                 "name_policy": name_policy,
                 "style_hint": style_hint,
+                "language_quality_policy": localization_quality_policy(lang),
+                "language_quality_policy_version": QUALITY_POLICY_VERSION,
                 "cache_hit": bool(cached_translation),
                 "cached_translation": cached_translation,
             }
@@ -374,7 +376,7 @@ def classify_text(source: str, current_target: str = "") -> str:
 def parse_translation_response(response_path: str | Path) -> dict[RowId, str]:
     responses: dict[RowId, str] = {}
     duplicate_ids: set[RowId] = set()
-    for raw_line in Path(response_path).read_text(encoding="utf-8").splitlines():
+    for raw_line in Path(response_path).read_text(encoding="utf-8").split('\n'):
         line = raw_line.strip().lstrip("\ufeff")
         if not line:
             continue
@@ -735,6 +737,6 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
         return []
     return [
         json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
+        for line in path.read_text(encoding="utf-8").split('\n')
         if line.strip()
     ]

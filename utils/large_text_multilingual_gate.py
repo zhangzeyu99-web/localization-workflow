@@ -117,7 +117,7 @@ SUPPORT_WORKBOOK_NAMES = {"qa摘要.xlsx", "qa_summary.xlsx"}
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for line_no, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+    for line_no, line in enumerate(path.read_text(encoding="utf-8-sig").split('\n'), 1):
         if not line.strip():
             continue
         try:
@@ -160,8 +160,46 @@ def explicit_translation_langs(row: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _protected_text_parts(text: str) -> tuple[bool, list[str]]:
+    """Use decoded JSON values, never container syntax, as token surfaces."""
+    from utils.structured_text_template import parse_template
+    try:
+        template = parse_template(text)
+    except ValueError:
+        # Invalid JSON remains subject to the independent strict structure gate.
+        return False, [text]
+    if not template.is_json:
+        return False, [text]
+    return True, ["".join(part.value for part in parts) for parts in template.leaves.values()]
+
+
+def automatic_protected_tokens(text: str) -> set[str]:
+    is_json, parts = _protected_text_parts(text)
+    tokens = {token for part in parts for token in TOKEN_RE.findall(part)
+              if is_auto_protected_token(token)}
+    if is_json:
+        # JSON encodes physical leaf newlines; distinguish these from literal \n.
+        tokens.update(char for char in ("\r", "\n") if any(char in part for part in parts))
+    return tokens
+
+
+def protected_token_counts(text: str, tokens: list[str], *, reference: str | None = None) -> dict[str, int]:
+    """Count in the source-selected surface, including unknown explicit contracts."""
+    is_json, source_parts = _protected_text_parts(text if reference is None else reference)
+    _, parts = _protected_text_parts(text)
+    return {
+        token: (sum(part.count(token) for part in parts)
+                if is_json and any(token in part for part in source_parts)
+                else text.count(token))
+        for token in tokens
+    }
+
+
 def protected_tokens(row: dict[str, Any]) -> list[str]:
     tokens = []
+    source = source_text(row)
+    is_json, parts = _protected_text_parts(source)
+    auto_tokens = automatic_protected_tokens(source)
     raw_tokens = row.get("tokens") or row.get("protected_tokens") or []
     if isinstance(raw_tokens, str):
         try:
@@ -171,7 +209,32 @@ def protected_tokens(row: dict[str, Any]) -> list[str]:
             raw_tokens = [raw_tokens]
     if isinstance(raw_tokens, list):
         tokens.extend(str(token) for token in raw_tokens if str(token))
-    tokens.extend(token for token in TOKEN_RE.findall(source_text(row)) if is_auto_protected_token(token))
+    if is_json and tokens:
+        from utils.structured_text_template import JSON_STRING_RE
+        spans = [match.span() for match in JSON_STRING_RE.finditer(source)]
+        legacy = list(TOKEN_RE.finditer(source))
+        normalized = []
+        for token in tokens:
+            if any(token in part for part in parts):
+                normalized.append(token)
+                continue
+            matches = [match for match in legacy if match[0] == token]
+            if matches and all(not any(start < match.start() and match.end() < end
+                                       for start, end in spans) for match in matches):
+                # Old pack metadata can contain a whole compact JSON object/array.
+                # Only discard tokens proven to cross this source's JSON boundary.
+                continue
+            if matches:
+                try:
+                    decoded = json.loads('"' + token + '"')
+                except ValueError:
+                    decoded = None
+                if decoded in auto_tokens:
+                    normalized.append(decoded)
+                    continue
+            normalized.append(token)  # Unrecognized explicit constraints stay strict.
+        tokens = normalized
+    tokens.extend(auto_tokens)
     return sorted(set(tokens), key=len, reverse=True)
 
 
@@ -260,8 +323,19 @@ def parse_number_token(token: str) -> Decimal | None:
         return None
 
 
+def normalize_spelled_multipliers(text: str) -> str:
+    # Merge the amount first; the one in "one million" is not a separate 1.
+    words = "zero|one|two|three|four|five|six|seven|eight|nine|ten"
+    return re.sub(
+        rf"\b({words})\s+(thousand|million|billion)\b",
+        lambda match: str(int(NUMBER_WORDS[match[1].lower()] * WORD_MULTIPLIERS[match[2].lower()])),
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
 def numeric_values(text: str) -> set[Decimal]:
-    text = text or ""
+    text = normalize_spelled_multipliers(text or "")
     text = re.sub(r"(\d(?:[\d,.]*))(?:<[^>]+>)+\s*([千万萬亿億KkMBWw])", r"\1\2", text)
     word_suffixes = "|".join(re.escape(word) for word in sorted(WORD_MULTIPLIERS, key=len, reverse=True))
     text = re.sub(
@@ -313,12 +387,6 @@ def source_numeric_values(row: dict[str, Any], *, preserve_small: bool = False) 
 def numeric_value_present(value: Decimal, targets: set[Decimal]) -> bool:
     if value in targets:
         return True
-    if abs(value) >= Decimal("1000"):
-        for target in targets:
-            if target == 0:
-                continue
-            if abs(target - value) / abs(value) <= Decimal("0.005"):
-                return True
     if Decimal("1") <= value <= Decimal("99"):
         if (Decimal("1900") + value) in targets or (Decimal("2000") + value) in targets:
             return True
@@ -416,8 +484,27 @@ def _check_required_terms(issues: list[dict[str, Any]], row: dict[str, Any], key
         if not (hit.get("required") or hit.get("strict")):
             continue
         variants = _accepted_term_variants(hit, lang)
-        if variants and not any(variant in target for variant in variants):
-            source = hit.get("source") or hit.get("CN") or hit.get("term") or ""
+        source = hit.get("source") or hit.get("CN") or hit.get("term") or ""
+        missing = bool(variants) and not any(variant in target for variant in variants)
+        if hit.get('enforcement') == 'shared' and variants:
+            from utils.quality_harness_terms import _enforces_contextual_term, term_enforcement_kind
+            from utils.quality_harness_rules import _check_person_name_terms, _check_terms
+            from utils.term_checker import is_exact_term_metadata
+            category = str(hit.get('category') or '')
+            primary = str((hit.get('translations') or {}).get(lang) or variants[0])
+            kind = term_enforcement_kind(source, primary, category, reference_en=hit.get('reference_en', ''))
+            if kind in {'soft', 'skip'}:
+                continue
+            if kind == 'person':
+                missing = all(_check_person_name_terms(key, source_text(row), target, [(source, variant)])
+                              for variant in variants)
+            else:
+                entry = {'primary': primary, 'variants': variants,
+                         'enforce_in_context': _enforces_contextual_term(category),
+                         'exact_match': is_exact_term_metadata(category)}
+                missing = any(issue.severity == 'error' for issue in _check_terms(
+                    key, source_text(row), target, {source: entry}, lang=lang.lower()))
+        if missing:
             # 主控语境裁决只豁免这一格的精确源/译文，不能扩成全局代词变体。
             waivers = row.get("term_waivers") or []
             if any(isinstance(waiver, dict)
@@ -438,7 +525,8 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
     issues = json_structure_issues(source, target)
     from utils.xlsx_translation_writeback import cell_text_issues
     issues.extend(cell_text_issues(target))
-    issues.extend(punctuation_issues(target, lang, punctuation_mode).items())
+    from utils.structured_text_template import json_punctuation_surface
+    issues.extend(punctuation_issues(json_punctuation_surface(source, target), lang, punctuation_mode).items())
     if lang.upper() not in CJK_ALLOWED_LANGS and CJK_RE.search(target):
         issues.append(("cjk_residue", "target still contains CJK ideographs"))
     if MOJIBAKE_RE.search(target):
@@ -446,29 +534,33 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
     from utils.semantic_regression import known_semantic_regressions
     issues.extend(("known_semantic_regression", detail) for detail in known_semantic_regressions(row, lang, target))
     tokens = protected_tokens(row)
+    source_counts = protected_token_counts(source, tokens)
+    target_counts = protected_token_counts(target, tokens, reference=source)
     for token in tokens:
-        required = max(1, source.count(token))
-        actual = target.count(token)
+        required = max(1, source_counts[token])
+        actual = target_counts[token]
         if actual < required:
             issues.append(("protected_token_missing", f"missing protected token {token}: expected {required}, got {actual}"))
         elif actual > required:
             issues.append(("protected_token_extra", f"extra protected token {token}: expected {required}, got {actual}"))
     source_markup = any(re.match(r"</?[A-Za-z]", token) for token in tokens)
     readable_angle_names = bool(re.search(r'<[^<>]*[\u3400-\u9fff][^<>]*>', source))
-    if source_markup and not readable_angle_names:
+    if source_markup and not readable_angle_names and not _protected_text_parts(source)[0]:
         from utils.structured_text_template import _json_token_binding, tokenize_template
         try:
             if _json_token_binding(tokenize_template(source)) != _json_token_binding(tokenize_template(target)):
                 issues.append(('markup_binding_mismatch', 'technical tag order or variable formatting scope changed'))
         except ValueError:
             issues.append(('markup_binding_mismatch', 'unterminated technical tag'))
-    for token in set(TOKEN_RE.findall(target)) - set(tokens):
+    for token in automatic_protected_tokens(target) - set(tokens):
         if not is_auto_protected_token(token):
             continue
         if token.startswith(("{", "<@", "%", "#")) or (not source_markup and re.match(r"</?[A-Za-z]", token)):
             issues.append(("protected_token_extra", f"unexpected protected token {token}"))
     base_lang = lang.lower().replace('_', '-').split('-')[0]
     source_visible, target_visible = visible_text(source), visible_text(target)
+    if base_lang == 'en':
+        target_visible = normalize_spelled_multipliers(target_visible)
     target_numbers = numeric_values(target_visible)
     if base_lang in WORDS:
         # Strip cross-language words (PT "dos" is a preposition, ES "dos" is 2).

@@ -10,6 +10,7 @@ from pathlib import Path
 from utils.term_checker import TERM_REVIEW_ISSUE_TYPES
 
 from utils.language_config import LANGUAGE_NAMES, language_name
+from utils.localization_quality_policy import localization_quality_policy
 
 SHORT_TRANSLATION_REVIEW_POLICY = (
     "When reviewing an existing suggested short translation, use that short version as the baseline, "
@@ -60,6 +61,7 @@ def _make_prompt_header(lang: str = "en") -> str:
     return (
         neutral
         + english_rules
+        + localization_quality_policy(lang)
         + SHORT_TRANSLATION_REVIEW_POLICY
         + "\n"
         "Output protocol (mandatory):\n"
@@ -428,6 +430,7 @@ def format_recheck_prompt(
     prompt = (
         f"Second-pass terminology review for {language_name(lang)} localization.\n"
         "These rows still need term compliance confirmation.\n"
+        + localization_quality_policy(lang)
         + SHORT_TRANSLATION_REVIEW_POLICY
         + "\n"
         "Output protocol (mandatory):\n"

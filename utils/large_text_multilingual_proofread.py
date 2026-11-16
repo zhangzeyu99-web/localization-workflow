@@ -24,6 +24,7 @@ from utils.large_text_multilingual_executor import (
 from utils.large_text_multilingual_runner import load_manifest
 from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES
 from utils.localization_quality_policy import requires_name_semantic_check
+from utils.quality_harness_terms import is_fixed_glossary_seed
 from utils.structured_text_template import (
     ParsedTemplate,
     ReviewSlot,
@@ -218,7 +219,12 @@ def _select_sampled_rows(rows: list[dict[str, object]]) -> list[dict[str, object
 def _preserves_protected_tokens(before: str, after: str, tokens: object) -> bool:
     if not isinstance(tokens, list):
         return True
-    return all(before.count(str(token)) == after.count(str(token)) for token in tokens if str(token))
+    from utils.large_text_multilingual_gate import _protected_text_parts, protected_token_counts, protected_tokens
+    if not _protected_text_parts(before)[0]:
+        return all(before.count(str(token)) == after.count(str(token)) for token in tokens if str(token))
+    normalized = protected_tokens({'cn': before, 'tokens': tokens})
+    return protected_token_counts(before, normalized) == protected_token_counts(
+        after, normalized, reference=before)
 
 
 def _batch_checkpoint(path: Path, version: str, rows: list[dict[str, Any]]) -> Path:
@@ -491,7 +497,7 @@ def _validate_audit(
             raise ValueError(f"audit {decision} JSON integrity failed: {integrity}")
         if fix.get('status') == 'KEEP' and decision == 'REVERT':
             raise ValueError('A KEEP audit must ACCEPT the current target or REVISE it; REVERT is unresolved')
-        if fix.get('seed_origin') == 'glossary_exact' and selected != str(fix.get('current') or ''):
+        if is_fixed_glossary_seed(fix) and selected != str(fix.get('current') or ''):
             raise ValueError('glossary_semantic_conflict: do not silently change or restore an exact glossary seed. '
                              'For style-only edits, audit the current term; for a meaning defect, report '
                              'unresolved_issues, resolve the actual glossary, and recheck the affected scope '

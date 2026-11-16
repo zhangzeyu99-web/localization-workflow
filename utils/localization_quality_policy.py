@@ -1,6 +1,6 @@
 """Language guidance learned from reviewed copy; project names stay in private glossaries."""
 
-QUALITY_POLICY_VERSION = "native-baseline-v2-name-relations"
+QUALITY_POLICY_VERSION = "native-baseline-v3-shared-name-terms"
 TRANSLATION_ERROR_VALUES = frozenset({
     "#N/A", "#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#NUM!", "#NULL!", "#SPILL!", "#CALC!",
 })
@@ -48,6 +48,7 @@ def requires_name_semantic_check(row: dict) -> bool:
     """Use explicit types or an exact glossary name, never source length/word shapes."""
     import json
     from utils.name_policy import classify_name_type
+    from utils.quality_harness_terms import CHARACTER_NAME_CATEGORIES
 
     name_types = {
         'name', 'character', 'character name', 'hero', 'hero name',
@@ -57,7 +58,7 @@ def requires_name_semantic_check(row: dict) -> bool:
     }
     def is_name(value):
         text = str(value or '').strip().casefold()
-        return text in name_types or bool(classify_name_type(text))
+        return text in name_types or text in CHARACTER_NAME_CATEGORIES or bool(classify_name_type(text))
 
     flags = row.get('risk_flags') or []
     if isinstance(flags, str):

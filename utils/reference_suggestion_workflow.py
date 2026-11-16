@@ -64,7 +64,7 @@ def _read_records(path: Path) -> list[dict[str, object]]:
     path = Path(path)
     text = path.read_text(encoding="utf-8")
     if path.suffix.lower() == ".jsonl":
-        return [json.loads(line) for line in text.splitlines() if line.strip()]
+        return [json.loads(line) for line in text.split('\n') if line.strip()]
     value = json.loads(text)
     if isinstance(value, dict) and isinstance(value.get("records"), list):
         value = value["records"]

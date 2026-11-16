@@ -542,6 +542,8 @@
     {"name":"shared_short_button_not_source_drift","rows":[["确定","OK"]],"history":[["好的","OK"]],"expected":[]}
   ],
   "numeric_word_boundary_cases": [
+    {"text":"one million gold","values":[1000000]},
+    {"text":"two thousand coins and one ticket","values":[2000,1]},
     {"text":"12 Bäume","values":[12]},
     {"text":"24 Mũ","values":[24]},
     {"text":"12B","values":[12000000000]},

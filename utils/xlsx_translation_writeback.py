@@ -55,7 +55,7 @@ class WritebackResult:
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [
         json.loads(line)
-        for line in path.read_text(encoding="utf-8-sig").splitlines()
+        for line in path.read_text(encoding="utf-8-sig").split('\n')
         if line.strip()
     ]
 

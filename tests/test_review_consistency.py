@@ -65,6 +65,7 @@ def test_harness_entry_checks_series_and_explicit_history():
 
 def test_name_category_in_notes_is_enforced_by_both_loaders():
     from utils.large_text_multilingual_pack import _load_terms
+    from utils.localization_quality_policy import requires_name_semantic_check
     with TemporaryDirectory() as tmp:
         terms, current = Path(tmp) / 'terms.xlsx', Path(tmp) / 'current.xlsx'
         wb = Workbook()
@@ -82,7 +83,14 @@ def test_name_category_in_notes_is_enforced_by_both_loaders():
         assert result.issue_counts['person_name_term_mismatch'] == 1
         loaded = {t['source']:t for t in _load_terms(terms, ['EN'])}
         assert loaded['艾拉']['required'] is True
-        assert loaded['试用']['required'] is False
+        assert loaded['艾拉']['strict'] is True
+        assert requires_name_semantic_check({'cn': '艾拉', 'term_hits': [loaded['艾拉']]})
+        # Ordinary notes do not classify a name; standalone terms now share
+        # the ordinary harness's default-strong policy independently of names.
+        assert loaded['试用']['category'] == ''
+        assert loaded['试用']['required'] is True
+        assert loaded['试用']['strict'] is False
+        assert not requires_name_semantic_check({'cn': '试用', 'term_hits': [loaded['试用']]})
 
 
 def test_note_category_fixture_and_named_glossary_sheet():

@@ -1,19 +1,18 @@
 # 本地化工作流执行线程 Handoff
 
+## 中转 API 稳定执行入口
+
+大文本新译和已有译文校对统一按 `RELAY_STABLE_EXECUTION.md` 执行。API 总并发默认4、最多5；初译、reviewer、auditor 共用上限，失败不回退 Codex 批量审读。已有译文使用 runner 的 `--task-mode review`；恢复用 `resume --manifest`，查状态用 `status --manifest`。已验收缓存不清空；仅明确诊断后使用 `--retry-failed` 重开耗尽预算的失败项。本入口不新增远端回填授权。
+
 ## 大批量进度、调度与效率
 
 按 `RELAY_EFFICIENCY_AND_REPORTING.md` 执行。首轮未完成必须给条件 ETA、原因、剩余阶段和下一次回报时刻；runner 的 `status`、`record-report` 和只读 `queue-status` 为记录入口，不代发消息或代启动控制器。待确认格不拖住无依赖的已授权任务。缓存 UI/缩略语/编号系列检查前移，原生 pipeline complete 仍须结合项目 publication、真实 Excel 和视觉验收才能报正式交付。旧任务、已完成缓存和已暂停自动化不因本规则恢复。
-
 
 ## 导入前格式门禁
 
 按 `RELAY_EFFICIENCY_AND_REPORTING.md` 的损坏/截断反向验证执行。模型响应、槽位、旧缓存、普通导入和 V2 写回均不得靠裁短或字符清洗放行；整批暂存及目标精确读回通过再生成输出。保留已完成任务和历史凭据，不为新门禁重开旧任务。
 
 普通导入还须校验 workpack 与实际源表的 ID/源文/格式契约及实际写入覆盖，防止缺包或文本 ID 类型变化导致零格写入却报成功。公告中间 XLSX 和主处理器结果也执行载体检查、字符串保真及暂存读回；主处理器只更新当前语言文件，保留其他语言。完整质量 fixture 已接入 pytest，正式 CLI 仍是交付验收入口。
-
-## 中转 API 稳定执行入口
-
-大文本新译和已有译文校对统一按 `RELAY_STABLE_EXECUTION.md` 执行。API 总并发默认4、最多5；初译、reviewer、auditor 共用上限，失败不回退 Codex 批量审读。已有译文使用 runner 的 `--task-mode review`；恢复用 `resume --manifest`，查状态用 `status --manifest`。已验收缓存不清空；仅明确诊断后使用 `--retry-failed` 重开耗尽预算的失败项。本入口不新增远端回填授权。
 
 ## 竞品参考与建议表
 
@@ -155,6 +154,8 @@ git log -1 --date=iso --pretty=format:"%h %ad %s"
 - 除非用户明确要求，不使用 Google Translate、`googletrans`、`deep_translator` 或浏览器机翻做初译。
 - 游戏 UI 要简洁、自然、适合手机竖屏；不遗漏影响玩家判断的关键信息。已有建议短译允许合理省略，按精简校对取舍规则处理，不要求逐词恢复中文。
 - 术语表是约束输入，不做机械替换；必须按句子语境判断词性和自然表达。
+- 名称/称号必须核对中心词和修饰归属，避免逐字组合出不存在的地点或实体；正确短译和正式专名保留。V2 显式传 `--style-hint-file <项目私有说明.txt>`，与普通 harness 一样提供项目含义/风格约束；正文显式文本类型和分槽上下文保留。
+- 精确术语发生语义冲突时显式阻断，不自动恢复旧译；沿用 `TERM_CHANGE_DELIVERY_SYNC.md` 修正实际词典和已授权引用，再以更新词典复核受影响范围。快照变化不允许原任务强行 resume，按既有边界开新的范围任务目录。名称的目标盲读绑定最终采用文本，二审改词只重查变化格；历史交付不自动重跑。
 - 术语表交付列只保留一个主译，不写 `A / B`。
 - 术语表明确分类为技能名或地名时，执行 `docs/UI_NAME_TRANSLATION_STANDARD.md`：英语技能名两词优先，地名两个核心词优先；含义、自然度和唯一性高于长度，不对描述句或未分类短文本猜类型。
 - 非英语任务若已有逐句校对英语，默认推荐 `--source-mode cn+en`：中文主源、英语参考；只有用户明确要求且英语完整可靠时才用 `--source-mode en`。详细规则见 `docs/BILINGUAL_SOURCE_REFERENCE_WORKFLOW.md`。
@@ -162,8 +163,6 @@ git log -1 --date=iso --pretty=format:"%h %ad %s"
 
 ### 小批量历史译文检索
 
-- 名称/称号必须核对中心词和修饰归属，避免逐字组合出不存在的地点或实体；正确短译和正式专名保留。V2 显式传 `--style-hint-file <项目私有说明.txt>`，与普通 harness 一样提供项目含义/风格约束；正文显式文本类型和分槽上下文保留。
-- 精确术语发生语义冲突时显式阻断，不自动恢复旧译；沿用 `TERM_CHANGE_DELIVERY_SYNC.md` 修正实际词典和已授权引用，再以更新词典复核受影响范围。快照变化不允许原任务强行 resume，按既有边界开新的范围任务目录。名称的目标盲读绑定最终采用文本，二审改词只重查变化格；历史交付不自动重跑。diff --git a/templates/translation_prompt_template.txt b/templates/translation_prompt_template.txt
 当前任务唯一中文不超过 200 条时，历史语言表只作为精确复用证据，不进入完整处理：
 
 1. 先加载最新术语表和项目 brief，提取当前源文命中的术语及用户覆盖规则。
@@ -219,9 +218,11 @@ python scripts/run_history_lookup.py `
 深校规则：
 
 - 深校必须检查漏译、误译、术语漂移、游戏/UI 语境、自然度、数字/日期/单位/范围保留和同类句式一致性。
-- 用户明确触发深校后，默认按目标语言分配 reviewer subagent；无需用户再次单独说明“使用 subagent”。
-- subagent 只能输出审校建议，不直接写最终 workbook/docx，不得多个 agent 同时写同一交付文件。
-- 主 agent 负责合并建议、二次纠偏、回填、复跑结构 QA，并记录建议数、纠偏回退数和最终保留修改数。
+- 普通 CLI/translation harness/公告入口明确深校时，可按目标语言分配 reviewer subagent，由主 agent 二次纠偏；V2 则统一 API reviewer 与独立 API auditor，不启动或回退 Codex subagent。
+- 两种入口的模型都只输出建议或审计裁决，不直接写最终 workbook/docx；主控校验后独占写回，不得多个 agent 同时写同一交付文件。
+- 主 agent 负责核对审校覆盖、合并已验收结果、回填和结构 QA，并记录建议数、纠偏回退数和最终保留修改数。
+- 初审和二审缓存按语言及实际输入逐格复用，不清空既有缓存；改批大小不重跑已完成审计，无关语种修改不牵连其他语言。当前译文、关联话轮、源文、英语参考和术语约束仍绑定缓存，二审还绑定建议及理由；旧格式只按可验证原批次升级。共享场景只改变传输表示，不减少语境或完整深校范围，详见 V2 性能策略。
+- 响应局部校验失败只补失败/缺失格，附具体错误反馈，最多三次；相同反馈重试后仍无进展即停止，不原样再试。成功格立即 checkpoint，失败退出不丢。重复、额外或不可绑定响应不能当作通过。标题大小写凭正文显式文本类型、或无类型时术语表精确名称分类豁免，不凭 ID 或普通备注猜类型，其他技术和语义门禁不变。
 - 有实质修改时，最终汇报修改数量；必要时输出修改清单或 QA 备注表。
 - 未做深校时，最终回复只能说完成基础 QA，不能声称“逐句校对完成”。
 
@@ -232,7 +233,7 @@ python scripts/run_history_lookup.py `
 1. 先加载当前项目最新术语表和用户覆盖规则，再定向检索已验收历史交付；精确历史完整句可优先复用，但与当前用户要求或最新术语冲突时必须调整，精确术语优先于模型补译。
 2. 历史译文和术语主译只是初始约束，深校时仍要检查语义、语境和自然度，不得因“已有译文”跳过审校。
 3. 按 `源文 + 参考文本 + 必要语境` 生成唯一文本；重复行只审校一次，主线程按稳定键扩展回全部源行，并检查重复项最终译文一致。
-4. reviewer subagent 按语言输出建议；主线程逐项接受、调整或回退，禁止把模型建议未经审计直接写入 workbook。
+4. 普通入口由 reviewer subagent 按语言输出建议、主 agent 二审；V2 由 API reviewer/auditor 独立执行。两者均须通过主控验收，禁止把未审计建议直接写入 workbook。
 5. `QA摘要.xlsx` 至少记录源行数、唯一文本数、填入单元格数、各语言审校数、模型建议数、纠偏回退数、最终修改数、各语言修改数和 hard blocker 数。
 6. 最终读回不仅检查非空，还要检查源列未改、品牌/数字/占位符保留、中文残留、重复项冲突和交付目录内容；可用 Excel 原生只读打开再做一次客户端可用性验证。
 
@@ -245,12 +246,12 @@ python scripts/run_history_lookup.py `
 对公告类 `.docx` 或公告原文任务，默认使用检索式中转表流程：
 
 ```powershell
-python scripts\run_announcement_docx_harness.py inspect --input-dir <raw_task_dir>
-python scripts\run_announcement_docx_harness.py stage --input-dir <raw_task_dir>
-python scripts\run_announcement_docx_harness.py prepare --input-dir <task_dir>
-python scripts\run_announcement_docx_harness.py import-ai --input-dir <task_dir> --response-dir <response_dir>
-python scripts\run_announcement_docx_harness.py apply --input-dir <task_dir> --translation-workbook <task_dir>\_work\announcement_docx\announcement_translation_workbook.xlsx
-python scripts\run_announcement_docx_harness.py deliver --input-dir <task_dir>
+python scripts\run_announcement_docx_harness.py inspect --input-dir "<raw_task_dir>"
+python scripts\run_announcement_docx_harness.py stage --input-dir "<raw_task_dir>"
+python scripts\run_announcement_docx_harness.py prepare --input-dir "<task_dir>"
+python scripts\run_announcement_docx_harness.py import-ai --input-dir "<task_dir>" --response-dir "<response_dir>"
+python scripts\run_announcement_docx_harness.py apply --input-dir "<task_dir>" --translation-workbook "<task_dir>\_work\announcement_docx\announcement_translation_workbook.xlsx"
+python scripts\run_announcement_docx_harness.py deliver --input-dir "<task_dir>"
 ```
 
 交付规则：
@@ -281,6 +282,8 @@ python scripts\run_announcement_docx_harness.py deliver --input-dir <task_dir>
 
 ### 一键执行入口
 
+下例为新译（默认 `--task-mode translate`），要求本次目标格为空。已有译文深校沿用参数并加 `--task-mode review`，保留当前译文，默认 full；空译在 API 前报告后按已授权补译范围分流。不为适配新译入口清空目标列。只有基础 QA 的已有译文仍用普通 CLI。
+
 ```powershell
 python scripts\run_large_text_multilingual_runner.py run `
   --input "<语言表.xlsx>" `
@@ -295,7 +298,7 @@ python scripts\run_large_text_multilingual_runner.py run `
 
 `--input` 和 `--history-dir` 可以重复传入。未明确要求逐句/深度校对时使用 `--proofread-mode basic`；明确要求时使用 `full`，不得把基础 QA 说成逐句审校。
 
-只做只读抽取和规模预检、不调用 API：
+只对空目标格新译做只读抽取和规模预检、不调用 API；已有译文 review 不走此 prepare-pack：
 
 ```powershell
 python scripts\run_large_text_multilingual_runner.py prepare-pack `
@@ -308,12 +311,12 @@ python scripts\run_large_text_multilingual_runner.py prepare-pack `
 
 ### V2 阶段契约
 
-1. **只读分包**：顺序读取源 workbook，核对目标列为空，生成稳定 `file + sheet + ID + row` 键。
-2. **复用与去重**：先复用当前项目历史已验收交付和精确术语，再按“源文、语境、术语约束”去重；API 只处理剩余唯一文本。
-3. **API 初译**：只使用配置的 OpenAI-compatible 中转 API 或当前模型能力，不使用 Google/外部机翻；先小批 smoke，再按行数和字符预算并发。JSON 或含 3 个以上技术标签的中文行由程序拆成纯文本槽，模型不接触结构，程序原位重建；失败批次重试后自动拆分。
-4. **断点续跑**：翻译 checkpoint 按模型、供应端、目标语言和 prompt 版本隔离；审校 checkpoint 按 reviewer/auditor 身份隔离，并按 `review_key + lang` 复用已完成单元。调整深校批大小后只补缺失项，不整包重译或重审。
+1. **只读分包**：顺序读取源 workbook，translate 核对目标格为空，review 核对本次已有译文完整并保留当前值，生成稳定 `file + sheet + ID + row` 键。
+2. **复用与去重**：新译先复用当前项目历史已验收交付和精确术语，再按“源文、语境、术语约束”去重；review 直接审查当前译文，不用历史译文替换当前值。
+3. **API 初译**：translate 只使用配置的 OpenAI-compatible 中转 API，review 跳过初译；不使用 Google/外部机翻或自动回退 Codex。JSON 或含 3 个以上技术标签的中文行由程序拆成纯文本槽，模型不接触结构，程序原位重建；只在明确体积限制或输出截断时拆包，网络故障不递归拆包。
+4. **断点续跑**：翻译 checkpoint 按模型、供应端、目标语言和 prompt 版本隔离；审校 checkpoint 按 reviewer/auditor 身份隔离，并按语言局部实际输入逐格复用。审校响应仅重试失败项并反馈错误，成功项即时保存；调整深校批大小后只补缺失项，不整包重译或重审。
 5. **缓存级 QA**：写 workbook 前先仅对含中文残留的失败单元格做确定性修复（该行命中术语、章节序号），再执行 `cache-lint`；空译文、中文残留、未请求语言、占位符/标签/数字丢失、JSON 整格解析/路径/固定值漂移和强术语遗漏的 hard blocker 必须为 0。JSON 门禁同样约束初译、KEEP/FIX、二审和旧缓存；REVERT 校验实际回退的 `current`，不得恢复无效原稿。成品回读仍执行同一结构门禁，不能用 token 数量相同或回读相等代替可解析性。已通过单元格不得重译。
-6. **深校审计**：只有用户明确触发时执行。`sampled` 审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本，`full` 审全部唯一文本；API/subagent 只输出 `KEEP/FIX` 建议，不能直接写 workbook；结构化行只审纯文本槽，由主控按原结构回填；主控二次审计后生成最终缓存，并再次执行 `cache-lint`。
+6. **深校审计**：只有用户明确触发时执行，review 默认 full。`sampled` 审全部高风险唯一文本和稳定抽取的 10% 低风险唯一文本，`full` 审全部唯一文本；API reviewer 输出 `KEEP/FIX` 建议，独立 API auditor 二审；结构化行只审纯文本槽，主控校验后按原结构回填并执行 `cache-lint`。
 7. **精确写回**：`apply-dry-run` 通过后，只修改目标单元格；写回必须同时核对文件、sheet、ID/key、行号和源文，保留原 worksheet 命名空间和样式。
 8. **交付读回**：普通模式打开成品、检查样式索引，再把每个目标单元格与最终缓存逐格比对；不能只检查“非空”。最后生成 retro 指标。
 
@@ -322,7 +325,7 @@ python scripts\run_large_text_multilingual_runner.py prepare-pack `
 - 过程文件统一放在 `<task_dir>\_work\large_text_multilingual\`，包括 manifest、JSONL、checkpoint、门禁结果和 retro。
 - API key 只在请求时从 relay 配置读取，不得写入 manifest、缓存、日志、QA 摘要或 Git。
 - 最终交付目录只保留成品 workbook 和 `QA摘要.xlsx`；输入文件不得使用 `QA摘要.xlsx` / `qa_summary.xlsx` 保留名。
-- 中断后优先使用相同 `task-dir`、输入、语言和 relay 配置重新执行，以复用 checkpoint；不得删除 `_work` 后声称是续跑。
+- 中断后先 `status --manifest` 确认原进程状态，再 `resume --manifest` 复用已保存配置与 checkpoint；不重复整批启动，不删除 `_work`。解决原因后才显式 `--retry-failed`；输入/术语/项目说明变化时创建新的范围任务目录，不强行续跑旧快照。
 - API 失败后若由有效缓存补齐继续完成，必须用 runner `reconcile` 核验 final cache-lint、深校摘要、apply-dry-run、交付目录和 readback，再收口 manifest 并生成 recovery retro；不得手工把失败状态改成完成。
 - 终端保持安静输出，只汇报 source rows、unique items、API batches、修改量、hard/warn、文件数、总耗时和交付路径。
 
@@ -336,7 +339,7 @@ python scripts\run_large_text_multilingual_runner.py prepare-pack `
 - 个人可见文档/表格优先使用用户身份：`--as user`。
 - 不默认重新登录，先复用 `C:\Users\Administrator\.lark-cli\`。
 - 先解析 wiki/sheet 链接到真实 token。
-- 长表先整表导出到本地 `_source` 留档，记录 revision、下载时间和 SHA256；翻译、深校和 QA 全部在本地完成，禁止边处理边回填。
+- 长表先整表导出到本地 `_source` 留档，记录 revision、下载时间、源路径、sheet 和原始内容快照，不额外生成哈希清单；翻译、深校和 QA 全部在本地完成，禁止边处理边回填。工具内部输入漂移协议保留。
 - 本地 hard blocker 为 0 后重新核对在线 revision；发生漂移时停止写入并先比较，不覆盖他人改动。
 - 只写指定 sheet、行和列，按块记录写入进度与 revision；写完在线读取源列和目标列，与最终缓存逐格比对。
 - 写入成功和 readback 成功是两个独立验收点。

@@ -43,6 +43,13 @@ def _strict_json_loads(text: str, *, exact_numbers: bool = False) -> object:
     return json.loads(text, **options)
 
 
+def _fixed_json_string(value: str, parts: list[TemplatePart], chinese_slots: bool) -> bool:
+    return (chinese_slots and not CJK_RE.search(value)) or not value or bool(
+        re.match(r'^(?:https?://|mailto:|#[0-9a-fA-F]{3,8}$)', value, re.IGNORECASE)
+    ) or (any(part.kind == "code" for part in parts)
+          and not "".join(part.value for part in parts if part.kind == "text").strip())
+
+
 def json_structure_issues(source: str, target: str) -> list[tuple[str, str]]:
     """Validate complete JSON and immutable data at each source-owned path.
 
@@ -98,11 +105,7 @@ def json_structure_issues(source: str, target: str) -> list[tuple[str, str]]:
                 return
             if _json_token_binding(source_parts) != _json_token_binding(target_parts):
                 issues.append(("json_token_mismatch", f"{path}: technical tags or placeholder binding changed"))
-            fixed = (chinese_slots and not CJK_RE.search(a)) or not a or bool(
-                re.match(r'^(?:https?://|mailto:|#[0-9a-fA-F]{3,8}$)', a, re.IGNORECASE)
-            ) or (any(part.kind == "code" for part in source_parts)
-                  and not "".join(part.value for part in source_parts if part.kind == "text").strip())
-            if fixed and a != b:
+            if _fixed_json_string(a, source_parts, chinese_slots) and a != b:
                 issues.append(("json_value_changed", f"{path}: fixed JSON string changed"))
             elif a.strip() and not b.strip():
                 issues.append(("json_string_missing", f"{path}: nonempty JSON text became blank"))
@@ -271,6 +274,24 @@ def _plain_context(parts: list[TemplatePart]) -> str:
     return "".join(part.value for part in parts if part.kind == "text").strip()
 
 
+def json_punctuation_surface(source: str, target: str) -> str:
+    """Check readable target leaves only after the complete JSON contract passes."""
+    if not source.lstrip().startswith(("[", "{")) or json_structure_issues(source, target):
+        return target
+    try:
+        left, right = parse_template(source), parse_template(target)
+    except ValueError:
+        return target
+    if not left.is_json or not right.is_json:
+        return target
+    chinese_slots = any(CJK_RE.search(part.value) for parts in left.leaves.values() for part in parts)
+    return '\n'.join(
+        ''.join(part.value for part in right.leaves[path] if part.kind == 'text')
+        for path, parts in left.leaves.items()
+        if not _fixed_json_string(''.join(part.value for part in parts), parts, chinese_slots)
+    )
+
+
 def translation_slots(template: ParsedTemplate) -> list[TranslationSlot]:
     slots: list[TranslationSlot] = []
     for path, parts in template.leaves.items():
@@ -404,6 +425,9 @@ def render_translations(
     }
     if lang:
         for path, parts in template.leaves.items():
+            # Non-Chinese JSON leaves are fixed data, not punctuation repair slots.
+            if template.is_json and not any(CJK_RE.search(part.value) for part in parts):
+                continue
             for index, part in enumerate(parts):
                 if part.kind == 'text' and (path, index) not in replacements:
                     replacements[(path, index)] = fixed_text(part.value)

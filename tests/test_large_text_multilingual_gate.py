@@ -24,6 +24,37 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 class LargeTextMultilingualGateTests(unittest.TestCase):
+    def test_spelled_multiplier_preserves_amount_without_phantom_small_number(self) -> None:
+        from utils.large_text_multilingual_gate import pair_integrity_issues
+
+        for text, amount in [('one million', 1000000), ('Two thousand', 2000), ('ten billion', 10000000000)]:
+            self.assertEqual(numeric_values(text), {amount})
+        self.assertEqual(pair_integrity_issues({'cn': '获得 one million 金币'}, 'EN', 'Get 1,000,000 gold'), [])
+        self.assertEqual(pair_integrity_issues({'cn': '获得100万金币'}, 'EN', 'Get one million gold'), [])
+        self.assertTrue(pair_integrity_issues({'cn': '获得 one million 金币'}, 'EN', 'Get one gold'))
+        self.assertEqual(numeric_values('one reward and one million gold'), {1, 1000000})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'delivery.xlsx'
+            book = Workbook()
+            book.active.append(['ID', 'CN', 'EN'])
+            book.active.append([1, '获得 one million 金币', 'Get 1,000,000 gold'])
+            book.save(path)
+            book.close()
+            self.assertTrue(readback_gate(Path(tmp), target_langs=['EN'])['readback_verified'])
+
+    def test_large_amounts_do_not_silently_accept_nearby_wrong_numbers(self) -> None:
+        from utils.large_text_multilingual_gate import pair_integrity_issues
+
+        cases = [
+            ('获得100K金币', 'Get 100000 gold.', 'Get 100020 gold.'),
+            ('获得123.1万金币', 'Get 1231000 gold.', 'Get 1231005 gold.'),
+            ('获得 one million 金币', 'Get 1M gold.', 'Get 1004000 gold.'),
+        ]
+        for source, equivalent, wrong in cases:
+            with self.subTest(source=source):
+                self.assertEqual(pair_integrity_issues({'cn': source}, 'EN', equivalent), [])
+                self.assertIn('number_missing', {kind for kind, _ in pair_integrity_issues({'cn': source}, 'EN', wrong)})
+
     def test_numeric_unit_does_not_consume_accented_word_initial(self) -> None:
         fixtures = json.loads((Path(__file__).resolve().parents[1]/'fixtures/quality_regression.json').read_text(encoding='utf-8'))
         for case in fixtures['numeric_word_boundary_cases']:

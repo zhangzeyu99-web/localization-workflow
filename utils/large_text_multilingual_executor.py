@@ -18,6 +18,7 @@ from typing import Any, Protocol
 
 from utils.ai_checker import SHORT_TRANSLATION_REVIEW_POLICY
 from utils.localization_quality_policy import QUALITY_POLICY_VERSION, localization_quality_policy
+from utils.quality_harness_terms import is_fixed_glossary_seed
 from utils.large_text_multilingual_runner import load_manifest, save_manifest
 from utils.workflow_progress import update_progress
 from utils.structured_text_template import (
@@ -67,7 +68,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [
         json.loads(line)
-        for line in path.read_text(encoding="utf-8-sig").splitlines()
+        for line in path.read_text(encoding="utf-8-sig").split('\n')
         if line.strip()
     ]
 
@@ -406,7 +407,8 @@ class OpenAICompatibleClient:
         return readings
 
     def _audit_with_readings(self, suggestions: list[dict[str, object]], readings: dict) -> list[dict[str, object]]:
-        audit_input = [{**row, "independent_target_reading": readings.get((str(row["review_key"]), str(row["lang"]).upper()))}
+        audit_input = [{**row, "glossary_seed_locked": is_fixed_glossary_seed(row),
+                        "independent_target_reading": readings.get((str(row["review_key"]), str(row["lang"]).upper()))}
                        for row in suggestions]
         parsed = self._chat_json(
             (
@@ -420,11 +422,13 @@ class OpenAICompatibleClient:
                 "not a clear improvement. "
                 "Review every supplied cell, including KEEP rows; KEEP is not evidence of correctness. "
                 "For KEEP, ACCEPT only if the current target is correct or REVISE it; never REVERT a KEEP. "
-                "For seed_origin=glossary_exact, only an independently validated current term may pass. "
+                "For glossary_seed_locked=true, only an independently validated current term may pass. "
                 "REVERT a purely stylistic FIX to current. If the existing term conflicts with the supplied "
                 "meaning/context, report glossary_semantic_conflict in unresolved_issues and require the "
                 "actual project glossary and affected references to be corrected; never approve the known "
-                "bad current merely to preserve its spelling. "
+                "bad current merely to preserve its spelling. For glossary_seed_locked=false, a soft or "
+                "exempt exact glossary seed may be improved for its actual context, but it still requires "
+                "the same independent meaning, tone, and technical-integrity checks; softness is not approval. "
                 "REVISE an incorrect KEEP target. Check numbered entities, action conditions, enemy/ally "
                 "ownership, negation, limits, per-hit effects, and quantities against the source. "
                 "Use the controller-supplied source, current translation, and context to check each "

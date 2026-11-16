@@ -126,14 +126,14 @@ class RelayRuntime:
         self.journal = work_dir / "relay_requests.jsonl" if work_dir else None
         blind_path = work_dir / 'blind_readings.jsonl' if work_dir else None
         if blind_path and blind_path.exists():
-            for line in blind_path.read_text(encoding='utf-8').splitlines():
+            for line in blind_path.read_text(encoding='utf-8').split('\n'):
                 try:
                     record = json.loads(line)
                     self.blind_readings[record['key']] = record['value']
                 except (ValueError, KeyError):
                     continue
         if self.journal and self.journal.exists():
-            for line in self.journal.read_text(encoding="utf-8").splitlines():
+            for line in self.journal.read_text(encoding="utf-8").split('\n'):
                 try:
                     event = json.loads(line)
                 except ValueError:

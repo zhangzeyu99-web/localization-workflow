@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from openpyxl import load_workbook
 
@@ -48,6 +48,15 @@ SUPPORT_SHEET_NAME_KEYWORDS = {
 LEGAL_TERM_CHECK_SKIP_MARKERS = {'隐私政策', '用户协议'}
 LEGAL_TERM_CHECK_MIN_LENGTH = 1000
 PERSON_NAME_CATEGORY_MARKERS = {'人名', '角色', '英雄名', '人物名', 'person', 'name', 'character'}
+CHARACTER_NAME_CATEGORIES = frozenset({
+    '主角', '角色', '角色名', '人名', '人物', '人物名', '英雄名', '怪物名',
+    'boss', 'npc', 'character', 'character name', 'person', 'person name', 'name',
+})
+KINSHIP_TERMS = frozenset({
+    'grandma', 'grandpa', 'grandmother', 'grandfather', 'mother', 'father',
+    'mom', 'dad', 'aunt', 'uncle',
+})
+GENERIC_CHARACTER_CATEGORIES = {'角色', '人物', 'character', 'person'}
 EXPLICIT_NAME_NOTES = {'人名', '角色名', '英雄名', '人物名', '怪物名', 'boss', 'npc', 'character name', 'person name'}
 SOFT_TERM_CATEGORY_MARKERS = {'soft', 'generic', 'common', '参考', '泛词', '通用词'}
 CONTEXTUAL_HARD_TERM_CATEGORY_MARKERS = {'强术语', '强制', '固定译名', '专有名词', '专名'}
@@ -280,15 +289,16 @@ def _collect_term_context(
         name_type = classify_name_type(category)
         if name_type:
             name_types[cn] = name_type
-        if _is_person_name_category(category):
-            if _is_generic_role_target(target):
-                return
+        kind = term_enforcement_kind(cn, target, category)
+        if kind == 'skip':
+            return
+        if kind == 'person':
             key = (cn, target)
             if key not in seen_person_names:
                 seen_person_names.add(key)
                 person_name_terms.append(key)
             return
-        bucket = soft_terms if _is_soft_term_category(category) or _is_auto_soft_term(cn, target, category) else strong_terms
+        bucket = soft_terms if kind == 'soft' else strong_terms
         _add_term_lookup_entry(
             bucket,
             cn,
@@ -474,9 +484,46 @@ def _enforces_contextual_term(category: str) -> bool:
 
 def _is_person_name_category(category: str) -> bool:
     text = str(category or '').strip().lower()
-    if classify_name_type(text):
+    if classify_name_type(text) or any(marker in text for marker in ('描述', '说明', 'description')):
         return False
-    return any(marker in text for marker in PERSON_NAME_CATEGORY_MARKERS)
+    return text in CHARACTER_NAME_CATEGORIES or any(marker in text for marker in PERSON_NAME_CATEGORY_MARKERS)
+
+
+def term_enforcement_kind(cn: str, target: str, category: str = '', *, reference_en: str = '') -> str:
+    """Share glossary strength without forcing every source subterm into prose."""
+    if _is_soft_term_category(category) or _is_auto_soft_term(cn, target, category):
+        return 'soft'
+    if _is_person_name_category(category):
+        if _is_generic_role_target(target):
+            return 'skip'
+        if str(category).strip().casefold() in GENERIC_CHARACTER_CATEGORIES and (
+            str(reference_en or target).strip().casefold() in KINSHIP_TERMS
+        ):
+            return 'skip'
+        return 'person'
+    return 'strong'
+
+
+def is_fixed_glossary_seed(row: dict[str, Any]) -> bool:
+    """Keep unknown legacy seeds locked; classify bound exact terms per language."""
+    if row.get('seed_origin') != 'glossary_exact':
+        return False
+    source = str(row.get('cn') or '').strip()
+    lang = str(row.get('lang') or '').upper()
+    hits = [hit for hit in row.get('term_hits') or []
+            if isinstance(hit, dict)
+            and str(hit.get('source') or hit.get('CN') or '').strip() == source]
+    if not hits:
+        return True
+    for hit in hits:
+        translations = hit.get('translations') or {}
+        target = translations.get(lang) if isinstance(translations, dict) else None
+        if 'category' not in hit or not isinstance(target, str) or not target.strip():
+            return True
+        if term_enforcement_kind(source, target, str(hit.get('category') or ''),
+                                 reference_en=str(hit.get('reference_en') or '')) not in {'soft', 'skip'}:
+            return True
+    return False
 
 
 def _is_generic_role_target(target: str) -> bool:
