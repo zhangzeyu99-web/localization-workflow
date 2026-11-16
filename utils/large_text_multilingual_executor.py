@@ -365,45 +365,47 @@ class OpenAICompatibleClient:
             raise ValueError("review response must contain a rows array")
         return result
 
-    def audit_batch(
-        self,
-        suggestions: list[dict[str, object]],
-    ) -> list[dict[str, object]]:
-        blind_rows = [{"review_key": row["review_key"], "lang": row["lang"], "text": row["suggested"]}
-                      for row in suggestions if row.get("semantic_check_required")]
+    def _read_target_texts(self, blind_rows: list[dict[str, object]]) -> dict:
+        requested = {(str(row['review_key']), str(row['lang']).upper()): row for row in blind_rows}
         readings = {}
         runtime = getattr(self, 'runtime', None)
-        blind_keys = { (row['review_key'], row['lang']): runtime.keys(self.checkpoint_identity, 'blind', {'rows': [row]})[0]
-                       for row in blind_rows } if runtime else {}
+        blind_keys = {key: runtime.keys(self.checkpoint_identity, 'blind', {'rows': [row]})[0]
+                      for key, row in requested.items()} if runtime else {}
         if runtime:
             for key, cache_key in blind_keys.items():
                 if cache_key in runtime.blind_readings:
-                    readings[key] = runtime.blind_readings[cache_key]
-            blind_rows = [row for row in blind_rows if (row['review_key'], row['lang']) not in readings]
+                    readings[key] = {**runtime.blind_readings[cache_key], 'text': requested[key]['text']}
+            blind_rows = [row for key, row in requested.items() if key not in readings]
         if blind_rows:
             blind = self._chat_json(
                 "Read these target-language sentences independently, without assuming an intended source. "
                 "Describe what the actual grammar says in plain English. Identify who acts, the predicate, "
                 "and its exact object/complement; report tone and ambiguity. Do not silently repair an odd "
                 "sentence into a familiar English idiom. In particular distinguish worrying about a person "
-                "or body part from worrying about a situation. Return JSON {\"rows\":[{\"review_key\":...,"
+                "or body part from worrying about a situation. For a name or title, identify its head noun, "
+                "what each modifier describes, and any named entity or place the wording implies. Describe "
+                "whether it reads naturally as a target-language name, without inventing a source meaning. "
+                "Return JSON {\"rows\":[{\"review_key\":...,"
                 "\"lang\":...,\"meaning\":...,\"predicate_object\":...,\"tone\":...}]}.",
                 {"rows": blind_rows},
                 stage="blind",
             )
             blind = blind.get("rows") if isinstance(blind, dict) else blind
-            if not isinstance(blind, list) or len(blind) != len(blind_rows):
+            if not isinstance(blind, list) or len(blind) != len(blind_rows) or any(not isinstance(row, dict) for row in blind):
                 raise ValueError("blind semantic reading coverage mismatch")
             for reading in blind:
                 key = (str(reading.get("review_key")), str(reading.get("lang")).upper())
-                if key in readings or any(not isinstance(reading.get(field), str) or not reading[field].strip()
+                if key not in requested or key in readings or any(not isinstance(reading.get(field), str) or not reading[field].strip()
                                           for field in ("meaning", "predicate_object", "tone")):
                     raise ValueError("invalid blind semantic reading")
-                readings[key] = reading
+                readings[key] = {**reading, 'text': requested[key]['text']}
             if not {(str(row["review_key"]), str(row["lang"]).upper()) for row in blind_rows}.issubset(readings):
                 raise ValueError("blind semantic reading key mismatch")
             if runtime:
                 runtime.save_blind_readings({blind_keys[key]: value for key, value in readings.items() if key in blind_keys})
+        return readings
+
+    def _audit_with_readings(self, suggestions: list[dict[str, object]], readings: dict) -> list[dict[str, object]]:
         audit_input = [{**row, "independent_target_reading": readings.get((str(row["review_key"]), str(row["lang"]).upper()))}
                        for row in suggestions]
         parsed = self._chat_json(
@@ -418,6 +420,11 @@ class OpenAICompatibleClient:
                 "not a clear improvement. "
                 "Review every supplied cell, including KEEP rows; KEEP is not evidence of correctness. "
                 "For KEEP, ACCEPT only if the current target is correct or REVISE it; never REVERT a KEEP. "
+                "For seed_origin=glossary_exact, only an independently validated current term may pass. "
+                "REVERT a purely stylistic FIX to current. If the existing term conflicts with the supplied "
+                "meaning/context, report glossary_semantic_conflict in unresolved_issues and require the "
+                "actual project glossary and affected references to be corrected; never approve the known "
+                "bad current merely to preserve its spelling. "
                 "REVISE an incorrect KEEP target. Check numbered entities, action conditions, enemy/ally "
                 "ownership, negation, limits, per-hit effects, and quantities against the source. "
                 "Use the controller-supplied source, current translation, and context to check each "
@@ -435,14 +442,21 @@ class OpenAICompatibleClient:
                 "anchoring: if it reveals a different predicate/object, REVERT or REVISE the wording. "
                 "Read target-language antecedents in dialogue_evidence; these are unverified translations, "
                 "not authoritative speaker labels. Do not infer alternating speakers. "
-                "For semantic_check_required=true, ACCEPT/REVISE must include semantic_check with nonempty "
+                "When prior_audit is supplied, recheck its selected final against the newly supplied target "
+                "reading; the original reviewer suggestion remains separate evidence. Preserve that final "
+                "if valid instead of introducing further stylistic changes. "
+                "For semantic_check_required=true, every decision, including REVERT to current, must include "
+                "semantic_check.target_text equal to the exact selected final and nonempty "
                 "source_meaning and final_meaning plain-English paraphrases, and boolean meaning_preserved, "
-                "roles_preserved, tone_preserved. All must be true for the final wording; otherwise REVERT "
-                "or fix the wording and reassess. Do not rubber-stamp these fields from reviewer reason. "
+                "roles_preserved, tone_preserved. For name_semantic_check_required=true, also verify boolean "
+                "head_and_modifiers_preserved, no_invented_entities, and natural_target. Check which noun "
+                "each modifier describes; a title must not invent a named place/entity by attaching a "
+                "character trait to its setting. All must be true for the selected wording; otherwise fix "
+                "it or report unresolved_issues. Do not rubber-stamp these fields from reviewer reason. "
                 "Structured text suggestions are prose-only; never add "
                 "markup, placeholders, or JSON syntax to final. Return strict JSON: {\"rows\":[{\"review_key\":...,"
                 "\"lang\":...,\"decision\":\"ACCEPT|REVERT|REVISE\",\"final\":...,"
-                "\"reason\":...,\"semantic_check\":{\"source_meaning\":...,\"final_meaning\":...,"
+                "\"reason\":...,\"semantic_check\":{\"target_text\":...,\"source_meaning\":...,\"final_meaning\":...,"
                 "\"meaning_preserved\":true,\"roles_preserved\":true,\"tone_preserved\":true}}]}. "
                 "Always return final explicitly, including for ACCEPT."
                 + localization_quality_policy([row.get('lang', '') for row in suggestions])
@@ -451,8 +465,8 @@ class OpenAICompatibleClient:
             stage="audit",
         )
         result = parsed.get("rows") if isinstance(parsed, dict) else parsed
-        if not isinstance(result, list):
-            raise ValueError("audit response must contain a rows array")
+        if not isinstance(result, list) or any(not isinstance(row, dict) for row in result):
+            raise ValueError("audit response must contain a rows array of objects")
         for row in result:
             key = (str(row.get("review_key")), str(row.get("lang")).upper())
             reading = readings.get(key)
@@ -469,6 +483,56 @@ class OpenAICompatibleClient:
                                reason="Known semantic regression blocked: " + ", ".join(regressions))
                     row.pop("semantic_check", None)
         return result
+
+    def audit_batch(
+        self,
+        suggestions: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        def key(row):
+            return str(row.get('review_key')), str(row.get('lang')).upper()
+
+        originals = {key(row): row for row in suggestions}
+        readings = self._read_target_texts([
+            {'review_key': row['review_key'], 'lang': row['lang'], 'text': row['suggested']}
+            for row in suggestions if row.get('semantic_check_required')
+        ])
+        results = self._audit_with_readings(suggestions, readings)
+        changed = {}
+        counts = Counter(key(row) for row in results)
+        for row in results:
+            cell = key(row)
+            original = originals.get(cell)
+            if not original or counts[cell] != 1 or not original.get('semantic_check_required') or row.get('unresolved_issues'):
+                continue
+            decision = str(row.get('decision')).upper()
+            selected = original.get('current') if decision == 'REVERT' else row.get('final')
+            if decision in {'ACCEPT', 'REVISE', 'REVERT'} and isinstance(selected, str) and selected.strip() and readings[cell]['text'] != selected:
+                changed[cell] = {**original, 'prior_audit': {**row, 'final': selected}}
+        if not changed:
+            return results
+        # Only changed cells get a second target-only reading and audit, not the whole batch.
+        rereadings = self._read_target_texts([
+            {'review_key': row['review_key'], 'lang': row['lang'], 'text': row['prior_audit']['final']}
+            for row in changed.values()
+        ])
+        rechecked = self._audit_with_readings(list(changed.values()), rereadings)
+        for row in rechecked:
+            cell = key(row)
+            original = originals.get(cell)
+            if cell not in changed or not original:
+                continue
+            decision = str(row.get('decision')).upper()
+            selected = original.get('current') if decision == 'REVERT' else row.get('final')
+            if decision in {'ACCEPT', 'REVISE', 'REVERT'} and rereadings[cell]['text'] != selected:
+                # Existing per-cell validation retries this item while checkpointing sound siblings.
+                unresolved = row.get('unresolved_issues', [])
+                row['unresolved_issues'] = (unresolved if isinstance(unresolved, list) else [str(unresolved)]) + [
+                    'Final target changed after independent reading; semantic evidence is not bound to final text.'
+                ]
+            rejected = changed[cell]['prior_audit'].get('rejected_model_decision')
+            if rejected:
+                row.setdefault('rejected_model_decision', rejected)
+        return [row for row in results if key(row) not in changed] + rechecked
 
 
 def _request_signature(row: dict[str, Any]) -> str:

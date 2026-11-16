@@ -112,19 +112,27 @@ def test_blind_target_reading_does_not_receive_source_or_reviewer_reason():
 
         def _chat_json(self, prompt, payload, **kwargs):
             calls.append(payload)
-            if len(calls) == 1:
+            if kwargs['stage'] == 'blind':
                 assert set(payload["rows"][0]) == {"review_key", "lang", "text"}
+                if len(calls) == 3:
+                    assert payload['rows'][0]['text'] == 'Original.'
+                    return {'rows': [{'review_key': 'a', 'lang': 'FR', 'meaning': 'Original meaning.',
+                                      'predicate_object': 'original object', 'tone': 'neutral'}]}
                 return {"rows": [{"review_key": "a", "lang": "FR", "meaning": "Worry about a head.",
                                   "predicate_object": "head", "tone": "odd reassurance"}]}
+            if len(calls) == 4:
+                assert payload['suggestions'][0]['independent_target_reading']['text'] == 'Original.'
+                return {'rows': [{'review_key': 'a', 'lang': 'FR', 'decision': 'REVERT', 'final': 'Original.'}]}
             assert payload["suggestions"][0]["independent_target_reading"]["predicate_object"] == "head"
             return {"rows": [{"review_key": "a", "lang": "FR", "decision": "ACCEPT", "final": "Ne te fais pas de souci pour ta jolie petite tête."}]}
 
     result = Client().audit_batch([{"review_key": "a", "lang": "FR", "suggested": "Ne te soucie pas de ta tête.",
                                    "cn": "不要为这事操心", "source_mode":"en", "translation_source":"Don't worry your pretty little head about it.",
                                    "current": "Original.", "reason": "untrusted", "semantic_check_required": True}])
-    assert result[0]["independent_target_reading"]["meaning"] == "Worry about a head."
+    assert result[0]["independent_target_reading"]["meaning"] == "Original meaning."
+    assert result[0]["independent_target_reading"]["text"] == "Original."
     assert result[0]['decision'] == 'REVERT' and result[0]['final'] == 'Original.'
-    assert len(calls) == 2
+    assert len(calls) == 4
 
 
 def test_term_waiver_bound_to_exact_target_source_and_context():

@@ -360,9 +360,9 @@ class LargeTextMultilingualProofreadTests(unittest.TestCase):
                     {
                         "review_key": row["review_key"],
                         "lang": row["lang"],
-                        "decision": "ACCEPT",
-                        "final": row["suggested"],
-                        "reason": "accepted",
+                        "decision": "REVERT",
+                        "final": row["current"],
+                        "reason": "Style-only rename; the established term is correct.",
                     }
                     for row in suggestions
                 ]

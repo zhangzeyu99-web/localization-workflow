@@ -23,6 +23,7 @@ from utils.large_text_multilingual_executor import (
 )
 from utils.large_text_multilingual_runner import load_manifest
 from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES
+from utils.localization_quality_policy import requires_name_semantic_check
 from utils.structured_text_template import (
     ParsedTemplate,
     ReviewSlot,
@@ -108,6 +109,7 @@ def _review_signature(row: dict[str, Any], target_langs: list[str]) -> str:
             "risk_flags": row.get("risk_flags") or [],
             "tokens": row.get("tokens") or [],
             "term_hits": row.get("term_hits") or [],
+            "seed_origin": row.get("seed_origin", ""),
             "translations": {
                 lang: (row.get("translations") or {}).get(lang, "") for lang in target_langs
             },
@@ -182,6 +184,8 @@ def _review_row(row: dict[str, Any], review_key: str, target_langs: list[str]) -
         "risk_flags": row.get("risk_flags") or [],
         "protected_tokens": row.get("tokens") or [],
         "term_hits": row.get("term_hits") or [],
+        "seed_origin": row.get("seed_origin") or "",
+        "name_semantic_check_required": requires_name_semantic_check(row),
         "translations": {
             lang: str((row.get("translations") or {}).get(lang) or "") for lang in target_langs
         },
@@ -198,6 +202,7 @@ def _is_high_risk_review_row(row: dict[str, object]) -> bool:
         or len(row.get("protected_tokens") or []) >= 3
         or len(row.get("term_hits") or []) >= 3
         or explicit
+        or row.get('name_semantic_check_required')
     )
 
 
@@ -486,9 +491,14 @@ def _validate_audit(
             raise ValueError(f"audit {decision} JSON integrity failed: {integrity}")
         if fix.get('status') == 'KEEP' and decision == 'REVERT':
             raise ValueError('A KEEP audit must ACCEPT the current target or REVISE it; REVERT is unresolved')
+        if fix.get('seed_origin') == 'glossary_exact' and selected != str(fix.get('current') or ''):
+            raise ValueError('glossary_semantic_conflict: do not silently change or restore an exact glossary seed. '
+                             'For style-only edits, audit the current term; for a meaning defect, report '
+                             'unresolved_issues, resolve the actual glossary, and recheck the affected scope '
+                             'in a new task directory when the source snapshot changes.')
         from utils.semantic_regression import known_semantic_regressions
 
-        if decision in {"ACCEPT", "REVISE"} and known_semantic_regressions(fix, str(row["lang"]), final):
+        if known_semantic_regressions(fix, str(row["lang"]), selected):
             raise ValueError("known semantic regression in accepted audit final")
         check = row.get("semantic_check")
         if fix.get("semantic_check_required") and decision in {"ACCEPT", "REVISE"}:
@@ -499,6 +509,23 @@ def _validate_audit(
                 "meaning_preserved", "roles_preserved", "tone_preserved"
             )):
                 raise ValueError("dialogue semantic evidence missing or contradicts accepted change")
+        if fix.get('name_semantic_check_required'):
+            if not _preserves_protected_tokens(str(fix.get('cn') or ''), selected, fix.get('protected_tokens')):
+                raise ValueError('name final must preserve protected tokens; cannot restore an unaudited target')
+            if not isinstance(check, dict) or check.get('target_text') != selected or any(
+                not isinstance(check.get(field), str) or not check[field].strip()
+                for field in ('source_meaning', 'final_meaning')
+            ) or any(check.get(field) is not True for field in (
+                'meaning_preserved', 'roles_preserved', 'tone_preserved',
+                'head_and_modifiers_preserved', 'no_invented_entities', 'natural_target'
+            )):
+                raise ValueError('name semantic evidence missing or contradicts selected final')
+            reading = row.get('independent_target_reading')
+            if not isinstance(reading, dict) or reading.get('text') != selected or any(
+                not isinstance(reading.get(field), str) or not reading[field].strip()
+                for field in ('meaning', 'predicate_object', 'tone')
+            ):
+                raise ValueError('name semantic reading must be bound to the selected final text')
         normalized = {
             "review_key": str(row["review_key"]),
             "lang": str(row["lang"]).upper(),
@@ -646,6 +673,9 @@ def run_deep_proofread(
                 and str(hit.get("source") or hit.get("CN") or hit.get("term") or "")
                 in source_slot
             ]
+            context = row.get('context')
+            slot_context = {**context, 'segment_source_context': slots[target_langs[0]].source_context} if isinstance(context, dict) else slots[target_langs[0]].source_context
+            slot_name_check = requires_name_semantic_check({**row, 'cn': source_slot, 'term_hits': term_hits})
             review_rows.append(
                 {
                     "review_key": review_key,
@@ -654,7 +684,9 @@ def run_deep_proofread(
                     "source_mode": "cn",
                     "reference_en": "",
                     "reference_en_status": "not_requested",
-                    "context": slots[target_langs[0]].source_context,
+                    "context": slot_context,
+                    "seed_origin": row.get('seed_origin') or '',
+                    "name_semantic_check_required": slot_name_check,
                     "risk_flags": row.get("risk_flags") or [],
                     "protected_tokens": [],
                     "term_hits": term_hits,
@@ -792,10 +824,11 @@ def run_deep_proofread(
                     'cn', 'translation_source', 'source_mode', 'reference_en',
                     'reference_en_status', 'context', 'risk_flags',
                     'protected_tokens', 'term_hits', 'dialogue_evidence',
+                    'seed_origin', 'name_semantic_check_required',
                 )},
                 'current': (trusted.get('translations') or {}).get(suggestion['lang'], ''),
                 'dialogue_evidence': _language_evidence(trusted.get('dialogue_evidence'), suggestion['lang']),
-                'semantic_check_required': bool(trusted.get('dialogue_evidence')) or any(
+                'semantic_check_required': bool(trusted.get('dialogue_evidence')) or bool(trusted.get('name_semantic_check_required')) or any(
                     'dialogue' in str(flag).lower() or 'idiom' in str(flag).lower()
                     for flag in (trusted.get('risk_flags') or [])
                 ),
@@ -908,9 +941,7 @@ def run_deep_proofread(
                     final_text = decision["final"] or suggestion["suggested"]
                     reasons.append(suggestion["reason"])
                     audit_reasons.append(decision["reason"])
-                if str(row.get("seed_origin") or "") == "glossary_exact":
-                    final_text = before
-                elif not _preserves_protected_tokens(str(row.get('cn') or before), final_text, row.get("tokens") or []):
+                if not _preserves_protected_tokens(str(row.get('cn') or before), final_text, row.get("tokens") or []):
                     final_text = before
                 if final_text != before:
                     issues.append(

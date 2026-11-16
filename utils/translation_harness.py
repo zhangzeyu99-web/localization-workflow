@@ -21,6 +21,7 @@ from openpyxl import load_workbook
 from process_language import _load_term_base
 from utils.excel_reader import get_text_pairs, read_language_file, resolve_language_index
 from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES, normalize_language_code
+from utils.localization_quality_policy import QUALITY_POLICY_VERSION, requires_name_semantic_check
 from utils.name_policy import build_name_policy, resolve_name_type
 from utils.source_reference import (
     collect_english_references,
@@ -149,6 +150,7 @@ def prepare_translation_harness(
         lang,
         style_hint=style_hint,
         source_mode=source_mode,
+        term_lookup=term_lookup if term_base_path else None,
     )
 
     target_status = analyze_target_column(pairs, lang=lang)
@@ -604,6 +606,7 @@ def _load_translation_cache(
     lang: str,
     style_hint: str = "",
     source_mode: str = "cn",
+    term_lookup: dict[str, dict] | None = None,
 ) -> dict[tuple[str, str, str], str]:
     cache_path = project_dir / ".translation_cache" / f"{lang}.jsonl"
     if not cache_path.exists():
@@ -619,6 +622,13 @@ def _load_translation_cache(
         if cached_source_mode != requested_source_mode:
             continue
         source = str(row.get("source", ""))
+        exact_term = (term_lookup or {}).get(source.strip(), {})
+        exact_hits = [{'source': source, 'category': exact_term.get('category', '')}] if isinstance(exact_term, dict) else []
+        is_name = requires_name_semantic_check({**row, 'cn': source, 'term_hits': exact_hits})
+        if is_name and row.get('language_quality_policy_version') != QUALITY_POLICY_VERSION:
+            continue
+        if is_name and term_lookup is not None and row.get('term_hits') != _term_hits(source, term_lookup):
+            continue
         reference_en = str(row.get("reference_en", ""))
         reference_en_status = str(row.get("reference_en_status", "not_requested"))
         translation = str(row.get("translation", ""))
@@ -662,11 +672,13 @@ def _update_translation_cache(
             "source": source,
             "translation": responses[row_id],
             "text_type": row.get("text_type", ""),
+            "term_hits": row.get("term_hits") or [],
             "lang": lang,
             "style_hint": style_hint,
             "source_mode": source_mode,
             "reference_en": reference_en,
             "reference_en_status": reference_en_status,
+            "language_quality_policy_version": QUALITY_POLICY_VERSION,
         }
     _write_jsonl(cache_path, [row for _, row in sorted(current.items())])
     return cache_path

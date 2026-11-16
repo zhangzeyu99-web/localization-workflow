@@ -24,7 +24,7 @@ from utils.large_text_multilingual_executor import (
     translate_manifest,
 )
 from utils.large_text_multilingual_gate import apply_dry_run, cache_lint, readback_gate
-from utils.large_text_multilingual_pack import PackArtifacts, prepare_pack
+from utils.large_text_multilingual_pack import PackArtifacts, load_style_hint, prepare_pack
 from utils.relay_runtime import RelayRuntime, atomic_json, concurrency, task_lock
 from utils.large_text_multilingual_proofread import AuditClient, ReviewClient, run_deep_proofread
 from utils.large_text_residue_repair import repair_cache_residue
@@ -98,14 +98,19 @@ def _qa_summary(
     workbook.close()
 
 
-def run_pipeline(*, task_dir: Path, api_concurrency: int = 4, retry_failed: bool = False, **kwargs) -> PipelineResult:
+def run_pipeline(*, task_dir: Path, api_concurrency: int = 4, retry_failed: bool = False,
+                 style_hint_file: Path | None = None, **kwargs) -> PipelineResult:
     concurrency(api_concurrency)
+    style_hint_path = Path(style_hint_file).resolve() if style_hint_file is not None else None
+    style_hint = load_style_hint(style_hint_path)
     work_dir = task_dir / "_work" / "large_text_multilingual"
     with task_lock(work_dir):
         runtime = RelayRuntime(work_dir, limit=api_concurrency, retry_failed=retry_failed)
         config = {key: value for key, value in kwargs.items()
                   if key not in {"translation_client", "reviewer", "auditor"}}
         config.update(task_dir=task_dir, api_concurrency=api_concurrency)
+        if style_hint_path is not None:
+            config['style_hint_file'] = style_hint_path
         serializable = json.loads(json.dumps(config, default=str))
         snapshot = []
         for path in [*kwargs.get('inputs', []), kwargs.get('term_base'), kwargs.get('glossary_receipt')]:
@@ -116,13 +121,15 @@ def run_pipeline(*, task_dir: Path, api_concurrency: int = 4, retry_failed: bool
         reuse_prepared = saved_config.exists()
         if saved_config.exists():
             previous = json.loads(saved_config.read_text(encoding='utf-8'))
+            if previous.get('style_hint', '') != style_hint:
+                raise ValueError('project style hint changed; use a new task directory, existing checkpoints preserved')
             if previous.get('source_snapshot') != snapshot:
                 raise ValueError('source/terminology changed; use a new task directory, existing checkpoints preserved')
             for field, default in [('task_mode', 'translate'), ('source_mode', 'cn'),
                                    ('proofread_mode', 'basic'), ('target_langs', [])]:
                 if previous['arguments'].get(field, default) != serializable.get(field, default):
                     raise ValueError(f'task binding changed: {field}; use a new task directory')
-        atomic_json(saved_config, {'arguments': serializable, 'source_snapshot': snapshot})
+        atomic_json(saved_config, {'arguments': serializable, 'source_snapshot': snapshot, 'style_hint': style_hint})
         try:
             previous_result = work_dir / 'pipeline_result.json'
             previous_manifest = work_dir / 'large_text_multilingual_manifest.json'
@@ -141,7 +148,8 @@ def run_pipeline(*, task_dir: Path, api_concurrency: int = 4, retry_failed: bool
                     for field in ('manifest', 'delivery_dir', 'retro_metrics'):
                         accepted[field] = Path(accepted[field])
                     return PipelineResult(**accepted)
-            result = _run_pipeline(task_dir=task_dir, runtime=runtime, reuse_prepared=reuse_prepared, **kwargs)
+            result = _run_pipeline(task_dir=task_dir, runtime=runtime, reuse_prepared=reuse_prepared,
+                                   style_hint=style_hint, **kwargs)
             atomic_json(work_dir / 'pipeline_result.json', json.loads(json.dumps(asdict(result), default=str)))
             return result
         finally:
@@ -152,7 +160,7 @@ def resume_pipeline(manifest_path: Path, *, retry_failed: bool = False,
                     api_concurrency: int | None = None) -> PipelineResult:
     config = json.loads((manifest_path.parent / 'run_config.json').read_text(encoding='utf-8'))['arguments']
     for name in ('task_dir', 'term_base', 'glossary_receipt', 'relay_config', 'review_relay_config',
-                 'audit_relay_config', 'delivery_dir'):
+                 'audit_relay_config', 'delivery_dir', 'style_hint_file'):
         if config.get(name) is not None:
             config[name] = Path(config[name])
     for name in ('inputs', 'history_dirs'):
@@ -186,6 +194,7 @@ def _run_pipeline(
     audit_relay_config: Path | None = None,
     runtime: RelayRuntime | None = None,
     reuse_prepared: bool = False,
+    style_hint: str = "",
 ) -> PipelineResult:
     started = time.perf_counter()
     target_langs = [str(lang).upper() for lang in target_langs]
@@ -219,6 +228,7 @@ def _run_pipeline(
             work_dir=work_dir,
             source_mode=source_mode,
             task_mode=task_mode,
+            style_hint=style_hint,
         )
     manifest = load_manifest(existing_manifest) if reuse_prepared and existing_manifest.exists() else build_manifest(
         work_dir=work_dir,
@@ -233,6 +243,8 @@ def _run_pipeline(
     manifest_path = Path(manifest["manifest_path"])
     manifest['execution_backend'] = 'relay'
     manifest['inputs']['task_mode'] = task_mode
+    if style_hint:
+        manifest['inputs']['style_hint'] = style_hint
     manifest['subagent_strategy'] = {'enabled': False, 'owner': 'relay_api', 'mode': proofread_mode}
     manifest['api_strategy']['concurrency_limit'] = runtime.limit if runtime else 4
     save_manifest(manifest)

@@ -388,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     pack.add_argument("--target-langs", required=True)
     pack.add_argument("--work-dir", required=True, type=Path)
     pack.add_argument("--source-mode", choices=["cn", "cn+en", "en"], default="cn")
+    pack.add_argument("--style-hint-file", type=Path, help="UTF-8 project meaning, terminology and style guidance")
     pack.add_argument("--out", type=Path)
 
     prepare = sub.add_parser("prepare", help="Create workflow manifest and lightweight preflight artifacts.")
@@ -465,13 +466,14 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--proofread-batch-size", type=int, default=30)
     run.add_argument("--proofread-workers", type=int, default=4)
     run.add_argument("--source-mode", choices=["cn", "cn+en", "en"], default="cn")
+    run.add_argument("--style-hint-file", type=Path, help="UTF-8 project meaning, terminology and style guidance")
     run.add_argument("--out", type=Path)
 
     args = parser.parse_args(argv)
     if args.command == "prepare-pack":
         from dataclasses import asdict
 
-        from utils.large_text_multilingual_pack import prepare_pack
+        from utils.large_text_multilingual_pack import load_style_hint, prepare_pack
 
         result = prepare_pack(
             inputs=args.input,
@@ -480,6 +482,7 @@ def main(argv: list[str] | None = None) -> int:
             target_langs=parse_langs(args.target_langs),
             work_dir=args.work_dir,
             source_mode=args.source_mode,
+            style_hint=load_style_hint(args.style_hint_file),
         )
         payload = asdict(result)
         write_or_print({key: str(value) if isinstance(value, Path) else value for key, value in payload.items()}, args.out)
@@ -581,6 +584,7 @@ def main(argv: list[str] | None = None) -> int:
             retry_failed=args.retry_failed,
             review_relay_config=args.review_relay_config,
             audit_relay_config=args.audit_relay_config,
+            style_hint_file=args.style_hint_file,
         )
         payload = asdict(result)
         write_or_print({key: str(value) if isinstance(value, Path) else value for key, value in payload.items()}, args.out)

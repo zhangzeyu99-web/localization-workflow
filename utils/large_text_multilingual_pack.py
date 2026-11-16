@@ -248,6 +248,10 @@ def _term_hits(text: str, terms: list[dict[str, Any]], limit: int = 12, *, sourc
     return hits
 
 
+def load_style_hint(path: Path | None) -> str:
+    return Path(path).read_text(encoding="utf-8-sig").strip() if path is not None else ""
+
+
 def prepare_pack(
     *,
     inputs: list[Path],
@@ -257,6 +261,7 @@ def prepare_pack(
     work_dir: Path,
     source_mode: str = "cn",
     task_mode: str = "translate",
+    style_hint: str = "",
 ) -> PackArtifacts:
     started = time.perf_counter()
     target_langs = [str(lang).upper() for lang in target_langs]
@@ -285,6 +290,7 @@ def prepare_pack(
                 headers = _normalize_headers(first)
                 id_col = _find_header(headers, {"id", "key", "索引id"})
                 source_col = _find_header(headers, {header.lower() for header in SOURCE_HEADERS})
+                text_type_col = _find_header(headers, {"文本类型", "文案类型", "text_type", "texttype"})
                 if source_col is None:
                     continue
                 english_col = _find_header(headers, target_header_candidates("en"))
@@ -318,6 +324,14 @@ def prepare_pack(
                                 f"target column is not empty: {input_path.name}:{sheet.title}!R{row_index}:{lang}"
                             )
                     source_text = str(source)
+                    text_type = str(values[text_type_col] or "").strip() if text_type_col is not None and text_type_col < len(values) else ""
+                    row_context = context
+                    if style_hint or text_type:
+                        row_context = {"type": context}
+                        if style_hint:
+                            row_context["project_style"] = style_hint
+                        if text_type:
+                            row_context["text_type"] = text_type
                     if source_mode == "cn":
                         reference_en = ""
                         reference_status = "not_requested"
@@ -352,7 +366,7 @@ def prepare_pack(
                         "source_file": input_path.name,
                         "sheet": sheet.title,
                         "row": row_index,
-                        "context": context,
+                        "context": row_context,
                         "cn": source_text,
                         "translation_source": translation_source,
                         "source_mode": source_mode,
@@ -418,6 +432,7 @@ def prepare_pack(
                 "source_rows_jsonl": str(source_rows_path),
                 "prepare_stats": str(stats_path),
                 "source_mode": source_mode,
+                "style_hint": style_hint,
                 "english_reference_status": (
                     EnglishReferenceStatus(
                         column=english_column_name,

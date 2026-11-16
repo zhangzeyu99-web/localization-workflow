@@ -38,6 +38,14 @@ python scripts\run_large_text_multilingual_runner.py run `
 只准备分包、不调用 API：
 
 ```powershell
+项目已有含义说明/风格 prompt 时，`run` 与 `prepare-pack` 显式加 `--style-hint-file <项目私有说明.txt>`（UTF-8，支持 BOM）。实际文本进入初译、reviewer、auditor 的 context，包含结构化纯文本槽；`文本类型/文案类型/text_type/TextType` 显式列一并传入。run 保存说明内容，resume 在 API 前核对；缺失或改动须先解决输入绑定，不能绕过快照。无说明时保留原调用兼容，不自动遍历或猜选项目文件。
+
+名称语义检查复用现有深校：明确名称/称号类型、整行术语名称分类或显式名称风险标记进入中心词、修饰对象、虚构实体和目标语自然度核对；sampled 也包含这些明确风险。不把所有短词视为称号，不将 `of` 或任何合法语法列为黑名单。KEEP 也须审查；名称的 source/final 复述、关系检查与目标盲读绑定实际选定文本（包括 REVERT）。二审换词只为该格补盲读及再审一次，再次变词走既有有界失败重试，不加全表第三轮。
+
+`glossary_exact` 的主译禁止静默改写或静默恢复。纯风格建议由 auditor 明确选回正确 current；源义与词典有冲突则报 `glossary_semantic_conflict`/未决项阻断交付，按 `TERM_CHANGE_DELIVERY_SYNC.md` 裁决、更新实际词典和已授权引用。词典变化后沿用输入快照保护，以新的范围任务目录复核受影响词条，保留旧 checkpoint。此门禁不授予任意改名，也不证明模型能识别所有未知错译；未启用深校时不会自动增加模型审校轮次。
+
+共享 API 策略版本为 `native-baseline-v2-name-relations`，后续显式续跑会按现有策略作用域隔离旧请求结果；已完成任务仍按现有成品验收路径返回，不自动重开。普通 harness 的明确名称缓存另绑定当前实际术语分类及命中快照，普通未分类短提示不按名称策略失效。
+diff --git a/docs/workflow-execution-thread-handoff.md b/docs/workflow-execution-thread-handoff.md
 python scripts\run_large_text_multilingual_runner.py prepare-pack `
   --input "<语言表.xlsx>" `
   --target-langs "EN,IDN,DE,FR,ES,PT,RU,IT,TR,TH" `

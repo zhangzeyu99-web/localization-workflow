@@ -162,6 +162,8 @@ git log -1 --date=iso --pretty=format:"%h %ad %s"
 
 ### 小批量历史译文检索
 
+- 名称/称号必须核对中心词和修饰归属，避免逐字组合出不存在的地点或实体；正确短译和正式专名保留。V2 显式传 `--style-hint-file <项目私有说明.txt>`，与普通 harness 一样提供项目含义/风格约束；正文显式文本类型和分槽上下文保留。
+- 精确术语发生语义冲突时显式阻断，不自动恢复旧译；沿用 `TERM_CHANGE_DELIVERY_SYNC.md` 修正实际词典和已授权引用，再以更新词典复核受影响范围。快照变化不允许原任务强行 resume，按既有边界开新的范围任务目录。名称的目标盲读绑定最终采用文本，二审改词只重查变化格；历史交付不自动重跑。diff --git a/templates/translation_prompt_template.txt b/templates/translation_prompt_template.txt
 当前任务唯一中文不超过 200 条时，历史语言表只作为精确复用证据，不进入完整处理：
 
 1. 先加载最新术语表和项目 brief，提取当前源文命中的术语及用户覆盖规则。

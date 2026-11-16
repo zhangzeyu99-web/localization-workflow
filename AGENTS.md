@@ -179,6 +179,8 @@
   - `mode=hard`：紧凑 UI / 按钮 / 标签
   - `mode=soft`：普通短文本软提示
   - `mode=exempt`：编号专名、复杂富文本等豁免
+- 名称和称号先核对中心词、修饰对象及实际含义，再选自然目标语表达；已确认的简洁译法不逐字补齐。V2 的 `run/prepare-pack` 支持 `--style-hint-file <项目私有说明.txt>`，已有项目说明必须显式传入，分槽也保留。明确名称类型/整行术语分类进入语义审计，不凭四字词或 `of` 等句型猜错译。
+- 精确术语复用仍须接受语义审查。仅风格变化可由 auditor 明确回退到经核对的当前主译；语义冲突报 `glossary_semantic_conflict`/未决项，禁止控制器静默恢复坏译。按 `TERM_CHANGE_DELIVERY_SYNC.md` 裁决并同步实际术语后，只复核受影响范围；原任务快照拒绝变更时用新的范围任务目录，保留旧 checkpoint，不自动重跑旧表。名称审计证据必须绑定实际选定文本，包括 REVERT。diff --git a/docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md b/docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md
 - 英语 UI hard 预算：`min(32, max(10, 中文可见长度 * 2 + 14))`。
 - 印尼语 UI hard 预算：`min(34, max(12, 中文可见长度 * 2 + 15))`。
 - 自然可懂优先，长度第二。
