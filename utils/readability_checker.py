@@ -209,6 +209,12 @@ _SOURCE_SENSITIVE_CLIPPED_PATTERNS = [
     ),
 ]
 _WORD_PATTERN = re.compile(r"[A-Za-z][A-Za-z']*")
+TEXT_TYPE_HEADERS = {'文本类型', '文案类型', 'text_type', 'texttype'}
+_TITLE_TEXT_TYPES = {
+    'title', 'chapter_title', 'quest_title', 'skill_name', 'item_name', 'feature_name',
+    'ui_skill_name', 'ui_location_name', 'ui_building_name',
+    '标题', '章节标题', '任务标题', '技能名', '道具名', '功能名',
+}
 _STATUS_OR_ERROR_SOURCE = re.compile(
     r'失败|错误|异常|超时|过多|不足|无法|不能|不可|尚未|暂无|'
     r'未达到|未找到|未开启|未购买|未完成|未解锁|未拥有|未加入|未激活|'
@@ -307,7 +313,9 @@ def _find_source_sensitive_clipped_word(original: str, translation: str) -> str:
     return ''
 
 
-def check_readability(row_id: int, original: str, translation: str, lang: str = 'en') -> list[CheckResult]:
+def check_readability(
+    row_id: int, original: str, translation: str, lang: str = 'en', *, text_type: str = '',
+) -> list[CheckResult]:
     """Return hard readability issues caused by over-compression.
 
     The check is conservative: it allows established game abbreviations such as
@@ -359,7 +367,8 @@ def check_readability(row_id: int, original: str, translation: str, lang: str = 
             confidence=0.9,
         ))
 
-    if lang == 'en' and _is_title_case_overuse(original, text):
+    is_title = str(text_type or '').strip().lower() in _TITLE_TEXT_TYPES
+    if lang == 'en' and not is_title and _is_title_case_overuse(original, text):
         results.append(CheckResult(
             row_id=row_id,
             check_type='title_case_overuse',

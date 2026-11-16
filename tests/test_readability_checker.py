@@ -173,6 +173,15 @@ class ReadabilityCheckerTests(unittest.TestCase):
 
         self.assertEqual(issues, [])
 
+    def test_explicit_titles_do_not_disable_checks_for_status_or_dialogue(self):
+        for text_type in ('title', '章节标题', 'skill_name'):
+            self.assertEqual(check_readability(1, '最后警告', 'Final Warning', text_type=text_type), [])
+        for text_type in ('', 'unknown', 'system', 'dialogue'):
+            issues = check_readability(1, '最后警告', 'Final Warning', text_type=text_type)
+            self.assertIn('title_case_overuse', {issue.check_type for issue in issues})
+        issues = check_readability(1, '登录超时', 'Logi Time', text_type='title')
+        self.assertIn('clipped_word', {issue.check_type for issue in issues})
+
     def test_allows_reasonable_login_feature_title(self):
         issues = check_readability(
             row_id=5,

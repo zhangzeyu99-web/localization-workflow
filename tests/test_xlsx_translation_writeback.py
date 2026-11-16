@@ -4,12 +4,13 @@ import json
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill
 
-from utils.xlsx_translation_writeback import verify_translation_cache, write_translation_workbooks
+from utils.xlsx_translation_writeback import _patch_row, _patch_sheet, verify_translation_cache, write_translation_workbooks
 
 
 def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -20,6 +21,72 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 
 
 class XlsxTranslationWritebackTests(unittest.TestCase):
+    def test_self_closed_blank_row_does_not_consume_next_row(self) -> None:
+        for prefix in ('', 'x:'):
+            with self.subTest(prefix=prefix):
+                empty = f'<{prefix}row r="1" />'
+                xml = (f'<{prefix}worksheet xmlns:x="urn:test"><{prefix}sheetData>'
+                       f'{empty}<{prefix}row r="2"><{prefix}c r="A2"><{prefix}v>7</{prefix}v>'
+                       f'</{prefix}c></{prefix}row></{prefix}sheetData></{prefix}worksheet>').encode()
+                result = _patch_sheet(xml, [(2, 2, 'accepted')])
+                self.assertIn(empty.encode(), result)
+                self.assertIn(b'r="B2"', result)
+                self.assertIn(b'>accepted<', result)
+                with self.assertRaisesRegex(ValueError, 'row is missing: 1'):
+                    _patch_sheet(xml, [(1, 2, 'refuse unsupported empty row')])
+
+    def test_patch_groups_rows_preserves_namespace_order_and_carriage_return(self) -> None:
+        xml = (b'<x:worksheet xmlns:x="urn:test"><x:sheetData>'
+               b'<x:row r="2"><x:c r="A2" s="2" t="n"><x:v>4</x:v></x:c>'
+               b'<x:c r="D2" t="inlineStr"><x:is><x:t>keep</x:t></x:is></x:c></x:row>'
+               b'<x:row r="3"><x:c r="A3"><x:v>5</x:v></x:c></x:row>'
+               b'</x:sheetData><x:extLst/></x:worksheet>')
+        with patch('utils.xlsx_translation_writeback._patch_row', wraps=_patch_row) as worker:
+            result = _patch_sheet(xml, [(2, 3, 'first'), (2, 2, ' B\r\n '), (2, 3, 'last')])
+        self.assertEqual(worker.call_count, 1)
+        self.assertIn(b' B&#13;\n ', result)
+        self.assertIn(b'xml:space="preserve"', result)
+        self.assertLess(result.index(b'r="B2"'), result.index(b'r="C2"'))
+        self.assertLess(result.index(b'r="C2"'), result.index(b'r="D2"'))
+        self.assertIn(b'<x:c r="A2" s="2" t="n"><x:v>4</x:v></x:c>', result)
+        self.assertIn(b'<x:row r="3"><x:c r="A3"><x:v>5</x:v></x:c></x:row>', result)
+        self.assertIn(b'>last<', result)
+        self.assertNotIn(b'>first<', result)
+        with self.assertRaisesRegex(ValueError, 'row is missing: 4'):
+            _patch_sheet(xml, [(4, 2, 'value')])
+
+    def test_writeback_preserves_approved_boundary_whitespace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'source.xlsx'
+            workbook = Workbook()
+            workbook.active.append(['ID', 'CN', 'EN', 'DE'])
+            workbook.active.append([1, 'Reward', None, None])
+            workbook.save(source)
+            workbook.close()
+            cache = root / 'cache.jsonl'
+            row = {'key': 'source.xlsx::Sheet::1::2', 'id': '1', 'source_file': source.name,
+                   'sheet': 'Sheet', 'row': 2, 'cn': 'Reward',
+                   'translations': {'EN': '\r\n  Reward  \r', 'DE': '\t  Belohnung \t'}}
+            write_jsonl(cache, [row])
+            output = root / 'delivery'
+            write_translation_workbooks(inputs=[source], cache_jsonl=cache,
+                                        target_langs=['EN', 'DE'], output_dir=output)
+            result = verify_translation_cache(cache_jsonl=cache, delivery_dir=output,
+                                              target_langs=['EN', 'DE'])
+            self.assertEqual(result['hard_blockers'], 0)
+            saved = load_workbook(output / source.name)
+            try:
+                self.assertEqual(saved.active['C2'].value, row['translations']['EN'])
+                self.assertEqual(saved.active['D2'].value, row['translations']['DE'])
+            finally:
+                saved.close()
+            row['translations']['DE'] = ' \t\n'
+            write_jsonl(cache, [row])
+            with self.assertRaisesRegex(ValueError, 'blank target translation'):
+                write_translation_workbooks(inputs=[source], cache_jsonl=cache,
+                                            target_langs=['EN', 'DE'], output_dir=output)
+
     def test_writeback_handles_underreported_worksheet_dimension(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

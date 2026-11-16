@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -32,8 +32,8 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    from utils.relay_runtime import atomic_json
+    atomic_json(path, payload)
 
 
 def _flatten_settings(data: dict[str, Any]) -> dict[str, Any]:
@@ -195,6 +195,10 @@ def build_manifest(
         "status": "prepared",
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "reporting": {
+            "next_report_at": (datetime.now().astimezone() + timedelta(minutes=30)).isoformat(timespec="seconds"),
+            "policy": "report ETA and reason before yielding unfinished work; report again by agreed checkpoint",
+        },
         "manifest_path": str(manifest_path),
         "work_dir": str(work_dir),
         "inputs": {
@@ -273,19 +277,16 @@ def record_api_smoke(
 
 
 def workflow_status(manifest: dict[str, Any]) -> dict[str, Any]:
-    phase_status = manifest.get("phase_status") or {}
-    next_phase = "complete"
-    for phase in manifest.get("critical_path") or []:
-        if phase_status.get(phase) == "pending":
-            next_phase = phase
-            break
+    from utils.workflow_progress import delivery_status
+    delivery = delivery_status(manifest)
     return {
         "workflow": manifest.get("workflow"),
         "status": manifest.get("status"),
-        "next_phase": next_phase,
+        "next_phase": delivery['current_phase'],
         "api_model": (manifest.get("api_strategy") or {}).get("model", ""),
         "subagent_mode": (manifest.get("subagent_strategy") or {}).get("mode", "not_triggered"),
         "subagent_enabled": (manifest.get("subagent_strategy") or {}).get("enabled", False),
+        "delivery": delivery,
     }
 
 
@@ -414,6 +415,16 @@ def main(argv: list[str] | None = None) -> int:
     status.add_argument("--manifest", required=True, type=Path)
     status.add_argument("--out", type=Path)
 
+    queue = sub.add_parser("queue-status", help="List independent ready tasks without launching API work.")
+    queue.add_argument("--queue", required=True, type=Path)
+    queue.add_argument("--out", type=Path)
+
+    report = sub.add_parser("record-report", help="Record an actually delivered progress report and next checkpoint.")
+    report.add_argument("--manifest", required=True, type=Path)
+    report.add_argument("--reason", required=True)
+    report.add_argument("--next-report-at", required=True)
+    report.add_argument("--out", type=Path)
+
     resume = sub.add_parser("resume", help="Resume saved API task without resending accepted cells.")
     resume.add_argument("--manifest", required=True, type=Path)
     resume.add_argument("--retry-failed", action="store_true")
@@ -506,6 +517,22 @@ def main(argv: list[str] | None = None) -> int:
         if progress.exists():
             payload['relay'] = read_json(progress)
         write_or_print(payload, args.out)
+        return 0
+    if args.command == "queue-status":
+        from utils.workflow_progress import queue_status
+        write_or_print(queue_status(read_json(args.queue)), args.out)
+        return 0
+    if args.command == "record-report":
+        deadline = datetime.fromisoformat(args.next_report_at.replace('Z', '+00:00'))
+        if deadline.tzinfo is None or deadline <= datetime.now().astimezone():
+            raise ValueError('next report time must be in the future with an explicit timezone')
+        manifest = load_manifest(args.manifest)
+        manifest.setdefault('reporting', {}).update(
+            last_reported_at=datetime.now().astimezone().isoformat(timespec='seconds'),
+            last_report_reason=args.reason, next_report_at=deadline.isoformat(timespec='seconds'),
+        )
+        save_manifest(manifest)
+        write_or_print(workflow_status(manifest), args.out)
         return 0
     if args.command == "resume":
         from dataclasses import asdict

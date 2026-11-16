@@ -16,6 +16,7 @@ from openpyxl import Workbook, load_workbook
 
 from utils.large_text_multilingual_executor import OpenAICompatibleClient, _execute_batch, _cached_requests
 from utils.large_text_multilingual_pipeline import run_pipeline, resume_pipeline
+from utils.large_text_multilingual_proofread import _pid_is_running
 from utils.relay_runtime import (
     FatalRelayError, IncompletePhase, RelayRuntime, RequestBudgetExceeded,
     ResponseTooLarge, bounded_results, classify_error, concurrency, task_lock,
@@ -34,6 +35,28 @@ def runtime(path=None, **kwargs):
 
 def payload(key="a"):
     return {"rows": [{"request_key": key, "cn": "Reward"}], "target_languages": ["EN"]}
+
+
+def test_process_liveness_probe_does_not_signal_child():
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'],
+                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    try:
+        assert _pid_is_running(child.pid)
+        assert child.poll() is None
+    finally:
+        child.terminate()
+        child.wait(timeout=5)
+    assert not _pid_is_running(child.pid)
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows query permissions')
+def test_windows_liveness_access_denied_keeps_lock_owner_live():
+    with patch('ctypes.WinDLL') as library, patch('ctypes.get_last_error', return_value=5):
+        library.return_value.OpenProcess.return_value = None
+        assert _pid_is_running(123456)
+    with patch('ctypes.WinDLL') as library, patch('ctypes.get_last_error', return_value=87):
+        library.return_value.OpenProcess.return_value = None
+        assert not _pid_is_running(123456)
 
 
 def test_hard_cap_and_shared_roles(tmp_path):
@@ -97,6 +120,50 @@ def test_http_classification():
     assert isinstance(classify_error(quota), FatalRelayError)
     with pytest.raises(ResponseTooLarge):
         classify_error(urllib.error.HTTPError('url', 413, 'x', {}, None))
+
+
+@pytest.mark.parametrize('code', ['daily_limit_exceeded', 'daily_quota_exceeded', 'insufficient_balance'])
+def test_daily_quota_is_fatal_and_never_retried(tmp_path, code):
+    runner = runtime(tmp_path)
+    def send():
+        body = json.dumps({'error': {'code': code, 'message': 'PRIVATE'}}).encode()
+        raise urllib.error.HTTPError('url', 429, 'quota', {}, io.BytesIO(body))
+    with pytest.raises(FatalRelayError):
+        runner.request('relay', 'review', payload(), send)
+    with pytest.raises(FatalRelayError):
+        runner.request('relay', 'audit', payload('next'), send)
+    assert runner.requests == 1 and runner.retries == 0
+    progress = json.loads((tmp_path / 'relay_progress.json').read_text(encoding='utf-8'))
+    assert progress['stop_reason'] == 'balance'
+    assert 'PRIVATE' not in (tmp_path / 'relay_requests.jsonl').read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('body', [
+    {'code': 1, 'message': '当天可用额度已达到上限,当前限额:40000 / Day', 'data': None},
+    {'error': {'code': 'insufficient_quota', 'message': 'PRIVATE provider detail'}},
+    {'error': {'message': 'Daily quota exceeded: PRIVATE provider detail'}},
+])
+def test_http_success_quota_error_stops_all_roles_without_retry(tmp_path, body):
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({'base_url': 'https://example.invalid', 'model': 'mock'}), encoding='utf-8')
+    client = OpenAICompatibleClient(config, runtime=runtime(tmp_path))
+    with patch('urllib.request.urlopen', side_effect=lambda *a, **k: io.BytesIO(json.dumps(body).encode('utf-8'))) as send:
+        with pytest.raises(FatalRelayError, match='quota'):
+            client._chat_json('Test', payload(), stage='audit')
+        with pytest.raises(FatalRelayError, match='quota'):
+            client._chat_json('Test', payload('new'), stage='translate')
+    assert send.call_count == 1
+    assert client.runtime.retries == 0
+    assert 'PRIVATE' not in (tmp_path / 'relay_requests.jsonl').read_text(encoding='utf-8')
+
+
+def test_valid_response_mentioning_quota_is_not_a_business_error(tmp_path):
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({'base_url': 'https://example.invalid', 'model': 'mock'}), encoding='utf-8')
+    client = OpenAICompatibleClient(config, runtime=runtime(tmp_path))
+    body = {'choices': [{'message': {'content': '{"text":"Daily quota exceeded"}'}}]}
+    with patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(body).encode('utf-8'))):
+        assert client._chat_json('Test', payload()) == {'text': 'Daily quota exceeded'}
 
 
 def test_bounded_queue_and_failure_isolation():

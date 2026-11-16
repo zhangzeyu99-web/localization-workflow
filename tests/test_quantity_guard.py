@@ -3,12 +3,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from utils.large_text_multilingual_gate import cache_lint
+from utils.large_text_multilingual_gate import cache_lint, pair_integrity_issues
 from utils.quality_harness_rules import DEFAULT_HARD_ISSUES, check_row
 from utils.quantity_guard import quantity_issues
 
 
 class QuantityGuardTests(unittest.TestCase):
+    def test_german_calendar_range_requires_exact_month_days_and_other_numbers(self):
+        source={'cn':'8.17-8.19活动期间，180级以上玩家获得奖励'}
+        good='Während des Events vom 17. bis 19. August erhalten Spieler ab Stufe 180 Belohnungen.'
+        self.assertNotIn('number_missing',{kind for kind,_ in pair_integrity_issues(source,'DE',good)})
+        for bad in [good.replace('19. August','18. August'),good.replace('August','September'),good.replace('180','179')]:
+            self.assertIn('number_missing',{kind for kind,_ in pair_integrity_issues(source,'DE',bad)})
+        repeated={'cn':'8.17-8.19活动期间，伤害提高8.17%'}
+        self.assertIn('number_missing',{kind for kind,_ in pair_integrity_issues(repeated,'DE','Vom 17. bis 19. August steigt der Schaden.')})
+        self.assertIn('number_missing',{kind for kind,_ in pair_integrity_issues({'cn':'伤害8.17-8.19'},'DE','Vom 17. bis 19. August')})
+
     def test_fixture_gate_and_harness_parity(self):
         fixture = json.loads((Path(__file__).resolve().parents[1] / 'fixtures/quality_regression.json').read_text(encoding='utf-8'))
         for case in fixture['quantity_guard_cases']:

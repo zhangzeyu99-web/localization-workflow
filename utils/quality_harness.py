@@ -20,6 +20,7 @@ from openpyxl import load_workbook
 from utils.language_config import normalize_language_code
 from utils.name_policy import evaluate_name_translation, find_name_collisions, resolve_name_type
 from utils.punctuation_policy import punctuation_issues
+from utils.readability_checker import TEXT_TYPE_HEADERS, check_readability
 from utils.review_consistency import GROUP_HARD_ISSUES, group_issues, history_issues, load_history_rows, normalized
 from utils.quality_harness_rules import (  # noqa: F401  (re-exported)
     BROKEN_BULLET_PATTERN,
@@ -159,6 +160,7 @@ def run_fixture(fixture: dict, lang: str = 'en') -> HarnessResult:
             source=case.get('source', ''),
             translation=case.get('translation', ''),
             lang=case_lang,
+            text_type=case.get('text_type', ''),
         )
         name_type = str(case.get('name_type', ''))
         if name_type:
@@ -240,7 +242,9 @@ def scan_workbook(
             id_col, src_col, tgt_col = _detect_columns(ws, lang=lang)
             if src_col is None or tgt_col is None:
                 continue
-            max_col = max(c for c in (id_col, src_col, tgt_col) if c is not None) + 1
+            type_col = next((i for i, value in enumerate(ws[1])
+                             if str(value.value or '').strip().lower() in TEXT_TYPE_HEADERS), None)
+            max_col = max(c for c in (id_col, src_col, tgt_col, type_col) if c is not None) + 1
             numbered_rows: list[dict] = []
             name_rows: list[dict] = []
             for row_index, row in enumerate(
@@ -262,9 +266,11 @@ def scan_workbook(
                     'source': source,
                     'translation': target,
                 })
-                row_issues = check_row(row_id, source, target, lang=lang, punctuation_mode=punctuation_mode)
-                row_issues.extend(_check_ui_length(row_id, source, target, lang=lang))
                 name_type = resolve_name_type(source, name_type_lookup)
+                text_type = str(row[type_col] or '') if type_col is not None else ''
+                row_issues = check_row(row_id, source, target, lang=lang, punctuation_mode=punctuation_mode,
+                                       text_type=text_type or name_type)
+                row_issues.extend(_check_ui_length(row_id, source, target, lang=lang))
                 if name_type:
                     row_issues.extend(
                         evaluate_name_translation(
@@ -360,6 +366,52 @@ def scan_workbook(
         wb.close()
 
     return result
+
+
+def scan_cache_surface(rows: list[dict], target_langs: list[str]) -> dict:
+    """Run existing surface/series rules before XLSX export, never replace final QA."""
+    from collections import defaultdict
+    from utils.large_text_multilingual_gate import row_translation, source_text
+
+    result = HarnessResult(passed=True)
+    fail_set = DEFAULT_HARD_ISSUES | GROUP_HARD_ISSUES
+    for raw_lang in target_langs:
+        lang = normalize_language_code(raw_lang)
+        groups = defaultdict(list)
+        for index, row in enumerate(rows, 1):
+            source, target = source_text(row), row_translation(row, raw_lang.upper())
+            if not source or not target:
+                continue  # Coverage and source integrity remain mandatory in cache-lint.
+            record = {'file': row.get('source_file', ''), 'sheet': row.get('sheet', ''),
+                      'row': row.get('row', index), 'id': row.get('id', row.get('key', index)),
+                      'source': source, 'translation': target, 'lang': raw_lang.upper()}
+            groups[(record['file'], record['sheet'])].append(record)
+            result.rows_scanned += 1
+            issues = check_readability(record['id'], source, target, lang=lang,
+                                       text_type=str(row.get('text_type') or ''))
+            issues += _check_ui_length(record['id'], source, target, lang)
+            issues += _check_surface_regressions(record['id'], source, target, lang)
+            if any(issue.check_type == 'internal_token_leak' for issue in issues):
+                issues = [issue for issue in issues if issue.check_type != 'opaque_abbreviation']
+            for issue in issues:
+                result.issue_counts[issue.check_type] += 1
+                if issue.check_type in fail_set:
+                    result.passed = False
+                    result.issues.append({**record, 'check_type': issue.check_type,
+                                          'severity': issue.severity, 'message': issue.message,
+                                          'auto_fix': issue.auto_fix})
+        for records in groups.values():
+            first_issue = len(result.issues)
+            _append_numbered_term_consistency_issues(records, result, fail_set, lang=lang)
+            for issue in group_issues(records):
+                result.issue_counts[issue['check_type']] += 1
+                if issue['check_type'] in fail_set:
+                    result.passed = False
+                    result.issues.append(issue)
+            for issue in result.issues[first_issue:]:
+                issue['lang'] = raw_lang.upper()
+    return {**result.to_dict(), 'scope': 'surface_and_same_sheet_series_precheck',
+            'replaces_final_harness': False, 'hard_blockers': len(result.issues)}
 
 
 def merge_results(results: list[HarnessResult]) -> HarnessResult:

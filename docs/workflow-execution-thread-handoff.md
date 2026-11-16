@@ -1,5 +1,10 @@
 # 本地化工作流执行线程 Handoff
 
+## 大批量进度、调度与效率
+
+按 `RELAY_EFFICIENCY_AND_REPORTING.md` 执行。首轮未完成必须给条件 ETA、原因、剩余阶段和下一次回报时刻；runner 的 `status`、`record-report` 和只读 `queue-status` 为记录入口，不代发消息或代启动控制器。待确认格不拖住无依赖的已授权任务。缓存 UI/缩略语/编号系列检查前移，原生 pipeline complete 仍须结合项目 publication、真实 Excel 和视觉验收才能报正式交付。旧任务、已完成缓存和已暂停自动化不因本规则恢复。
+
+
 ## 中转 API 稳定执行入口
 
 大文本新译和已有译文校对统一按 `RELAY_STABLE_EXECUTION.md` 执行。API 总并发默认4、最多5；初译、reviewer、auditor 共用上限，失败不回退 Codex 批量审读。已有译文使用 runner 的 `--task-mode review`；恢复用 `resume --manifest`，查状态用 `status --manifest`。已验收缓存不清空；仅明确诊断后使用 `--retry-failed` 重开耗尽预算的失败项。本入口不新增远端回填授权。
@@ -331,6 +336,7 @@ python scripts\run_large_text_multilingual_runner.py prepare-pack `
 
 ## 输出和交付规则
 
+- 同批多份需求统一到一个正式交付目录，按用途设子目录，最终ZIP置于该交付目录；不让每份需求各自在项目根增加一个交付入口。整理既有目录时按 AGENTS 的路径保护、运行状态核对和移动映射要求执行，保留缓存及历史证据。
 - 最终交付目录只放最终 `xlsx/docx/csv` 和 `QA摘要`。
 - 不把 `workpack`、`manifest`、`response`、`jsonl`、`log`、临时脚本放进交付目录。
 - 最终回复只说交付路径、处理语言、行数/文件数、QA 结果、剩余风险。

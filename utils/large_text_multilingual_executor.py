@@ -19,6 +19,7 @@ from typing import Any, Protocol
 from utils.ai_checker import SHORT_TRANSLATION_REVIEW_POLICY
 from utils.localization_quality_policy import QUALITY_POLICY_VERSION, localization_quality_policy
 from utils.large_text_multilingual_runner import load_manifest, save_manifest
+from utils.workflow_progress import update_progress
 from utils.structured_text_template import (
     ParsedTemplate,
     TranslationSlot,
@@ -78,7 +79,14 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def record_progress(manifest: dict, phase: str, *, total: int, accepted: int,
+                    reused: int, started: float) -> None:
+    update_progress(manifest, phase, total=total, accepted=accepted, reused=reused,
+                    seconds=time.perf_counter() - started)
+    save_manifest(manifest)
 
 
 def start_phase(manifest: dict[str, Any], phase: str) -> None:
@@ -257,6 +265,18 @@ class OpenAICompatibleClient:
                 body = json.loads(response.read().decode("utf-8"))
             choices = body.get("choices") if isinstance(body, dict) else None
             if not isinstance(choices, list) or not choices:
+                # Some gateways report exhausted quota inside an HTTP 200 body.
+                detail = body.get('error') if isinstance(body, dict) else None
+                detail = detail if isinstance(detail, dict) else body if isinstance(body, dict) else {}
+                code = str(detail.get('code', '')).lower()
+                message = str(detail.get('message', '')).lower()
+                if code in {'insufficient_quota', 'quota_exceeded', 'billing_hard_limit_reached',
+                            'daily_limit_exceeded', 'daily_quota_exceeded', 'insufficient_balance'} or any(
+                    text in message for text in ('quota exhausted', 'quota exceeded', 'insufficient quota',
+                        'insufficient balance', 'daily limit', 'daily quota', '额度已达到上限',
+                        '额度已达上限', '额度不足', '余额不足', '配额已用尽')
+                ):
+                    raise FatalRelayError('balance', 'relay quota exhausted; check provider daily limit/balance')
                 raise RuntimeError("relay response is missing choices")
             if choices[0].get("finish_reason") == "length":
                 raise ResponseTooLarge("relay output truncated")
@@ -797,6 +817,12 @@ def translate_manifest(
         cached_requests = _cached_requests(checkpoint_dir, request_rows, target_langs)
 
         translated: dict[str, dict[str, str]] = {}
+        reused_cells = sum(len(values) for values in cached_requests.values())
+        accepted_cells = reused_cells
+        def translation_progress():
+            record_progress(manifest, 'api_translate', total=len(request_rows) * len(target_langs),
+                            accepted=accepted_cells, reused=reused_cells, started=started)
+        translation_progress()
         reused_batches = 0
         batch_count = len(batches) + int(bool(smoke_batch))
         if smoke_batch:
@@ -809,6 +835,8 @@ def translate_manifest(
                 cached_requests,
             )
             translated.update(values)
+            accepted_cells += sum(len(value) - len(cached_requests.get(key, {})) for key, value in values.items())
+            translation_progress()
             reused_batches += int(reused)
             manifest.setdefault("phase_status", {})["api_smoke"] = "done"
             manifest["api_smoke"] = {
@@ -829,7 +857,9 @@ def translate_manifest(
                 else:
                     values, reused = result
                     translated.update(values)
+                    accepted_cells += sum(len(value) - len(cached_requests.get(key, {})) for key, value in values.items())
                     reused_batches += int(reused)
+                translation_progress()
             _atomic_write_text(work_dir / 'translation_failures.json', json.dumps(failures, ensure_ascii=False))
             if failures:
                 raise IncompletePhase(f'{len(failures)} translation batches unresolved; healthy batches saved')
@@ -845,6 +875,7 @@ def translate_manifest(
                         ][lang]
                         for slot in slots
                     },
+                    lang=lang,
                 )
                 for lang in target_langs
             }

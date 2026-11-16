@@ -334,6 +334,8 @@ def preflight(
     full_proofread: bool = False,
 ) -> dict[str, Any]:
     rows = read_jsonl(items_jsonl)
+    from utils.structured_text_template import source_template_diagnostics
+    template_findings = source_template_diagnostics(rows)
     unique_keys = {row_key(row, index) for index, row in enumerate(rows, 1)}
     long_text = [row for row in rows if int(row.get("char_len") or len(source_text(row))) > 300]
     source_rows = len(read_jsonl(source_rows_jsonl)) if source_rows_jsonl and source_rows_jsonl.exists() else None
@@ -359,6 +361,10 @@ def preflight(
         "target_language_count": len(target_langs),
         "estimated_target_cells": estimated_cells,
         "long_text_items": len(long_text),
+        "source_template_findings": template_findings,
+        "source_template_roundtrip_passed": not any(
+            item['type'] == 'source_template_invalid' for item in template_findings
+        ),
         "workbook_count": workbook_count,
         "large_pack": bool(reasons),
         "large_pack_reasons": reasons,
@@ -462,6 +468,16 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
         if re.search(r'每[^，。；\n]{0,16}1\s*(?:次|个|名|辆)', source_visible):
             each = r'\b(?:each|every|per)\b' if base_lang == 'en' else r'\bcada\b'
             if re.search(each, target_visible, re.I): target_numbers.add(Decimal(1))
+    if base_lang == 'de':
+        months=('Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember')
+        def localized_date_range(match):
+            month,start,end_month,end=map(int,match.groups())
+            if month!=end_month or not 1<=month<=12 or not (1<=start<=31 and 1<=end<=31):
+                return match[0]
+            pattern=rf'\b(?:vom|von)\s+{start}\.\s*(?:bis|[-–])\s*{end}\.\s+{months[month-1]}\b'
+            return ' ' if re.search(pattern,target_visible,re.I) else match[0]
+        # Only a complete, matching calendar range can replace these numeric tokens.
+        source_visible=re.sub(r'(?<![\d.])(\d{1,2})\.(\d{1,2})\s*[-–~]\s*(\d{1,2})\.(\d{1,2})(?=日期间|活动期间|期间)',localized_date_range,source_visible)
     source_row = {**row, 'cn': source_visible}
     missing = {value for value in source_numeric_values(source_row, preserve_small=base_lang in WORDS) if not numeric_value_present(value, target_numbers)}
     if missing:
@@ -533,12 +549,12 @@ def cache_lint(
         if unresolved:
             add_issue(issues, "unresolved_review_finding", key, "", unresolved)
         for lang in target_langs:
-            target = row_translation(row, lang).strip()
+            target = row_translation(row, lang)
             if row.get("opaque_payload_preserved") is True:
-                if target != source_text(row).strip():
+                if target != source_text(row):
                     add_issue(issues, "opaque_payload_changed", key, lang, "opaque source payload must be preserved exactly")
                 continue
-            if not target:
+            if not target.strip():
                 add_issue(issues, "empty_translation", key, lang, "target translation is empty")
                 continue
             for issue_type, detail in pair_integrity_issues(row, lang, target, punctuation_mode):

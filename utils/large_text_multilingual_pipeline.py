@@ -30,6 +30,7 @@ from utils.large_text_multilingual_proofread import AuditClient, ReviewClient, r
 from utils.large_text_residue_repair import repair_cache_residue
 from utils.large_text_multilingual_runner import build_manifest, load_manifest, save_manifest
 from utils.xlsx_translation_writeback import verify_translation_cache, write_translation_workbooks
+from utils.quality_harness import scan_cache_surface
 
 
 @dataclass(frozen=True)
@@ -296,8 +297,12 @@ def _run_pipeline(
             term_base=term_base,
         )
         _write_json(initial_lint_path, result)
+        surface = scan_cache_surface(_read_jsonl(translation.cache_jsonl), target_langs)
+        _write_json(work_dir / 'initial_surface_precheck.json', surface)
         if result["hard_blockers"] and task_mode != 'review':
             raise ValueError(f"cache-lint failed with {result['hard_blockers']} hard blockers")
+        if surface['hard_blockers'] and proofread_mode not in {'sampled', 'full'}:
+            raise ValueError(f"surface precheck failed with {surface['hard_blockers']} hard blockers")
         return result
 
     lint_result = _run_gate_phase(manifest_path, "incremental_cache_lint", lint_initial)
@@ -329,10 +334,14 @@ def _run_pipeline(
                 term_base=term_base,
             )
             _write_json(final_lint_path, result)
+            surface = scan_cache_surface(_read_jsonl(final_cache), target_langs)
+            _write_json(work_dir / 'final_surface_precheck.json', surface)
             if result["hard_blockers"]:
                 raise ValueError(
                     f"final cache-lint failed with {result['hard_blockers']} hard blockers"
                 )
+            if surface['hard_blockers']:
+                raise ValueError(f"surface precheck failed with {surface['hard_blockers']} hard blockers; repair affected cache cells before export")
             return result
 
         lint_result = _run_gate_phase(manifest_path, "final_cache_lint", lint_final)

@@ -83,6 +83,41 @@ class QualityHarnessTests(unittest.TestCase):
             self.assertEqual(result.rows_scanned, 2)
             self.assertEqual(result.issues[0]["row"], 2)
 
+    def test_explicit_text_type_only_exempts_title_case_not_integrity_checks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'typed.xlsx'
+            wb = Workbook()
+            ws = wb.active
+            ws.append(['ID', 'CN', 'EN', '文本类型'])
+            ws.append(['chapter1', '最后警告', 'Final Warning', '章节标题'])
+            ws.append(['title2', '系统错误', 'System Error', 'system'])
+            ws.append(['chapter3', '最后警告{0}', 'Final Warning', 'title'])
+            ws.append(['title4', '系统错误', 'System Error', None])
+            wb.save(path)
+            result = scan_workbook(path, auto_discover_terms=False)
+            issues = {(issue['id'], issue['check_type']) for issue in result.issues}
+            self.assertNotIn(('chapter1', 'title_case_overuse'), issues)
+            self.assertIn(('title2', 'title_case_overuse'), issues)
+            self.assertIn(('title4', 'title_case_overuse'), issues)
+            self.assertIn(('chapter3', 'variable_missing'), issues)
+            self.assertEqual(result.rows_scanned, 4)
+
+    def test_exact_glossary_name_type_can_identify_title_without_extra_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'named.xlsx'
+            wb = Workbook()
+            ws = wb.active
+            ws.append(['ID', 'CN', 'EN'])
+            ws.append([1, '最后警告', 'Final Warning'])
+            ws.append([2, '最后警告失败', 'Final Warning Failed'])
+            terms = wb.create_sheet('术语表')
+            terms.append(['CN', 'EN', '分类'])
+            terms.append(['最后警告', 'Final Warning', '技能名'])
+            wb.save(path)
+            result = scan_workbook(path, auto_discover_terms=False)
+            self.assertNotIn((1, 'title_case_overuse'), {(r['id'], r['check_type']) for r in result.issues})
+            self.assertIn((2, 'title_case_overuse'), {(r['id'], r['check_type']) for r in result.issues})
+
     def test_scan_workbook_flags_numbered_term_inconsistency(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "numbered_terms.xlsx"

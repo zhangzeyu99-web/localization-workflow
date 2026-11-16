@@ -37,6 +37,7 @@
 
 - `7-Day Login` 属于功能名，可以 Title Case。
 - `Battle Pass` 属于功能名，可以 Title Case。
+- 有显式文本类型的标题可保留 Title Case，即使中文含“警告/错误”等字；不把标题当系统提示改小写。正文表头仅识别 `文本类型`、`文案类型`、`text_type`、`TextType`，可用值为 `title/chapter_title/quest_title/skill_name/item_name/feature_name` 或 `标题/章节标题/任务标题/技能名/道具名/功能名`。无正文类型时可复用术语表精确整词的技能/地名/建筑分类，不另做分类或把含该词的整句当名称；显式未知值、系统提示和对白仍检查，不凭资源 ID 或自由备注豁免。该类型只影响 Title Case 规则，缩写、数字、占位符、标签、术语与语义检查仍执行。
 - `HP`、`ATK`、`PVP` 等稳定游戏缩写允许保留。
 - `##1 and ##2 others were reassigned` 这类占位符开头句子不按普通句首小写拦截。
 - 普通 `[领取]`、BBCode、`{count}` 及 `[{0}]` 不是 JSON，不因括号外观被强行升级为结构化内容；有效源 JSON 容器才约束目标 JSON。明显损坏的 JSON 源单独报告，不能归咎译文。

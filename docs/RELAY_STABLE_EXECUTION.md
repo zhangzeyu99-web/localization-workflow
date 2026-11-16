@@ -70,11 +70,17 @@ receives complete readable proposed text to catch clause joins and omissions wit
 handing code ownership to the model. Whole-cell structural QA and actual XLSX readback
 remain required. No sampled mode is presented as full review.
 
-`relay_progress.json` is updated at most every 30 seconds and on exit. The append-only
+`relay_progress.json` is refreshed on dispatch, fatal stop and return to idle; other
+updates are throttled to 30 seconds. It includes PID, timestamp and stop reason. The append-only
 request journal records attempts, stages, failures, latency, and returned usage.
 Missing usage is unknown, not zero. Blind dialogue readings are cached independently
 so a later audit retry does not repeat a successful blind-reading call. Failure lists
 stay in `_work`; they are not successful delivery files.
+
+For conditional ETAs, mandatory first-turn/appointment reporting, independent queue
+selection and pre-export surface checks, follow
+[RELAY_EFFICIENCY_AND_REPORTING.md](RELAY_EFFICIENCY_AND_REPORTING.md).
+Pipeline completion alone is not project publication or native Excel acceptance.
 
 ## Stability and performance acceptance
 

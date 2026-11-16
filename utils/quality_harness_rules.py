@@ -101,7 +101,7 @@ class HarnessResult:
         }
 
 
-def check_row(row_id, source: str, translation: str, lang: str = 'en', punctuation_mode: str | None = None) -> list[CheckResult]:
+def check_row(row_id, source: str, translation: str, lang: str = 'en', punctuation_mode: str | None = None, *, text_type: str = '') -> list[CheckResult]:
     """Run all row-level hard gates used by the harness."""
     results: list[CheckResult] = []
     source = str(source or '')
@@ -115,7 +115,7 @@ def check_row(row_id, source: str, translation: str, lang: str = 'en', punctuati
     for issue_type, detail in quantity_issues(source, translation, lang) + semantic_constraint_issues(source, translation, lang):
         results.append(CheckResult(row_id, issue_type, 'error', detail, source, translation))
     results.extend(check_chinese_residue(row_id, translation, lang=lang))
-    results.extend(check_readability(row_id, source, translation, lang=lang))
+    results.extend(check_readability(row_id, source, translation, lang=lang, text_type=text_type))
     results.extend(_check_surface_regressions(row_id, source, translation, lang=lang, punctuation_mode=punctuation_mode))
 
     if any(r.check_type == 'internal_token_leak' for r in results):
@@ -516,6 +516,16 @@ def _visible_start(text: str) -> str:
 
 
 def _has_leading_lowercase(source: str, translation: str) -> bool:
+    from utils.structured_text_template import parse_template
+    try:
+        template = parse_template(translation)
+        source_template = parse_template(source)
+    except ValueError:
+        template = source_template = None  # Structural QA reports malformed JSON separately.
+    if template and source_template and template.is_json and source_template.is_json:
+        return any(_has_leading_lowercase(
+            ''.join(part.value for part in source_template.leaves.get(path, [])),
+            ''.join(part.value for part in parts)) for path, parts in template.leaves.items())
     if re.match(r'^\s*\d', translation):
         return False
     if _starts_with_runtime_payload(translation):

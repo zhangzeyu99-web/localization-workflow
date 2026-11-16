@@ -377,11 +377,27 @@ def render_translations(
     template: ParsedTemplate,
     slots: list[TranslationSlot],
     values: dict[str, str],
+    *, lang: str | None = None,
 ) -> str:
+    from utils.punctuation_policy import repair_punctuation
+
+    def fixed_text(value: str) -> str:
+        if not lang:
+            return value
+        # Source-owned brace variants are runtime literals, not punctuation fixes.
+        chunks = re.split(r'([{｛][^{}｛｝\r\n]*[}｝])', value)
+        return ''.join(chunk if index % 2 else repair_punctuation(chunk, lang)
+                       for index, chunk in enumerate(chunks))
+
     replacements = {
-        (slot.path, slot.part_index): slot.prefix + values[slot.slot_key].strip() + slot.suffix
+        (slot.path, slot.part_index): fixed_text(slot.prefix) + values[slot.slot_key] + fixed_text(slot.suffix)
         for slot in slots
     }
+    if lang:
+        for path, parts in template.leaves.items():
+            for index, part in enumerate(parts):
+                if part.kind == 'text' and (path, index) not in replacements:
+                    replacements[(path, index)] = fixed_text(part.value)
     return render_template(template, replacements)
 
 
@@ -439,7 +455,7 @@ def render_reviewed_target(
     values: dict[str, str],
 ) -> str:
     replacements = {
-        (slot.path, slot.part_index): slot.target_prefix + values[slot.slot_key].strip() + slot.target_suffix
+        (slot.path, slot.part_index): slot.target_prefix + values[slot.slot_key] + slot.target_suffix
         for slot in slots
     }
     return render_template(target_template, replacements)
@@ -453,3 +469,30 @@ def should_use_template(row: dict[str, Any]) -> bool:
         return False
     parsed = parse_template(source)
     return parsed.is_json or len(technical_tokens(source)) >= 3
+
+
+def source_template_diagnostics(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Expose ambiguous source syntax before requests, without guessing its meaning."""
+    findings = []
+    for row in rows:
+        source = str(row.get('translation_source') or row.get('cn') or '')
+        key = str(row.get('key', ''))
+        try:
+            template = parse_template(source)
+            slots = translation_slots(template)
+            reconstructed = render_translations(template, slots, {slot.slot_key: slot.source for slot in slots})
+            if reconstructed != source:
+                raise ValueError('source template roundtrip changed text')
+        except ValueError as exc:
+            findings.append({'key': key, 'type': 'source_template_invalid', 'detail': str(exc)})
+            continue
+        readable_leaves = [''.join(part.value for part in parts) for parts in template.leaves.values()]
+        for token in (token for leaf in readable_leaves
+                      for token in re.findall(r'[{｛][^{}｛｝\r\n]*[}｝]', leaf)):
+            if CJK_RE.search(token):
+                findings.append({'key': key, 'type': 'ambiguous_natural_brace',
+                                 'detail': token, 'action': 'bind an explicit text-or-variable decision before bulk work'})
+            elif token.startswith('｛') or token.endswith('｝'):
+                findings.append({'key': key, 'type': 'source_token_variant',
+                                 'detail': token, 'action': 'preserve source literal; require exact scoped QA evidence'})
+    return findings

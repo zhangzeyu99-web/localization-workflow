@@ -19,6 +19,7 @@ from utils.large_text_multilingual_executor import (
     complete_phase,
     fail_phase,
     start_phase,
+    record_progress,
 )
 from utils.large_text_multilingual_runner import load_manifest
 from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES
@@ -240,8 +241,32 @@ def _pid_is_running(pid: int) -> bool:
         return False
     if pid == os.getpid():
         return True
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        # Windows os.kill is not a read-only process probe. Query without signaling.
+        handle = kernel.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == 5
+        try:
+            code = wintypes.DWORD()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == 259
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
+    except PermissionError:
+        return True
     except OSError:
         return False
     return True
@@ -665,6 +690,11 @@ def run_deep_proofread(
             _write_jsonl(review_checkpoint_dir / 'reused_items.jsonl', [
                 {**row, 'cache_key': review_cache_keys[cell]} for cell, row in reusable.items()
             ])
+        reused_review_cells = len(reusable)
+        def review_progress():
+            record_progress(manifest, 'subagent_review', total=len(review_cache_keys),
+                            accepted=len(reusable), reused=reused_review_cells, started=review_started)
+        review_progress()
         review_jobs: list[tuple[list[dict[str, object]], str, Path]] = []
         for lang in target_langs:
             missing = [
@@ -699,6 +729,7 @@ def run_deep_proofread(
                 else:
                     for suggestion in batch_suggestions:
                         reusable[(suggestion["review_key"], suggestion["lang"])] = suggestion
+                review_progress()
             _atomic_write_text(proof_dir / 'review_failures.json', json.dumps(failures, ensure_ascii=False))
             if failures:
                 raise IncompletePhase(f"{len(failures)} review batches unresolved; healthy cells saved; {failures[0]['error']}")
@@ -813,6 +844,11 @@ def run_deep_proofread(
                 checkpoint, audit_cache_keys, phase='audit', runtime=getattr(auditor, 'runtime', None),
             )
 
+        reused_audit_cells = len(decisions)
+        def audit_progress():
+            record_progress(manifest, 'controller_merge', total=len(fixes),
+                            accepted=len(decisions), reused=reused_audit_cells, started=merge_started)
+        audit_progress()
         if audit_jobs:
             failures = []
             for job, batch_decisions, error in bounded_results(audit_missing, audit_jobs, workers=workers):
@@ -820,6 +856,7 @@ def run_deep_proofread(
                     failures.append({'checkpoint': str(job[1]), 'error': str(error)})
                 else:
                     decisions.extend(batch_decisions)
+                audit_progress()
             _atomic_write_text(proof_dir / 'audit_failures.json', json.dumps(failures, ensure_ascii=False))
             if failures:
                 raise IncompletePhase(f"{len(failures)} audit batches unresolved; healthy cells saved; {failures[0]['error']}")

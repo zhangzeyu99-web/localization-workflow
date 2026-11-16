@@ -95,39 +95,67 @@ def _sheet_xml_paths(entries: dict[str, bytes]) -> dict[str, str]:
     return result
 
 
-def _patch_sheet(xml: bytes, changes: list[tuple[int, int, str]]) -> bytes:
-    text = xml.decode("utf-8")
+_ROW_PATTERN = re.compile(
+    r'<(?P<prefix>[A-Za-z_][\w.-]*:)?row\b(?P<attrs>[^>]*?)(?<!/)>'
+    r'(?P<content>.*?)(?:</(?P=prefix)row>|</row>)', re.DOTALL,
+)
+
+
+def _patch_row(row_body: str, prefix: str, changes: list[tuple[int, int, str]]) -> str:
     for row_number, column, value in changes:
-        row_pattern = re.compile(
-            rf'(<row\b(?=[^>]*\br="{row_number}")[^>]*>)(.*?)(</row>)',
-            re.DOTALL,
-        )
-        row_match = row_pattern.search(text)
-        if row_match is None:
-            raise ValueError(f"worksheet row is missing: {row_number}")
         reference = f"{get_column_letter(column)}{row_number}"
         preserve = ' xml:space="preserve"' if value[:1].isspace() or value[-1:].isspace() else ""
-        encoded = escape(value)
-        row_body = row_match.group(2)
+        # XML normalizes literal CR to LF. Entities retain the accepted value.
+        encoded = escape(value).replace("\r", "&#13;")
         cell_pattern = re.compile(
-            rf'<c\b(?=[^>]*\br="{re.escape(reference)}")(?P<attrs>[^>]*?)(?:\s*/>|>(?P<body>.*?)</c>)',
+            rf'<{re.escape(prefix)}c\b(?=[^>]*\br="{re.escape(reference)}")(?P<attrs>[^>]*?)(?:\s*/>|>(?P<body>.*?)</{re.escape(prefix)}c>)',
             re.DOTALL,
         )
         cell_match = cell_pattern.search(row_body)
         if cell_match is not None:
             attributes = re.sub(r'\s+t="[^"]*"', "", cell_match.group("attrs"))
-            replacement = f'<c{attributes} t="inlineStr"><is><t{preserve}>{encoded}</t></is></c>'
+            replacement = f'<{prefix}c{attributes} t="inlineStr"><{prefix}is><{prefix}t{preserve}>{encoded}</{prefix}t></{prefix}is></{prefix}c>'
             row_body = row_body[: cell_match.start()] + replacement + row_body[cell_match.end() :]
         else:
-            replacement = f'<c r="{reference}" t="inlineStr"><is><t{preserve}>{encoded}</t></is></c>'
+            replacement = f'<{prefix}c r="{reference}" t="inlineStr"><{prefix}is><{prefix}t{preserve}>{encoded}</{prefix}t></{prefix}is></{prefix}c>'
             insert_at = len(row_body)
-            for existing in re.finditer(r'<c\b[^>]*\br="([A-Z]+)\d+"', row_body):
+            for existing in re.finditer(rf'<{re.escape(prefix)}c\b[^>]*\br="([A-Z]+)\d+"', row_body):
                 if _column_index(existing.group(1)) > column:
                     insert_at = existing.start()
                     break
             row_body = row_body[:insert_at] + replacement + row_body[insert_at:]
-        text = text[: row_match.start(2)] + row_body + text[row_match.end(2) :]
-    return text.encode("utf-8")
+    return row_body
+
+
+def _patch_sheet(xml: bytes, changes: list[tuple[int, int, str]]) -> bytes:
+    if not changes:
+        return xml
+    text = xml.decode("utf-8")
+    wanted = {str(row) for row, _, _ in changes}
+    matches = {}
+    for match in _ROW_PATTERN.finditer(text):
+        numbers = re.findall(r'\br="([^"]*)"', match.group('attrs'))
+        if len(numbers) > 1:
+            raise ValueError("worksheet row has ambiguous row attributes")
+        if numbers and numbers[0] in wanted:
+            matches.setdefault(numbers[0], match)
+    grouped = defaultdict(list)
+    for row, column, value in changes:
+        if str(row) not in matches:
+            raise ValueError(f"worksheet row is missing: {row}")
+        get_column_letter(column)
+        if not isinstance(value, str):
+            raise TypeError("worksheet replacement must be text")
+        grouped[str(row)].append((row, column, value))
+    # Scan/copy the large XML once; retain every non-target byte and namespace.
+    chunks, cursor = [], 0
+    for row in sorted(grouped, key=lambda key: matches[key].start()):
+        match = matches[row]
+        chunks.append(text[cursor:match.start('content')])
+        chunks.append(_patch_row(match.group('content'), match.group('prefix') or '', grouped[row]))
+        cursor = match.end('content')
+    chunks.append(text[cursor:])
+    return ''.join(chunks).encode("utf-8")
 
 
 def _column_index(letters: str) -> int:
@@ -266,8 +294,8 @@ def write_translation_workbooks(
                     )
                 translations = row.get("translations") or {}
                 for lang in target_langs:
-                    target = str(translations.get(lang) or "").strip()
-                    if not target:
+                    target = str(translations.get(lang) or "")
+                    if not target.strip():
                         raise ValueError(
                             f"blank target translation: {name}:{sheet_name}!R{row_number}:{lang}"
                         )

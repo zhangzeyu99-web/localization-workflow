@@ -85,7 +85,8 @@ def classify_error(exc: Exception) -> RelayError:
         if exc.code in {401, 403, 402}:
             return FatalRelayError("auth_or_balance", f"relay HTTP {exc.code}; check credentials/balance")
         if exc.code == 429:
-            if code in {"insufficient_quota", "quota_exceeded", "billing_hard_limit_reached"}:
+            if code in {"insufficient_quota", "quota_exceeded", "billing_hard_limit_reached",
+                        "daily_limit_exceeded", "daily_quota_exceeded", "insufficient_balance"}:
                 return FatalRelayError("balance", "relay quota exhausted")
             return RelayError("rate_limit", "relay HTTP 429", _retry_after(exc.headers.get("Retry-After")))
         if exc.code == 408 or 500 <= exc.code < 600:
@@ -151,6 +152,7 @@ class RelayRuntime:
 
     def _append(self, event: dict) -> None:
         if self.journal:
+            event = {'at': datetime.now(timezone.utc).isoformat(timespec='seconds'), **event}
             self.journal.parent.mkdir(parents=True, exist_ok=True)
             with self.journal.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
@@ -194,6 +196,7 @@ class RelayRuntime:
                         raise self.fatal
                     if self.outage_started is not None and self.clock() - self.outage_started >= 900:
                         self.fatal = FatalRelayError("unavailable", "relay unavailable for 15 minutes; resume later")
+                        self.progress(force=True)
                         raise self.fatal
                     if any(self.attempts.get(key, 0) >= self.max_attempts for key in keys):
                         exhausted = []
@@ -216,6 +219,7 @@ class RelayRuntime:
                 self.peak_active = max(self.peak_active, self.active)
                 self.requests += 1
                 self.retries += int(previous > 0)
+                self.progress(force=True)
             started = self.clock()
             try:
                 result, metadata = send()
@@ -274,15 +278,17 @@ class RelayRuntime:
                 with self.condition:
                     self.active -= 1
                     self.condition.notify_all()
-                    self.progress()
+                    self.progress(force=self.fatal is not None or self.active == 0)
 
     def progress(self, *, force: bool = False) -> dict:
         result = {"backend": "relay", "concurrency_limit": self.limit,
+                  "pid": os.getpid(), "updated_at": datetime.now(timezone.utc).isoformat(timespec='seconds'),
                   "effective_concurrency": self.effective_limit, "active": self.active,
                   "peak_active": self.peak_active, "requests": self.requests, "retries": self.retries,
                   "failed_requests": self.failed_requests, "usage": self.usage,
                   "validation_failed_cells": self.validation_failures,
-                  "usage_unknown_requests": self.usage_unknown}
+                  "usage_unknown_requests": self.usage_unknown,
+                  "stop_reason": self.fatal.category if self.fatal else None}
         if self.work_dir and (force or self.clock() - self.last_progress >= 30):
             atomic_json(self.work_dir / "relay_progress.json", result)
             self.last_progress = self.clock()
