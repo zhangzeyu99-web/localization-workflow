@@ -24,11 +24,22 @@ def update_progress(manifest: dict, phase: str, *, total: int, accepted: int,
     if (any(type(value) is not int for value in (total, accepted, reused))
             or not 0 <= reused <= accepted <= total or not math.isfinite(seconds) or seconds < 0):
         raise ValueError('invalid accepted progress counters')
-    manifest.setdefault('phase_progress', {})[phase] = {
+    progress = manifest.setdefault('phase_progress', {})
+    measured = manifest.setdefault('throughput_samples', {})
+    # Preserve the last useful role rate when a resume mostly reuses checkpoints.
+    current_sample = {
         'total_cells': total, 'accepted_cells': accepted, 'reused_cells': reused,
         'active_seconds': round(seconds, 3),
         'updated_at': datetime.now().astimezone().isoformat(timespec='seconds'),
     }
+    for sample in (progress.get(phase, {}), current_sample):
+        fresh = sample.get('accepted_cells', 0) - sample.get('reused_cells', 0)
+        prior = measured.get(phase, {})
+        prior_fresh = prior.get('accepted_cells', 0) - prior.get('reused_cells', 0)
+        if (fresh > 0 and sample['active_seconds'] > 0
+                and (fresh >= 64 or fresh >= prior_fresh)):
+            measured[phase] = sample
+    progress[phase] = current_sample
 
 
 def delivery_status(manifest: dict[str, Any], *, now: datetime | None = None) -> dict:
@@ -51,7 +62,7 @@ def delivery_status(manifest: dict[str, Any], *, now: datetime | None = None) ->
         blockers.append({'phase': failed[0], 'reason': 'phase failed; inspect its diagnostic receipt'})
     current = next(iter(failed or running or pending), 'complete' if complete else 'awaiting_completion_record')
     sample_rates = {}
-    for name, sample in progress.items():
+    for name, sample in {**progress, **manifest.get('throughput_samples', {})}.items():
         fresh = sample.get('accepted_cells', 0) - sample.get('reused_cells', 0)
         seconds = sample.get('active_seconds', 0)
         if fresh > 0 and seconds > 0:
@@ -94,8 +105,20 @@ def delivery_status(manifest: dict[str, Any], *, now: datetime | None = None) ->
     if remaining_range is not None and not blockers:
         finish = [(now + timedelta(seconds=seconds)).isoformat(timespec='seconds')
                   for seconds in remaining_range]
-    due = _time(manifest.get('reporting', {}).get('next_report_at'))
+    reporting = manifest.get('reporting', {})
+    due = _time(reporting.get('next_report_at'))
     overdue = bool(due and now >= due)
+    promised = _time(reporting.get('promised_by'))
+    alerts = []
+    if not complete:
+        if blockers:
+            alerts.append('blocked')
+        if promised and now >= promised:
+            alerts.append('promised_time_reached')
+        elif promised and finish is not None and _time(finish[1]) > promised:
+            alerts.append('forecast_exceeds_promise')
+    if overdue:
+        alerts.append('checkpoint_due')
     return {
         'complete': complete, 'completion_scope': 'native_pipeline_only',
         'formal_delivery_requires': ['publication', 'native_excel_acceptance', 'visual_acceptance'],
@@ -105,6 +128,9 @@ def delivery_status(manifest: dict[str, Any], *, now: datetime | None = None) ->
         'estimated_completion_at': finish, 'unmeasured_phases': unmeasured,
         'assumptions': assumptions, 'waiting_time_included': False,
         'report_required': not complete or overdue, 'report_overdue': overdue,
+        'report_now': bool(alerts), 'report_alerts': alerts,
+        'next_report_at': due.isoformat() if due else None,
+        'promised_by': promised.isoformat() if promised else None,
         'reason': ('complete' if complete else 'blocked; waiting duration is unknown' if blockers
                    else 'calibrating first accepted batch' if unmeasured
                    else 'processing; delivery gates still pending'),

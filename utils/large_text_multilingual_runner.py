@@ -424,7 +424,12 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--manifest", required=True, type=Path)
     report.add_argument("--reason", required=True)
     report.add_argument("--next-report-at", required=True)
+    report.add_argument("--promised-by", help="Latest completion time actually shared, with timezone.")
     report.add_argument("--out", type=Path)
+
+    layout = sub.add_parser("check-excel-layout", help="Inspect a local Excel candidate without modifying it.")
+    layout.add_argument("--workbook", required=True, type=Path)
+    layout.add_argument("--out", type=Path)
 
     resume = sub.add_parser("resume", help="Resume saved API task without resending accepted cells.")
     resume.add_argument("--manifest", required=True, type=Path)
@@ -515,7 +520,10 @@ def main(argv: list[str] | None = None) -> int:
         write_or_print(payload, args.out)
         return 0 if manifest["status"] == "api_smoke_passed" else 1
     if args.command == "status":
-        payload = workflow_status(load_manifest(args.manifest))
+        manifest = load_manifest(args.manifest)
+        reporting_path = args.manifest.with_suffix('.reporting.json')
+        manifest.setdefault('reporting', {}).update(read_json(reporting_path))
+        payload = workflow_status(manifest)
         progress = args.manifest.parent / 'relay_progress.json'
         if progress.exists():
             payload['relay'] = read_json(progress)
@@ -530,13 +538,28 @@ def main(argv: list[str] | None = None) -> int:
         if deadline.tzinfo is None or deadline <= datetime.now().astimezone():
             raise ValueError('next report time must be in the future with an explicit timezone')
         manifest = load_manifest(args.manifest)
-        manifest.setdefault('reporting', {}).update(
+        reporting_path = args.manifest.with_suffix('.reporting.json')
+        reporting = read_json(reporting_path)
+        if args.promised_by:
+            promised = datetime.fromisoformat(args.promised_by.replace('Z', '+00:00'))
+            if promised.tzinfo is None:
+                raise ValueError('promised completion time must have an explicit timezone')
+            reporting['promised_by'] = promised.isoformat(timespec='seconds')
+        reporting.update(
             last_reported_at=datetime.now().astimezone().isoformat(timespec='seconds'),
             last_report_reason=args.reason, next_report_at=deadline.isoformat(timespec='seconds'),
         )
-        save_manifest(manifest)
+        write_json(reporting_path, reporting)
+        manifest.setdefault('reporting', {}).update(reporting)
         write_or_print(workflow_status(manifest), args.out)
         return 0
+    if args.command == "check-excel-layout":
+        from utils.xlsx_layout_probe import check_excel_layout
+        if args.out and args.out.suffix.lower() != '.json':
+            raise ValueError('layout report output must be a .json file')
+        result = check_excel_layout(args.workbook)
+        write_or_print(result, args.out)
+        return 0 if result['no_height_risk'] else 1
     if args.command == "resume":
         from dataclasses import asdict
         from utils.large_text_multilingual_pipeline import resume_pipeline

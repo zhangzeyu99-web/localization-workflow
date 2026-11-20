@@ -6,9 +6,13 @@
 
 ## 大批量效率与到点回报
 
+已报完成区间时用 `record-report --promised-by` 登记上界；在 `status` 报预估超时或新阻断时，当轮更新原因、条件 ETA 与下一次汇报时刻。
+
 执行 `docs/RELAY_EFFICIENCY_AND_REPORTING.md`：首轮无法完成须报告实际阶段、条件完成区间、阻断原因及下次汇报时刻；默认30分钟检查点，用户约定时刻优先，未完成也要报。读取 runner `status` 的验收进度及 ETA，不把缓存命中当新处理速度。当前项待裁决时，真实进程空闲后推进已授权且无依赖的队列项；不抢占现有控制器。初译后查看 `initial_surface_precheck.json`，二审后通过 `final_surface_precheck.json` 再导出；正式完整 harness、Excel 普通打开/逐格读回与视觉验收不省略。已完成任务不重跑，本维护不自动恢复已暂停巡检。
 
 ## 导入前格式门禁
+
+长文本首批按正式列宽和字体运行 `check-excel-layout`，另查合并格；通过预检仍需正式读回和视觉验收。
 
 按 `docs/RELAY_EFFICIENCY_AND_REPORTING.md` 执行：异常结束响应、漏槽、标签/换行损坏、超长或不可保真文本必须在正式文件生成前失败；禁止自动裁短修过检查。整批暂存和精确读回通过才产出，不用缓存成功或 XML 可解析替代 Excel 普通打开验收。
 

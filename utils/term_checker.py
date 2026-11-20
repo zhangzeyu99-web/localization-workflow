@@ -296,7 +296,7 @@ def _source_term_spans(source_term: str, original: str) -> list[tuple[int, int]]
     """
     term = str(source_term or '')
     text = str(original or '')
-    if not term:
+    if not term or term not in text:
         return []
 
     pattern = re.compile(re.escape(term))

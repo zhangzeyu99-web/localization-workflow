@@ -31,6 +31,7 @@ class WorkflowProgressTests(unittest.TestCase):
         result = delivery_status(manifest, now=datetime(2026, 11, 16, tzinfo=timezone.utc))
         self.assertTrue(result['report_required'])
         self.assertTrue(result['report_overdue'])
+        self.assertEqual(result['report_alerts'], ['blocked', 'checkpoint_due'])
         self.assertEqual(result['blockers'][0]['reason'], 'quota exhausted')
         self.assertIsNone(result['estimated_completion_at'])
         self.assertEqual(workflow_status(manifest)['next_phase'], 'api_translate')
@@ -45,6 +46,32 @@ class WorkflowProgressTests(unittest.TestCase):
         manifest['phase_status']['write_outputs'] = 'done'
         manifest['status'] = 'complete'
         self.assertEqual(delivery_status(manifest)['estimated_active_remaining_seconds'], [0, 0])
+
+    def test_resume_does_not_replace_large_sample_with_small_retry(self):
+        manifest = self.manifest()
+        update_progress(manifest, 'api_translate', total=1000, accepted=800, reused=0, seconds=800)
+        update_progress(manifest, 'api_translate', total=1000, accepted=805, reused=800, seconds=100)
+        result = delivery_status(manifest)
+        self.assertEqual(result['accepted_progress']['api_translate']['accepted_cells'], 805)
+        self.assertEqual(result['estimated_active_remaining_seconds'][0], 3267)
+        update_progress(manifest, 'api_translate', total=1000, accepted=805, reused=805, seconds=3)
+        self.assertEqual(delivery_status(manifest)['estimated_active_remaining_seconds'][0], 3267)
+        update_progress(manifest, 'api_translate', total=1000, accepted=905, reused=805, seconds=300)
+        self.assertGreater(delivery_status(manifest)['estimated_active_remaining_seconds'][0], 9000)
+
+    def test_warns_before_checkpoint_if_forecast_outgrows_last_promise(self):
+        manifest = self.manifest()
+        now = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+        manifest['reporting'] = {
+            'next_report_at': '2026-11-16T12:30:00+00:00',
+            'promised_by': '2026-11-16T12:20:00+00:00',
+        }
+        update_progress(manifest, 'api_translate', total=1000, accepted=800, reused=0, seconds=800)
+        result = delivery_status(manifest, now=now)
+        self.assertTrue(result['report_now'])
+        self.assertFalse(result['report_overdue'])
+        self.assertEqual(result['report_alerts'], ['forecast_exceeds_promise'])
+        self.assertIn('promised_time_reached', delivery_status(manifest, now=now.replace(minute=20))['report_alerts'])
 
     def test_pending_source_does_not_block_unrelated_batch_but_running_owner_does(self):
         queue = {'items': [{'id': 'body', 'state': 'blocked', 'pending_source_ids': ['78039']},
@@ -92,10 +119,17 @@ class WorkflowProgressTests(unittest.TestCase):
             args = ['record-report', '--manifest', str(path), '--reason', 'actual report delivered',
                     '--next-report-at', deadline]
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(main(args), 0)
-            saved = json.loads(path.read_text(encoding='utf-8'))
-            self.assertEqual(saved['reporting']['last_report_reason'], 'actual report delivered')
-            self.assertFalse(delivery_status(saved)['report_overdue'])
+                self.assertEqual(main(args + ['--promised-by', deadline]), 0)
+            self.assertEqual(json.loads(path.read_text(encoding='utf-8')), manifest)
+            saved = json.loads(path.with_suffix('.reporting.json').read_text(encoding='utf-8'))
+            self.assertEqual(saved['last_report_reason'], 'actual report delivered')
+            # A concurrent runner rewrites only its manifest from its own in-memory state.
+            manifest['updated_at'] = 'worker tick'
+            path.write_text(json.dumps(manifest), encoding='utf-8')
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(['status', '--manifest', str(path)]), 0)
+            self.assertIsNotNone(json.loads(output.getvalue())['delivery']['promised_by'])
+            self.assertFalse(json.loads(output.getvalue())['delivery']['report_overdue'])
             with self.assertRaisesRegex(ValueError, 'explicit timezone'):
                 main(args[:-1] + ['2026-11-16T00:00:00'])
 
