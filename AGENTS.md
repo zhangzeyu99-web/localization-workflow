@@ -4,6 +4,8 @@
 
 大文本 V2 的翻译、逐句校对及独立二审统一走中转 API，不启动 Codex subagent，也不在失败时自动转回订阅通道。执行 `docs/RELAY_STABLE_EXECUTION.md`：总并发默认4、硬上限5；已有译文用 `--task-mode review`，不先清空或重译。所有角色共用限流、持久化请求预算、逐格 checkpoint 和全任务锁；成功格不重发，未决问题仍阻断交付。使用 `resume`/`status` 续跑和看状态，不靠重复整批启动恢复。
 
+V2 默认 `--audit-policy all`，只有允许抽检的任务才使用 `risk_tiered`；自动接受格不计作独立二审。只有明确授权才启用 `--retranslate-marked`，标记行按新版中文重译，其余行沿用原译审校。
+
 ## 大批量效率与到点回报
 
 已报完成区间时用 `record-report --promised-by` 登记上界；在 `status` 报预估超时或新阻断时，当轮更新原因、条件 ETA 与下一次汇报时刻。

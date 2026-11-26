@@ -174,20 +174,96 @@ AUTO_SOFT_TARGET_WORDS = {
 }
 GENERIC_ROLE_TARGETS = {
     'ally',
+    'assistant',
+    'audience',
     'base',
     'boss',
+    'boy',
+    'bystander',
     'captain',
     'character',
+    'child',
+    'children',
+    'citizen',
+    'clerk',
+    'client',
     'commander',
+    'contestant',
+    'crew',
+    'crowd',
+    'customer',
+    'doctor',
+    'driver',
     'enemy',
+    'fan',
+    'fans',
+    'girl',
+    'guard',
+    'guards',
+    'guest',
+    'guests',
     'hero',
+    'host',
+    'hostess',
+    'kid',
+    'kids',
+    'little boy',
+    'little girl',
+    'manager',
     'member',
     'miner',
+    'neighbor',
+    'neighbour',
+    'nurse',
+    'passerby',
+    'passersby',
     'player',
     'protagonist',
     'role',
+    'secretary',
     'soldier',
+    'staff',
+    'stranger',
+    'strangers',
     'survivor',
+    'tourist',
+    'villager',
+    'visitor',
+    'waiter',
+    'waitress',
+    'worker',
+}
+
+GENERIC_ROLE_SOURCES = {
+    '嘉宾',
+    '男嘉宾',
+    '女嘉宾',
+    '小孩',
+    '小孩子',
+    '小女孩',
+    '小男孩',
+    '男孩',
+    '女孩',
+    '陌生人',
+    '工作人员',
+    '路人',
+    '粉丝',
+    '观众',
+    '保安',
+    '服务员',
+    '店员',
+    '顾客',
+    '村民',
+    '市民',
+    '游客',
+    '邻居',
+    '群众',
+    '众人',
+    '司机',
+    '医生',
+    '护士',
+    '主持人',
+    '选手',
 }
 
 _LANGUAGE_CODES = tuple(LANGUAGE_NAMES.keys())
@@ -494,7 +570,11 @@ def term_enforcement_kind(cn: str, target: str, category: str = '', *, reference
     if _is_soft_term_category(category) or _is_auto_soft_term(cn, target, category):
         return 'soft'
     if _is_person_name_category(category):
-        if _is_generic_role_target(target):
+        if (
+            _is_generic_role_target(target)
+            or _is_generic_role_target(reference_en)
+            or str(cn or '').strip() in GENERIC_ROLE_SOURCES
+        ):
             return 'skip'
         if str(category).strip().casefold() in GENERIC_CHARACTER_CATEGORIES and (
             str(reference_en or target).strip().casefold() in KINSHIP_TERMS

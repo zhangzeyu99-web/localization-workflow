@@ -431,10 +431,12 @@ def main(argv: list[str] | None = None) -> int:
     layout.add_argument("--workbook", required=True, type=Path)
     layout.add_argument("--out", type=Path)
 
+    from utils.relay_runtime import MAX_API_CONCURRENCY
+
     resume = sub.add_parser("resume", help="Resume saved API task without resending accepted cells.")
     resume.add_argument("--manifest", required=True, type=Path)
     resume.add_argument("--retry-failed", action="store_true")
-    resume.add_argument("--api-concurrency", type=int, choices=range(1, 6))
+    resume.add_argument("--api-concurrency", type=int, choices=range(1, MAX_API_CONCURRENCY + 1))
     resume.add_argument("--out", type=Path)
 
     reconcile = sub.add_parser(
@@ -462,13 +464,19 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--review-relay-config", type=Path)
     run.add_argument("--audit-relay-config", type=Path)
     run.add_argument("--task-mode", choices=["translate", "review"], default="translate")
-    run.add_argument("--api-concurrency", type=int, choices=range(1, 6), default=4)
+    run.add_argument("--api-concurrency", type=int, choices=range(1, MAX_API_CONCURRENCY + 1), default=4)
     run.add_argument("--retry-failed", action="store_true")
     run.add_argument("--proofread-mode", choices=["basic", "sampled", "full"], default="basic")
+    run.add_argument("--audit-policy", choices=["all", "risk_tiered"], default="all")
+    run.add_argument(
+        "--retranslate-marked",
+        action="store_true",
+        help="In review mode, cleanly retranslate rows explicitly marked as source-changed/new instead of anchoring on stale translations.",
+    )
     run.add_argument("--delivery-dir", type=Path)
     run.add_argument("--batch-size", type=int, default=60)
     run.add_argument("--workers", type=int, default=4)
-    run.add_argument("--proofread-batch-size", type=int, default=30)
+    run.add_argument("--proofread-batch-size", type=int, default=50)
     run.add_argument("--proofread-workers", type=int, default=4)
     run.add_argument("--source-mode", choices=["cn", "cn+en", "en"], default="cn")
     run.add_argument("--style-hint-file", type=Path, help="UTF-8 project meaning, terminology and style guidance")
@@ -607,6 +615,8 @@ def main(argv: list[str] | None = None) -> int:
             retry_failed=args.retry_failed,
             review_relay_config=args.review_relay_config,
             audit_relay_config=args.audit_relay_config,
+            audit_policy=args.audit_policy,
+            retranslate_marked=args.retranslate_marked,
             style_hint_file=args.style_hint_file,
         )
         payload = asdict(result)

@@ -1050,6 +1050,20 @@
       "translation": "Flame Strike",
       "name_type": "ui_skill_name",
       "expected_issues": ["name_translation_collision_watch"]
+    },
+    {
+      "id": "good-annotated-section-title-case",
+      "source": "还不能说",
+      "translation": "Can't Say Yet",
+      "text_type": "剧情小节标题；凝练短小，适合章节标题展示",
+      "expected_issues": []
+    },
+    {
+      "id": "bad-annotated-non-title-status-title-case",
+      "source": "当前无法进入房间",
+      "translation": "Cannot Enter Room Right Now",
+      "text_type": "错误提示；界面顶部状态说明",
+      "expected_issues": ["title_case_overuse"]
     }
   ]
 }

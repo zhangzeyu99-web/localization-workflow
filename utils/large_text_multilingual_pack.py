@@ -234,6 +234,28 @@ def _term_hits(text: str, terms: list[dict[str, Any]], limit: int = 12, *, sourc
     return hits
 
 
+_RETRANSLATE_HEADER_CANDIDATES = {
+    "修改状态", "变更类型", "修订类型", "修改类型",
+    "revision_type", "change_type", "retranslate",
+}
+_RETRANSLATE_VALUE_MARKERS = (
+    "中文修改", "中文大改", "中文重译", "重译", "新增", "新增配置", "retranslate", "source_changed",
+)
+_RETRANSLATE_TEXT_TYPE_MARKERS = (
+    "【中文修改】", "【中文大改】", "【新增】", "[retranslate]",
+)
+
+
+def _is_retranslate_marked(change_value: object, text_type: str) -> bool:
+    raw = str(change_value or "").strip().lower()
+    raw = re.sub(r"^\d{1,2}[./-]\d{1,2}\s*", "", raw)
+    if raw in _RETRANSLATE_VALUE_MARKERS:
+        return True
+    tt = str(text_type or "")
+    tt_lower = tt.lower()
+    return any(marker.lower() in tt_lower for marker in _RETRANSLATE_TEXT_TYPE_MARKERS)
+
+
 def load_style_hint(path: Path | None) -> str:
     return Path(path).read_text(encoding="utf-8-sig").strip() if path is not None else ""
 
@@ -248,6 +270,7 @@ def prepare_pack(
     source_mode: str = "cn",
     task_mode: str = "translate",
     style_hint: str = "",
+    retranslate_marked: bool = False,
 ) -> PackArtifacts:
     started = time.perf_counter()
     target_langs = [str(lang).upper() for lang in target_langs]
@@ -277,6 +300,7 @@ def prepare_pack(
                 id_col = _find_header(headers, {"id", "key", "索引id"})
                 source_col = _find_header(headers, {header.lower() for header in SOURCE_HEADERS})
                 text_type_col = _find_header(headers, {"文本类型", "文案类型", "text_type", "texttype"})
+                change_col = _find_header(headers, _RETRANSLATE_HEADER_CANDIDATES)
                 if source_col is None:
                     continue
                 english_col = _find_header(headers, target_header_candidates("en"))
@@ -311,6 +335,9 @@ def prepare_pack(
                             )
                     source_text = str(source)
                     text_type = str(values[text_type_col] or "").strip() if text_type_col is not None and text_type_col < len(values) else ""
+                    change_value = values[change_col] if change_col is not None and change_col < len(values) else None
+                    row_marked = _is_retranslate_marked(change_value, text_type)
+                    use_current_cn = task_mode == "review" and retranslate_marked and row_marked
                     row_context = context
                     if style_hint or text_type:
                         row_context = {"type": context}
@@ -318,7 +345,7 @@ def prepare_pack(
                             row_context["project_style"] = style_hint
                         if text_type:
                             row_context["text_type"] = text_type
-                    if source_mode == "cn":
+                    if source_mode == "cn" or use_current_cn:
                         reference_en = ""
                         reference_status = "not_requested"
                     else:
@@ -337,7 +364,7 @@ def prepare_pack(
                                 "source_mode en requires complete usable English for every row: "
                                 f"{input_path.name}:{sheet.title}!R{row_index} status={reference_status}"
                             )
-                    translation_source = reference_en if source_mode == "en" else source_text
+                    translation_source = reference_en if source_mode == "en" and not use_current_cn else source_text
                     if source_text in history:
                         seed_memory[source_text] = history[source_text]
                         seed_origin = "history"
@@ -359,9 +386,10 @@ def prepare_pack(
                         "reference_en": reference_en,
                         "reference_en_status": reference_status,
                         "tokens": protected_tokens({"cn": source_text}),
-                        "term_hits": _term_hits(source_text, terms, source_en=translation_source if source_mode == "en" else None),
+                        "term_hits": _term_hits(source_text, terms, source_en=reference_en if source_mode == "en" and not use_current_cn else None),
                         "seed_origin": "existing" if task_mode == "review" else seed_origin,
                         "translations": current_translations,
+                        **({"retranslate_marked": True} if row_marked else {}),
                     }
                     rows.append(row)
         finally:

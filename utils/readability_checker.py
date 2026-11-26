@@ -367,7 +367,13 @@ def check_readability(
             confidence=0.9,
         ))
 
-    is_title = str(text_type or '').strip().lower() in _TITLE_TEXT_TYPES
+    raw_text_type = str(text_type or '').strip().lower()
+    primary_text_type = re.split(r'[；;|/]', raw_text_type, maxsplit=1)[0].strip()
+    is_title = (
+        raw_text_type in _TITLE_TEXT_TYPES
+        or primary_text_type in _TITLE_TEXT_TYPES
+        or ('标题' in primary_text_type and not any(word in primary_text_type for word in ('非标题', '正文', '对白')))
+    )
     if lang == 'en' and not is_title and _is_title_case_overuse(original, text):
         results.append(CheckResult(
             row_id=row_id,

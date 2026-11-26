@@ -10,6 +10,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 
+from utils.language_config import normalize_language_code
 from utils.readability_checker import check_readability
 from utils.punctuation_policy import FULLWIDTH_PATTERN, punctuation_issues
 from utils.term_checker import check_chinese_residue, check_term_hit
@@ -326,10 +327,11 @@ def _check_person_name_terms(
     source: str,
     translation: str,
     person_name_terms: list[tuple[str, str]],
+    lang: str = '',
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
     for cn_name, expected in _matched_person_name_terms(source, person_name_terms):
-        if _contains_expected_person_name(translation, expected):
+        if _contains_expected_person_name(translation, expected, lang=lang):
             continue
         results.append(_issue(
             row_id,
@@ -362,11 +364,19 @@ def _matched_person_name_terms(
     return matches
 
 
-def _contains_expected_person_name(translation: str, expected: str) -> bool:
+def _contains_expected_person_name(translation: str, expected: str, lang: str = '') -> bool:
     expected = str(expected or '').strip()
     if not expected:
         return True
-    pattern = re.compile(rf"(?<![A-Za-z]){re.escape(expected)}(?:'s)?(?![A-Za-z])")
+    normalized_lang = normalize_language_code(lang) if lang else ''
+    if normalized_lang == 'de':
+        if expected[-1].lower() in {'s', 'ß', 'x', 'z'}:
+            suffix = r"(?:['’]s|['’])?"
+        else:
+            suffix = r"(?:['’]s|s)?"
+    else:
+        suffix = r"(?:['’]s)?"
+    pattern = re.compile(rf"(?<![A-Za-zÀ-ÖØ-öø-ÿ]){re.escape(expected)}{suffix}(?![A-Za-zÀ-ÖØ-öø-ÿ])")
     return bool(pattern.search(str(translation or '')))
 
 

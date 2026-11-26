@@ -60,9 +60,12 @@ def test_windows_liveness_access_denied_keeps_lock_owner_live():
 
 
 def test_hard_cap_and_shared_roles(tmp_path):
-    for invalid in (0, 6, 20):
+    from utils.relay_runtime import MAX_API_CONCURRENCY
+
+    for invalid in (0, MAX_API_CONCURRENCY + 1, 20):
         with pytest.raises(ValueError):
             concurrency(invalid)
+    assert concurrency(MAX_API_CONCURRENCY) == MAX_API_CONCURRENCY
     runner = runtime(tmp_path, limit=5)
     def work(index):
         def send():

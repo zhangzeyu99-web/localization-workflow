@@ -496,7 +496,7 @@ def _check_required_terms(issues: list[dict[str, Any]], row: dict[str, Any], key
             if kind in {'soft', 'skip'}:
                 continue
             if kind == 'person':
-                missing = all(_check_person_name_terms(key, source_text(row), target, [(source, variant)])
+                missing = all(_check_person_name_terms(key, source_text(row), target, [(source, variant)], lang=lang.lower())
                               for variant in variants)
             else:
                 entry = {'primary': primary, 'variants': variants,

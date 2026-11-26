@@ -24,8 +24,8 @@ from utils.large_text_multilingual_executor import (
     translate_manifest,
 )
 from utils.large_text_multilingual_gate import apply_dry_run, cache_lint, readback_gate
-from utils.large_text_multilingual_pack import PackArtifacts, load_style_hint, prepare_pack
-from utils.relay_runtime import RelayRuntime, atomic_json, concurrency, task_lock
+from utils.large_text_multilingual_pack import PackArtifacts, _load_terms, _term_hits, load_style_hint, prepare_pack
+from utils.relay_runtime import MAX_API_CONCURRENCY, RelayRuntime, atomic_json, concurrency, task_lock
 from utils.large_text_multilingual_proofread import AuditClient, ReviewClient, run_deep_proofread
 from utils.large_text_residue_repair import repair_cache_residue
 from utils.large_text_multilingual_runner import build_manifest, load_manifest, save_manifest
@@ -126,7 +126,8 @@ def run_pipeline(*, task_dir: Path, api_concurrency: int = 4, retry_failed: bool
             if previous.get('source_snapshot') != snapshot:
                 raise ValueError('source/terminology changed; use a new task directory, existing checkpoints preserved')
             for field, default in [('task_mode', 'translate'), ('source_mode', 'cn'),
-                                   ('proofread_mode', 'basic'), ('target_langs', [])]:
+                                   ('proofread_mode', 'basic'), ('audit_policy', 'all'),
+                                   ('retranslate_marked', False), ('target_langs', [])]:
                 if previous['arguments'].get(field, default) != serializable.get(field, default):
                     raise ValueError(f'task binding changed: {field}; use a new task directory')
         atomic_json(saved_config, {'arguments': serializable, 'source_snapshot': snapshot, 'style_hint': style_hint})
@@ -192,6 +193,8 @@ def _run_pipeline(
     task_mode: str = 'translate',
     review_relay_config: Path | None = None,
     audit_relay_config: Path | None = None,
+    audit_policy: str = "all",
+    retranslate_marked: bool = False,
     runtime: RelayRuntime | None = None,
     reuse_prepared: bool = False,
     style_hint: str = "",
@@ -229,6 +232,7 @@ def _run_pipeline(
             source_mode=source_mode,
             task_mode=task_mode,
             style_hint=style_hint,
+            retranslate_marked=retranslate_marked,
         )
     manifest = load_manifest(existing_manifest) if reuse_prepared and existing_manifest.exists() else build_manifest(
         work_dir=work_dir,
@@ -267,24 +271,81 @@ def _run_pipeline(
         shared_client.runtime = runtime
     if task_mode == 'review':
         existing_rows = _read_jsonl(pack.items_jsonl)
-        gaps = [{'key': row['key'], 'lang': lang} for row in existing_rows for lang in target_langs
+        marked_keys = {row['key'] for row in existing_rows if retranslate_marked and row.get('retranslate_marked')}
+        unmarked_rows = [row for row in existing_rows if row['key'] not in marked_keys]
+        gaps = [{'key': row['key'], 'lang': lang} for row in unmarked_rows for lang in target_langs
                 if not str(row.get('translations', {}).get(lang, '')).strip()]
         atomic_json(work_dir / 'review_missing_cells.json', gaps)
         if gaps:
             raise ValueError(f'review-only input contains {len(gaps)} empty target cells; no implicit translation')
         cache = work_dir / 'initial_cache.jsonl'
-        _write_jsonl(cache, existing_rows)
-        translation = ExecutionSummary(cache, work_dir / 'translation_metrics.json', len(existing_rows), 0, 0, 0, 0, 0)
-        manifest['phase_status']['api_translate'] = 'skipped'
-        manifest['phase_status']['api_smoke'] = 'skipped'
-        save_manifest(manifest)
+        if marked_keys:
+            retrans_dir = work_dir / 'retranslate_marked'
+            retrans_dir.mkdir(parents=True, exist_ok=True)
+            retrans_items = retrans_dir / 'items.jsonl'
+            terms = _load_terms(term_base, target_langs)
+            marked_rows = [
+                {**row, 'translations': {}, 'seed_origin': 'api', 'source_mode': 'cn',
+                 'translation_source': row['cn'], 'reference_en': '',
+                 'reference_en_status': 'not_requested', 'term_hits': _term_hits(row['cn'], terms)}
+                for row in existing_rows
+                if row['key'] in marked_keys
+            ]
+            _write_jsonl(retrans_items, marked_rows)
+            retrans_manifest = build_manifest(
+                work_dir=retrans_dir,
+                items_jsonl=retrans_items,
+                source_rows_jsonl=None,
+                target_langs=target_langs,
+                workbook_count=len(inputs),
+                relay_config=relay_config,
+                proofread_mode='basic',
+                source_mode='cn',
+            )
+            retrans_summary = translate_manifest(
+                Path(retrans_manifest['manifest_path']),
+                relay_config=relay_config,
+                client=shared_client,
+                batch_size=batch_size,
+                workers=min(workers, runtime.limit if runtime else MAX_API_CONCURRENCY),
+            )
+            retranslated_by_key = {row['key']: row for row in _read_jsonl(retrans_summary.cache_jsonl)}
+            merged_rows = [
+                retranslated_by_key[row['key']] if row['key'] in marked_keys else row
+                for row in existing_rows
+            ]
+            _write_jsonl(cache, merged_rows)
+            translation = ExecutionSummary(
+                cache,
+                retrans_summary.metrics_json,
+                len(merged_rows),
+                retrans_summary.unique_api_rows,
+                retrans_summary.seeded_rows,
+                retrans_summary.batch_count,
+                retrans_summary.reused_batches,
+                retrans_summary.elapsed_seconds,
+            )
+            manifest['phase_status']['api_translate'] = 'done'
+            manifest['phase_status']['api_smoke'] = 'skipped'
+            manifest.setdefault('phase_metrics', {})['api_translate'] = {
+                'retranslated_marked_rows': len(marked_keys),
+                'kept_existing_rows': len(unmarked_rows),
+                'api_batches': retrans_summary.batch_count,
+            }
+            save_manifest(manifest)
+        else:
+            _write_jsonl(cache, existing_rows)
+            translation = ExecutionSummary(cache, work_dir / 'translation_metrics.json', len(existing_rows), 0, 0, 0, 0, 0)
+            manifest['phase_status']['api_translate'] = 'skipped'
+            manifest['phase_status']['api_smoke'] = 'skipped'
+            save_manifest(manifest)
     else:
         translation = translate_manifest(
             manifest_path,
             relay_config=relay_config,
             client=shared_client,
             batch_size=batch_size,
-            workers=min(workers, runtime.limit if runtime else 5),
+            workers=min(workers, runtime.limit if runtime else MAX_API_CONCURRENCY),
         )
 
     residue_report_path = work_dir / "local_residue_repairs.json"
@@ -334,7 +395,8 @@ def _run_pipeline(
             reviewer=effective_reviewer,  # type: ignore[arg-type]
             auditor=effective_auditor,  # type: ignore[arg-type]
             batch_size=proofread_batch_size or batch_size,
-            workers=min(proofread_workers or workers, runtime.limit if runtime else 5),
+            workers=min(proofread_workers or workers, runtime.limit if runtime else MAX_API_CONCURRENCY),
+            audit_policy=audit_policy,
         )
         final_cache = proof_summary.final_cache
         final_lint_path = work_dir / "final_cache_lint.json"

@@ -4,9 +4,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
-from collections import Counter
-from utils.relay_runtime import IncompletePhase, RequestBudgetExceeded, ResponseTooLarge, bounded_results
+from collections import Counter, deque
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from utils.relay_runtime import (
+    FatalRelayError,
+    IncompletePhase,
+    MAX_API_CONCURRENCY,
+    RequestBudgetExceeded,
+    ResponseTooLarge,
+    bounded_results,
+)
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -621,6 +630,51 @@ def _retry_validated_cells(
     raise ValueError(f'cell validation failed after {attempt + 1} attempts: {feedback}; exhausted={sorted(blocked)}')
 
 
+VALID_AUDIT_POLICIES = ("all", "risk_tiered")
+_NUMERIC_OR_SYMBOL_RISK_RE = re.compile(r"(?:\d|%|％|\{[^{}]*\}|<[^>]+>)")
+
+
+def _requires_independent_audit(
+    fix: dict[str, Any],
+    *,
+    low_risk_sample_rate: float = 0.10,
+) -> tuple[bool, str]:
+    """Classify whether a reviewed cell requires independent LLM audit under risk_tiered policy."""
+    if str(fix.get("status") or "").upper() != "KEEP":
+        return True, "reviewer_fix"
+    if fix.get("unresolved_issues"):
+        return True, "unresolved_issues"
+    if fix.get("semantic_check_required") or fix.get("name_semantic_check_required"):
+        return True, "semantic_check_required"
+    if str(fix.get("seed_origin") or "") == "glossary_exact":
+        return True, "glossary_exact"
+    if str(fix.get("source_mode") or "cn") != "cn":
+        return True, "multi_source"
+    if fix.get("risk_flags"):
+        return True, "risk_flags"
+    if fix.get("term_hits"):
+        return True, "term_hits"
+    if fix.get("protected_tokens"):
+        return True, "protected_tokens"
+    review_key = str(fix.get("review_key") or "")
+    context = fix.get("context")
+    if ":segment:" in review_key or (isinstance(context, dict) and "whole_cell_proposed" in context):
+        return True, "structured_segment"
+    evidence = fix.get("dialogue_evidence")
+    if isinstance(evidence, dict) and evidence.get("turns"):
+        return True, "dialogue_evidence"
+    source = str(fix.get("cn") or "")
+    current = str(fix.get("current") or "")
+    if _NUMERIC_OR_SYMBOL_RISK_RE.search(source) or _NUMERIC_OR_SYMBOL_RISK_RE.search(current):
+        return True, "numeric_or_markup"
+    rate = max(0.0, min(1.0, float(low_risk_sample_rate)))
+    if rate > 0.0:
+        bucket = hashlib.sha256(f"{review_key}:{fix.get('lang', '')}".encode("utf-8")).digest()[0] / 256.0
+        if bucket < rate:
+            return True, "low_risk_sample"
+    return False, "auto_keep_low_risk"
+
+
 def run_deep_proofread(
     manifest_path: Path,
     *,
@@ -629,7 +683,11 @@ def run_deep_proofread(
     auditor: AuditClient,
     batch_size: int = 60,
     workers: int = 4,
+    audit_policy: str = "all",
+    low_risk_audit_sample_rate: float = 0.10,
 ) -> ProofreadSummary:
+    if audit_policy not in VALID_AUDIT_POLICIES:
+        raise ValueError(f"unsupported audit_policy: {audit_policy}; expected one of {VALID_AUDIT_POLICIES}")
     overall_started = time.perf_counter()
     manifest = load_manifest(manifest_path)
     target_langs = [str(lang).upper() for lang in manifest["inputs"]["target_languages"]]
@@ -742,9 +800,11 @@ def run_deep_proofread(
         review_jobs: list[tuple[list[dict[str, object]], str, Path]] = []
         for lang in target_langs:
             missing = [
-                row for row in review_rows if (str(row["review_key"]), lang) not in reusable
+                _language_review_row(row, lang)
+                for row in review_rows
+                if (str(row["review_key"]), lang) not in reusable
             ]
-            for batch in _partition_requests(missing, max_rows=batch_size, max_chars=24000, output_languages=1):
+            for batch in _partition_requests(missing, max_rows=batch_size, max_chars=48000, output_languages=1):
                 checkpoint = _batch_checkpoint(
                     review_checkpoint_dir,
                     f"review-v2:{lang}",
@@ -756,16 +816,274 @@ def run_deep_proofread(
             job: tuple[list[dict[str, object]], str, Path],
         ) -> list[dict[str, Any]]:
             batch, lang, checkpoint = job
-            request_batch = [_language_review_row(row, lang) for row in batch]
             return _retry_validated_cells(
-                [{**row, 'lang': lang} for row in request_batch],
+                [{**row, 'lang': lang} for row in batch],
                 lambda pending: reviewer.review_batch(pending, [lang]),
                 lambda row, suggestion: _validate_suggestions([row], [suggestion], [lang])[0],
                 checkpoint, review_cache_keys,
                 runtime=getattr(reviewer, 'runtime', None),
             )
 
-        if review_jobs:
+        # Prepare audit helpers early so multi-language runs can stream finished languages
+        # directly into audit without waiting for slow sibling languages to finish review.
+        trusted_rows = {str(row['review_key']): row for row in review_rows}
+        audit_scope = hashlib.sha256(
+            f"audit-v10-existing-short-baseline:{_client_checkpoint_identity(auditor)}".encode("utf-8")
+        ).hexdigest()[:16]
+        audit_checkpoint_dir = proof_dir / "audit_batches" / audit_scope
+        audit_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+        def plain_leaves(text: str) -> list[str]:
+            return [''.join(part.value for part in parts if part.kind == 'text')
+                    for parts in parse_template(text).leaves.values()]
+
+        def build_lang_audit_plan(
+            lang: str,
+            lang_validated: list[dict[str, Any]],
+        ) -> tuple[
+            list[dict[str, Any]],
+            dict[tuple[str, str], dict[str, Any]],
+            list[dict[str, Any]],
+            list[dict[str, object]],
+            list[tuple[list[dict[str, Any]], Path]],
+            dict[tuple[str, str], str],
+            Counter[str],
+            int,
+            int,
+        ]:
+            suggested_cells = {(row['review_key'], row['lang']): row['suggested'] for row in lang_validated}
+            whole_contexts: dict[tuple[str, str], dict[str, Any]] = {}
+            for (signature, cell_lang), (template, slots) in structured_cells.items():
+                if cell_lang != lang:
+                    continue
+                values = {slot.slot_key: suggested_cells[(f'{signature}:segment:{index}', lang)]
+                          for index, slot in enumerate(slots)}
+                proposed = render_reviewed_target(template, slots, values)
+                whole_contexts[(signature, lang)] = {
+                    'whole_cell_source': plain_leaves(str(representatives[signature].get('translation_source') or representatives[signature]['cn'])),
+                    'whole_cell_proposed': plain_leaves(proposed),
+                }
+            lang_fixes: list[dict[str, Any]] = []
+            lang_legacy_fixes: dict[tuple[str, str], dict[str, Any]] = {}
+            for suggestion in lang_validated:
+                trusted = trusted_rows[suggestion['review_key']]
+                fix = {
+                    **suggestion,
+                    **{field: trusted.get(field) for field in (
+                        'cn', 'translation_source', 'source_mode', 'reference_en',
+                        'reference_en_status', 'context', 'risk_flags',
+                        'protected_tokens', 'term_hits', 'dialogue_evidence',
+                        'seed_origin', 'name_semantic_check_required',
+                    )},
+                    'current': (trusted.get('translations') or {}).get(suggestion['lang'], ''),
+                    'dialogue_evidence': _language_evidence(trusted.get('dialogue_evidence'), suggestion['lang']),
+                    'semantic_check_required': bool(trusted.get('dialogue_evidence')) or bool(trusted.get('name_semantic_check_required')) or any(
+                        'dialogue' in str(flag).lower() or 'idiom' in str(flag).lower()
+                        for flag in (trusted.get('risk_flags') or [])
+                    ),
+                }
+                lang_legacy_fixes[(fix['review_key'], fix['lang'])] = {**fix, 'context': str(fix.get('context') or '')}
+                fix['context'] = _language_context(fix.get('context') or '', fix['lang'])
+                signature = str(fix['review_key']).split(':segment:')[0]
+                if (signature, fix['lang']) in whole_contexts:
+                    fix['context'] = {'segment_context': fix['context'], **whole_contexts[(signature, fix['lang'])]}
+                fix['term_hits'] = _language_context(fix.get('term_hits') or [], fix['lang'], english_reference=True)
+                lang_fixes.append(fix)
+
+            lang_decisions: list[dict[str, object]] = []
+            lang_tiers: Counter[str] = Counter()
+            lang_api_fixes: list[dict[str, Any]] = []
+            lang_auto_low = 0
+            lang_sampled_low = 0
+            if audit_policy == "risk_tiered":
+                for fix in lang_fixes:
+                    needs_api, tier = _requires_independent_audit(
+                        fix, low_risk_sample_rate=low_risk_audit_sample_rate
+                    )
+                    lang_tiers[tier] += 1
+                    if needs_api:
+                        if tier == "low_risk_sample":
+                            lang_sampled_low += 1
+                        lang_api_fixes.append(fix)
+                    else:
+                        lang_auto_low += 1
+                        lang_decisions.append(
+                            {
+                                "review_key": fix["review_key"],
+                                "lang": fix["lang"],
+                                "decision": "ACCEPT",
+                                "final": fix["current"],
+                                "reason": "Auto-accepted low-risk KEEP under risk_tiered audit policy.",
+                                "audit_tier": tier,
+                            }
+                        )
+            else:
+                lang_api_fixes = list(lang_fixes)
+                lang_tiers["all_full_audit"] = len(lang_fixes)
+
+            lang_cache_keys = {(row['review_key'], row['lang']): _audit_item_key(row) for row in lang_api_fixes}
+            lang_reusable_audits = _load_audit_item_checkpoints(audit_checkpoint_dir, lang_api_fixes)
+            lang_audit_jobs: list[tuple[list[dict[str, Any]], Path]] = []
+            for batch in _partition_requests(lang_api_fixes, max_rows=batch_size, max_chars=48000, output_languages=1):
+                missing = [row for row in batch if lang_cache_keys[(row['review_key'], row['lang'])] not in lang_reusable_audits]
+                if missing:
+                    legacy = _batch_checkpoint(
+                        audit_checkpoint_dir,
+                        'audit-v1',
+                        [lang_legacy_fixes[(row['review_key'], row['lang'])] for row in batch],
+                    )
+                    if legacy.exists():
+                        records = _read_jsonl(legacy)
+                        if not any('cache_key' in row for row in records):
+                            accepted = _validate_audit(batch, records)
+                            _write_jsonl(_batch_checkpoint(audit_checkpoint_dir, 'audit-v1', batch), [
+                                {**row, 'cache_key': lang_cache_keys[cell]} for cell, row in accepted.items()
+                            ])
+                            lang_decisions.extend(accepted.values())
+                            continue
+                for row in batch:
+                    cached = lang_reusable_audits.get(lang_cache_keys[(row['review_key'], row['lang'])])
+                    if cached is not None:
+                        lang_decisions.append(_rekey_audit(cached, row['review_key']))
+                if missing:
+                    lang_audit_jobs.append((missing, _batch_checkpoint(audit_checkpoint_dir, 'audit-v1', missing)))
+            return (
+                lang_fixes,
+                lang_legacy_fixes,
+                lang_api_fixes,
+                lang_decisions,
+                lang_audit_jobs,
+                lang_cache_keys,
+                lang_tiers,
+                lang_auto_low,
+                lang_sampled_low,
+            )
+
+        streaming_pipeline = len(target_langs) > 1 and max(1, workers) > 1 and bool(review_jobs)
+        streamed_audit_state: dict[str, Any] = {
+            "enabled": False,
+            "fixes": [],
+            "api_audit_fixes": [],
+            "decisions": [],
+            "audit_jobs": [],
+            "audit_failures": [],
+            "audit_tier_breakdown": Counter(),
+            "auto_accepted_low_risk_cells": 0,
+            "sampled_low_risk_cells": 0,
+            "merge_started": None,
+            "reused_audit_cells": 0,
+        }
+
+        if streaming_pipeline:
+            streamed_audit_state["enabled"] = True
+            streamed_audit_state["merge_started"] = time.perf_counter()
+            pool_workers = max(1, min(MAX_API_CONCURRENCY, workers))
+            remaining_by_lang: Counter[str] = Counter(lang for _, lang, _ in review_jobs)
+            failed_langs: set[str] = set()
+            review_failures: list[dict[str, str]] = []
+            audit_failures: list[dict[str, str]] = []
+            audit_cache_keys_all: dict[tuple[str, str], str] = {}
+            queued_reviews = deque(review_jobs)
+            queued_audits = deque()
+            launched_audit_langs: set[str] = set()
+
+            def enqueue_lang_audit(lang: str) -> None:
+                if lang in launched_audit_langs or lang in failed_langs:
+                    return
+                launched_audit_langs.add(lang)
+                lang_suggestions = [reusable[(str(row["review_key"]), lang)] for row in review_rows]
+                lang_validated = _validate_suggestions(review_rows, lang_suggestions, [lang])
+                (
+                    lang_fixes,
+                    _lang_legacy,
+                    lang_api_fixes,
+                    lang_decisions,
+                    lang_audit_jobs,
+                    lang_cache_keys,
+                    lang_tiers,
+                    lang_auto_low,
+                    lang_sampled_low,
+                ) = build_lang_audit_plan(lang, lang_validated)
+                streamed_audit_state["fixes"].extend(lang_fixes)
+                streamed_audit_state["api_audit_fixes"].extend(lang_api_fixes)
+                streamed_audit_state["decisions"].extend(lang_decisions)
+                streamed_audit_state["reused_audit_cells"] += len(lang_decisions)
+                streamed_audit_state["audit_jobs"].extend(lang_audit_jobs)
+                streamed_audit_state["audit_tier_breakdown"].update(lang_tiers)
+                streamed_audit_state["auto_accepted_low_risk_cells"] += lang_auto_low
+                streamed_audit_state["sampled_low_risk_cells"] += lang_sampled_low
+                audit_cache_keys_all.update(lang_cache_keys)
+                queued_audits.extend(lang_audit_jobs)
+
+            def run_streamed_audit(job: tuple[list[dict[str, Any]], Path]) -> list[dict[str, object]]:
+                batch, checkpoint = job
+                return _retry_validated_cells(
+                    batch,
+                    auditor.audit_batch,
+                    lambda row, decision: _validate_audit([row], [decision])[(row['review_key'], row['lang'])],
+                    checkpoint,
+                    audit_cache_keys_all,
+                    phase='audit',
+                    runtime=getattr(auditor, 'runtime', None),
+                )
+
+            # Languages already 100% reused in review can enter audit immediately.
+            for lang in target_langs:
+                if remaining_by_lang[lang] == 0:
+                    enqueue_lang_audit(lang)
+
+            pool = ThreadPoolExecutor(max_workers=pool_workers)
+            pending_futures: dict[Any, tuple[str, Any]] = {}
+            try:
+                def fill_pool() -> None:
+                    while len(pending_futures) < pool_workers and (queued_audits or queued_reviews):
+                        if queued_audits:
+                            kind, job, fn = "audit", queued_audits.popleft(), run_streamed_audit
+                        else:
+                            kind, job, fn = "review", queued_reviews.popleft(), review_missing
+                        pending_futures[pool.submit(fn, job)] = (kind, job)
+
+                fill_pool()
+                while pending_futures:
+                    done, _ = wait(pending_futures, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        kind, job = pending_futures.pop(future)
+                        try:
+                            output = future.result()
+                        except FatalRelayError:
+                            raise
+                        except Exception as exc:
+                            if kind == "review":
+                                _, lang, checkpoint = job
+                                failed_langs.add(lang)
+                                remaining_by_lang[lang] -= 1
+                                review_failures.append({'checkpoint': str(checkpoint), 'error': str(exc)})
+                            else:
+                                audit_failures.append({'checkpoint': str(job[1]), 'error': str(exc)})
+                        else:
+                            if kind == "review":
+                                _, lang, _ = job
+                                for suggestion in output:
+                                    reusable[(suggestion["review_key"], suggestion["lang"])] = suggestion
+                                remaining_by_lang[lang] -= 1
+                                review_progress()
+                                if remaining_by_lang[lang] == 0 and lang not in failed_langs:
+                                    enqueue_lang_audit(lang)
+                            else:
+                                streamed_audit_state["decisions"].extend(output)
+                    fill_pool()
+            finally:
+                for future in pending_futures:
+                    future.cancel()
+                pool.shutdown(wait=True, cancel_futures=True)
+
+            streamed_audit_state["audit_failures"] = audit_failures
+            _atomic_write_text(proof_dir / 'review_failures.json', json.dumps(review_failures, ensure_ascii=False))
+            if review_failures:
+                raise IncompletePhase(
+                    f"{len(review_failures)} review batches unresolved; healthy cells saved; {review_failures[0]['error']}"
+                )
+        elif review_jobs:
             failures = []
             for job, batch_suggestions, error in bounded_results(review_missing, review_jobs, workers=workers):
                 if error:
@@ -795,6 +1113,7 @@ def run_deep_proofread(
                 "review_api_batches": len(review_jobs),
                 "review_reused_cells": len(validated)
                 - sum(len(batch) for batch, _, _ in review_jobs),
+                "streaming_language_pipeline": streamed_audit_state["enabled"],
             },
         )
     except BaseException as exc:
@@ -802,109 +1121,83 @@ def run_deep_proofread(
         _release_proofread_lock(proofread_lock)
         raise
 
-    merge_started = time.perf_counter()
+    merge_started = streamed_audit_state["merge_started"] or time.perf_counter()
     try:
         start_phase(manifest, "controller_merge")
-        trusted_rows = {str(row['review_key']): row for row in review_rows}
-        suggested_cells = {(row['review_key'], row['lang']): row['suggested'] for row in validated}
-        whole_contexts = {}
-        def plain_leaves(text):
-            return [''.join(part.value for part in parts if part.kind == 'text')
-                    for parts in parse_template(text).leaves.values()]
-        for (signature, lang), (template, slots) in structured_cells.items():
-            values = {slot.slot_key: suggested_cells[(f'{signature}:segment:{index}', lang)]
-                      for index, slot in enumerate(slots)}
-            proposed = render_reviewed_target(template, slots, values)
-            whole_contexts[(signature, lang)] = {
-                'whole_cell_source': plain_leaves(str(representatives[signature].get('translation_source') or representatives[signature]['cn'])),
-                'whole_cell_proposed': plain_leaves(proposed),
-            }
-        fixes = []
-        legacy_fixes = {}
-        for suggestion in validated:
-            trusted = trusted_rows[suggestion['review_key']]
-            # 源文和原译由主控补齐，不能让 reviewer 自述的理由代替独立审计证据。
-            fix = {
-                **suggestion,
-                **{field: trusted.get(field) for field in (
-                    'cn', 'translation_source', 'source_mode', 'reference_en',
-                    'reference_en_status', 'context', 'risk_flags',
-                    'protected_tokens', 'term_hits', 'dialogue_evidence',
-                    'seed_origin', 'name_semantic_check_required',
-                )},
-                'current': (trusted.get('translations') or {}).get(suggestion['lang'], ''),
-                'dialogue_evidence': _language_evidence(trusted.get('dialogue_evidence'), suggestion['lang']),
-                'semantic_check_required': bool(trusted.get('dialogue_evidence')) or bool(trusted.get('name_semantic_check_required')) or any(
-                    'dialogue' in str(flag).lower() or 'idiom' in str(flag).lower()
-                    for flag in (trusted.get('risk_flags') or [])
-                ),
-            }
-            legacy_fixes[(fix['review_key'], fix['lang'])] = {**fix, 'context': str(fix.get('context') or '')}
-            fix['context'] = _language_context(fix.get('context') or '', fix['lang'])
-            signature = str(fix['review_key']).split(':segment:')[0]
-            if (signature, fix['lang']) in whole_contexts:
-                fix['context'] = {'segment_context': fix['context'], **whole_contexts[(signature, fix['lang'])]}
-            fix['term_hits'] = _language_context(fix.get('term_hits') or [], fix['lang'], english_reference=True)
-            fixes.append(fix)
-        decisions: list[dict[str, object]] = []
-        audit_scope = hashlib.sha256(
-            f"audit-v10-existing-short-baseline:{_client_checkpoint_identity(auditor)}".encode("utf-8")
-        ).hexdigest()[:16]
-        audit_checkpoint_dir = proof_dir / "audit_batches" / audit_scope
-        audit_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        audit_cache_keys = {(row['review_key'], row['lang']): _audit_item_key(row) for row in fixes}
-        reusable_audits = _load_audit_item_checkpoints(audit_checkpoint_dir, fixes)
-        audit_jobs: list[tuple[list[dict[str, Any]], Path]] = []
-        audit_batches = [batch for lang in target_langs for batch in _partition_requests(
-            [row for row in fixes if row['lang'] == lang], max_rows=batch_size,
-            max_chars=24000, output_languages=1)]
-        for batch in audit_batches:
-            missing = [row for row in batch if audit_cache_keys[(row['review_key'], row['lang'])] not in reusable_audits]
-            if missing:
-                legacy = _batch_checkpoint(audit_checkpoint_dir, 'audit-v1',
-                                           [legacy_fixes[(row['review_key'], row['lang'])] for row in batch])
-                if legacy.exists():
-                    records = _read_jsonl(legacy)
-                    if not any('cache_key' in row for row in records):
-                        accepted = _validate_audit(batch, records)
-                        _write_jsonl(_batch_checkpoint(audit_checkpoint_dir, 'audit-v1', batch), [
-                            {**row, 'cache_key': audit_cache_keys[cell]} for cell, row in accepted.items()
-                        ])
-                        decisions.extend(accepted.values())
-                        continue
-            for row in batch:
-                cached = reusable_audits.get(audit_cache_keys[(row['review_key'], row['lang'])])
-                if cached is not None:
-                    decisions.append(_rekey_audit(cached, row['review_key']))
-            if missing:
-                audit_jobs.append((missing, _batch_checkpoint(audit_checkpoint_dir, 'audit-v1', missing)))
-
-        def audit_missing(
-            job: tuple[list[dict[str, Any]], Path],
-        ) -> list[dict[str, object]]:
-            batch, checkpoint = job
-            return _retry_validated_cells(
-                batch, auditor.audit_batch,
-                lambda row, decision: _validate_audit([row], [decision])[(row['review_key'], row['lang'])],
-                checkpoint, audit_cache_keys, phase='audit', runtime=getattr(auditor, 'runtime', None),
-            )
-
-        reused_audit_cells = len(decisions)
-        def audit_progress():
+        if streamed_audit_state["enabled"]:
+            fixes = streamed_audit_state["fixes"]
+            api_audit_fixes = streamed_audit_state["api_audit_fixes"]
+            decisions = streamed_audit_state["decisions"]
+            audit_jobs = streamed_audit_state["audit_jobs"]
+            audit_tier_breakdown = streamed_audit_state["audit_tier_breakdown"]
+            auto_accepted_low_risk_cells = streamed_audit_state["auto_accepted_low_risk_cells"]
+            sampled_low_risk_cells = streamed_audit_state["sampled_low_risk_cells"]
+            reused_audit_cells = streamed_audit_state["reused_audit_cells"]
+            audit_failures = streamed_audit_state["audit_failures"]
             record_progress(manifest, 'controller_merge', total=len(fixes),
                             accepted=len(decisions), reused=reused_audit_cells, started=merge_started)
-        audit_progress()
-        if audit_jobs:
-            failures = []
-            for job, batch_decisions, error in bounded_results(audit_missing, audit_jobs, workers=workers):
-                if error:
-                    failures.append({'checkpoint': str(job[1]), 'error': str(error)})
-                else:
-                    decisions.extend(batch_decisions)
-                audit_progress()
-            _atomic_write_text(proof_dir / 'audit_failures.json', json.dumps(failures, ensure_ascii=False))
-            if failures:
-                raise IncompletePhase(f"{len(failures)} audit batches unresolved; healthy cells saved; {failures[0]['error']}")
+            _atomic_write_text(proof_dir / 'audit_failures.json', json.dumps(audit_failures, ensure_ascii=False))
+            if audit_failures:
+                raise IncompletePhase(
+                    f"{len(audit_failures)} audit batches unresolved; healthy cells saved; {audit_failures[0]['error']}"
+                )
+        else:
+            fixes = []
+            api_audit_fixes = []
+            decisions = []
+            audit_jobs = []
+            audit_cache_keys: dict[tuple[str, str], str] = {}
+            audit_tier_breakdown = Counter()
+            auto_accepted_low_risk_cells = 0
+            sampled_low_risk_cells = 0
+            for lang in target_langs:
+                lang_validated = [item for item in validated if item["lang"] == lang]
+                (
+                    lang_fixes,
+                    _lang_legacy,
+                    lang_api_fixes,
+                    lang_decisions,
+                    lang_audit_jobs,
+                    lang_cache_keys,
+                    lang_tiers,
+                    lang_auto_low,
+                    lang_sampled_low,
+                ) = build_lang_audit_plan(lang, lang_validated)
+                fixes.extend(lang_fixes)
+                api_audit_fixes.extend(lang_api_fixes)
+                decisions.extend(lang_decisions)
+                audit_jobs.extend(lang_audit_jobs)
+                audit_cache_keys.update(lang_cache_keys)
+                audit_tier_breakdown.update(lang_tiers)
+                auto_accepted_low_risk_cells += lang_auto_low
+                sampled_low_risk_cells += lang_sampled_low
+
+            def audit_missing(
+                job: tuple[list[dict[str, Any]], Path],
+            ) -> list[dict[str, object]]:
+                batch, checkpoint = job
+                return _retry_validated_cells(
+                    batch, auditor.audit_batch,
+                    lambda row, decision: _validate_audit([row], [decision])[(row['review_key'], row['lang'])],
+                    checkpoint, audit_cache_keys, phase='audit', runtime=getattr(auditor, 'runtime', None),
+                )
+
+            reused_audit_cells = len(decisions)
+            def audit_progress():
+                record_progress(manifest, 'controller_merge', total=len(fixes),
+                                accepted=len(decisions), reused=reused_audit_cells, started=merge_started)
+            audit_progress()
+            if audit_jobs:
+                failures = []
+                for job, batch_decisions, error in bounded_results(audit_missing, audit_jobs, workers=workers):
+                    if error:
+                        failures.append({'checkpoint': str(job[1]), 'error': str(error)})
+                    else:
+                        decisions.extend(batch_decisions)
+                    audit_progress()
+                _atomic_write_text(proof_dir / 'audit_failures.json', json.dumps(failures, ensure_ascii=False))
+                if failures:
+                    raise IncompletePhase(f"{len(failures)} audit batches unresolved; healthy cells saved; {failures[0]['error']}")
         audit = _validate_audit(fixes, decisions)
         _write_jsonl(audit_path, list(audit.values()))
         suggestions_by_cell = {
@@ -987,8 +1280,13 @@ def run_deep_proofread(
             "suggestions_jsonl": str(suggestions_path),
             "audit_jsonl": str(audit_path),
             "summary_json": str(summary_path),
+            "audit_policy": audit_policy,
             "audited_cells": len(audit),
-            "audit_reused_cells": len(fixes) - sum(len(batch) for batch, _ in audit_jobs),
+            "audit_api_cells": len(api_audit_fixes),
+            "audit_auto_accepted_low_risk_cells": auto_accepted_low_risk_cells,
+            "audit_sampled_low_risk_cells": sampled_low_risk_cells,
+            "audit_tier_breakdown": dict(sorted(audit_tier_breakdown.items())),
+            "audit_reused_cells": len(api_audit_fixes) - sum(len(batch) for batch, _ in audit_jobs),
             "audited_keep_cells": sum(row["status"] == "KEEP" for row in fixes),
             "changed_by_language": dict(sorted(changed_by_lang.items())),
             "issues": issues,
@@ -1001,11 +1299,15 @@ def run_deep_proofread(
             "controller_merge",
             started=merge_started,
             metrics={
+                "audit_policy": audit_policy,
                 "suggested_changes": summary.suggested_changes,
                 "reverted_changes": summary.reverted_changes,
                 "changed_cells": summary.changed_cells,
                 "audit_api_batches": len(audit_jobs),
-                "audit_reused_cells": len(fixes) - sum(len(batch) for batch, _ in audit_jobs),
+                "audit_api_cells": len(api_audit_fixes),
+                "audit_auto_accepted_low_risk_cells": auto_accepted_low_risk_cells,
+                "audit_sampled_low_risk_cells": sampled_low_risk_cells,
+                "audit_reused_cells": len(api_audit_fixes) - sum(len(batch) for batch, _ in audit_jobs),
             },
         )
         _release_proofread_lock(proofread_lock)

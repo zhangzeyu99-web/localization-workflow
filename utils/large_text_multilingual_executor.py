@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
+import io
 import json
+import os
+import re
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import Counter
 from utils.relay_runtime import (
@@ -141,6 +147,160 @@ def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+_ORIG_URLOPEN = urllib.request.urlopen
+_CONTEXT_FRAGMENT_SPLIT = re.compile(r'(?<=[；。：！？\n])|(?=[｜|])|(?<=[｜|])')
+_FRAGMENT_TOKEN_RE = re.compile(r'\[f\d+\]')
+_MAX_CONTEXT_FRAGMENTS = 40
+
+
+def _prune_term_hit_for_wire(hit: Any) -> Any:
+    if not isinstance(hit, dict):
+        return hit
+    translations = hit.get('translations')
+    single_target = None
+    if isinstance(translations, dict) and len(translations) == 1:
+        single_target = next(iter(translations.values()))
+    pruned: dict[str, Any] = {}
+    for key, value in hit.items():
+        if key in {'enforcement', 'required'}:
+            continue
+        if value in (None, '', [], {}):
+            continue
+        if key == 'reference_en' and single_target and str(value).strip() == str(single_target).strip():
+            continue
+        pruned[key] = value
+    return pruned
+
+
+def _prune_row_for_wire(row: Any) -> Any:
+    if not isinstance(row, dict):
+        return row
+    source_mode = str(row.get('source_mode') or 'cn')
+    cn = row.get('cn')
+    seed_origin = str(row.get('seed_origin') or '')
+    pruned: dict[str, Any] = {}
+    for key, value in row.items():
+        if key == 'translation_source' and source_mode == 'cn' and value == cn:
+            continue
+        if key == 'source_mode' and value == 'cn':
+            continue
+        if key == 'reference_en' and value in (None, ''):
+            continue
+        if key == 'reference_en_status' and value in (None, '', 'not_requested'):
+            continue
+        if key in {'risk_flags', 'protected_tokens', 'term_hits', 'unresolved_issues'} and not value:
+            continue
+        if key == 'dialogue_evidence':
+            if not value or (isinstance(value, dict) and not value.get('turns') and len(value) == 1):
+                continue
+        if key == 'seed_origin' and not value:
+            continue
+        if key == 'context' and value in (None, '', {}):
+            continue
+        if key in {'name_semantic_check_required', 'semantic_check_required'} and value is False:
+            continue
+        if key == 'glossary_seed_locked' and value is False and seed_origin != 'glossary_exact':
+            continue
+        if key == 'independent_target_reading' and value is None:
+            continue
+        if key in {'owner', 'cache_key'}:
+            continue
+        if key == 'term_hits' and isinstance(value, list):
+            value = [_prune_term_hit_for_wire(item) for item in value]
+        pruned[key] = value
+    return pruned
+
+
+def _prune_wire_payload(payload: dict[str, object]) -> dict[str, object]:
+    """Drop lossless empty/default/mirrored/internal fields on wire copies only."""
+    if not isinstance(payload, dict):
+        return payload
+    changed = False
+    out = dict(payload)
+    for list_key in ('rows', 'suggestions'):
+        items = payload.get(list_key)
+        if isinstance(items, list):
+            pruned_items = [_prune_row_for_wire(item) for item in items]
+            if pruned_items != items:
+                out[list_key] = pruned_items
+                changed = True
+    return out if changed else payload
+
+
+def _compact_context_fragments(payload: dict[str, object]) -> dict[str, object]:
+    """Deduplicate long repeated sentence fragments inside context strings losslessly."""
+    if not isinstance(payload, dict) or 'shared_context_fragments' in payload:
+        return payload
+    counts: Counter[str] = Counter()
+    has_conflict = False
+
+    def walk_count(value: Any, in_context: bool = False) -> None:
+        nonlocal has_conflict
+        if has_conflict:
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {'shared_contexts', 'shared_context_fragments'}:
+                    continue
+                walk_count(item, in_context or key == 'context')
+        elif isinstance(value, list):
+            for item in value:
+                walk_count(item, in_context)
+        elif in_context and isinstance(value, str):
+            if _FRAGMENT_TOKEN_RE.search(value):
+                has_conflict = True
+                return
+            if len(value) >= 80:
+                for segment in _CONTEXT_FRAGMENT_SPLIT.split(value):
+                    if len(segment) >= 12:
+                        counts[segment] += 1
+
+    walk_count(payload)
+    if has_conflict:
+        return payload
+    scored = [
+        ((len(segment) - 5) * count - (len(segment) + 12), segment)
+        for segment, count in counts.items()
+        if count >= 3 and (len(segment) - 5) * count - (len(segment) + 12) > 0
+    ]
+    scored.sort(key=lambda pair: (-pair[0], -len(pair[1]), pair[1]))
+    selected = [segment for _, segment in scored[:_MAX_CONTEXT_FRAGMENTS]]
+    if not selected:
+        return payload
+    fragments = {f'f{index + 1}': segment for index, segment in enumerate(selected)}
+    reverse = {segment: f'[{frag_id}]' for frag_id, segment in fragments.items()}
+
+    def walk_replace(value: Any, in_context: bool = False) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: (item if key == 'shared_contexts' else walk_replace(item, in_context or key == 'context'))
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [walk_replace(item, in_context) for item in value]
+        if in_context and isinstance(value, str) and len(value) >= 80:
+            return ''.join(reverse.get(part, part) for part in _CONTEXT_FRAGMENT_SPLIT.split(value))
+        return value
+
+    compacted = walk_replace(payload)
+    compacted['shared_context_fragments'] = fragments
+    before_len = len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+    after_len = len(json.dumps(compacted, ensure_ascii=False, separators=(',', ':')))
+    if before_len - after_len < 120:
+        return payload
+    return compacted
+
+
+def _prepare_wire_payload(payload: dict[str, object]) -> tuple[dict[str, object], bool, bool]:
+    """Produce a lossless compact wire copy without mutating caller payloads."""
+    pruned = _prune_wire_payload(payload)
+    shared = _compact_shared_context(pruned)
+    used_shared = shared is not pruned and 'shared_contexts' in shared
+    final = _compact_context_fragments(shared)
+    used_fragments = final is not shared and 'shared_context_fragments' in final
+    return final, used_shared, used_fragments
+
+
 def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
     fields = {'context', 'dialogue_evidence', 'term_hits'}
     reserved = False
@@ -166,18 +326,18 @@ def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
         return payload
     counts: Counter[str] = Counter()
 
-    def signature(value: Any) -> str:
+    def signature(value: Any, field: str = '') -> str:
         if not isinstance(value, (dict, list, str)):
             return ''
         encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-        return encoded if len(encoded) >= 256 else ''
+        return encoded if len(encoded) >= 64 else ''
 
-    def count(value: Any, eligible: bool = False) -> None:
-        if eligible and (key := signature(value)):
+    def count(value: Any, eligible: bool = False, field: str = '') -> None:
+        if eligible and (key := signature(value, field)):
             counts[key] += 1
         if isinstance(value, dict):
-            for field, item in value.items():
-                count(item, eligible or field in fields)
+            for child_field, item in value.items():
+                count(item, eligible or child_field in fields, child_field)
         elif isinstance(value, list):
             for item in value:
                 count(item, eligible)
@@ -188,13 +348,14 @@ def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
 
     def children(value: Any, eligible: bool) -> Any:
         if isinstance(value, dict):
-            return {field: compact(item, eligible or field in fields) for field, item in value.items()}
+            return {child_field: compact(item, eligible or child_field in fields, child_field)
+                    for child_field, item in value.items()}
         if isinstance(value, list):
             return [compact(item, eligible) for item in value]
         return value
 
-    def compact(value: Any, eligible: bool = False) -> Any:
-        key = signature(value) if eligible else ''
+    def compact(value: Any, eligible: bool = False, field: str = '') -> Any:
+        key = signature(value, field) if eligible else ''
         if key and counts[key] > 1:
             if key not in references:
                 ref = references[key] = f'context-{len(references) + 1}'
@@ -206,7 +367,10 @@ def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
     if not shared:
         return payload
     result['shared_contexts'] = shared
-    if len(json.dumps(result, ensure_ascii=False)) >= len(json.dumps(payload, ensure_ascii=False)):
+    if (
+        len(json.dumps(result, ensure_ascii=False, separators=(',', ':')))
+        >= len(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+    ):
         return payload
     return result
 
@@ -231,15 +395,74 @@ class OpenAICompatibleClient:
             return self.base_url + "/chat/completions"
         return self.base_url + "/v1/chat/completions"
 
+    def _has_proxy_env(self) -> bool:
+        return any(
+            os.environ.get(name)
+            for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+        )
+
+    def _post_json_bytes(self, url: str, body_bytes: bytes, headers: dict[str, str]) -> str:
+        # Respect monkeypatched urlopen in unit tests and system proxy environments.
+        if urllib.request.urlopen is not _ORIG_URLOPEN or self._has_proxy_env():
+            request = urllib.request.Request(url, data=body_bytes, headers=headers, method="POST")
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                return response.read().decode("utf-8")
+
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            request = urllib.request.Request(url, data=body_bytes, headers=headers, method="POST")
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                return response.read().decode("utf-8")
+
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        tls = getattr(self, "_tls", None)
+        if tls is None:
+            tls = threading.local()
+            self._tls = tls
+        pool_key = (parsed.scheme, parsed.hostname, parsed.port)
+        keepalive_headers = {**headers, "Connection": "keep-alive"}
+
+        conn = getattr(tls, "conn", None)
+        if conn is None or getattr(tls, "pool_key", None) != pool_key:
+            if conn is not None:
+                conn.close()
+            conn_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+            conn = conn_cls(parsed.hostname, parsed.port, timeout=self.timeout)
+            tls.conn = conn
+            tls.pool_key = pool_key
+        try:
+            conn.request("POST", path, body=body_bytes, headers=keepalive_headers)
+            resp = conn.getresponse()
+            raw = resp.read()
+        except (OSError, http.client.HTTPException):
+            tls.conn = None
+            conn.close()
+            # A dropped response may follow a processed POST. Only RelayRuntime can schedule a retry.
+            raise
+        if 200 <= resp.status < 300:
+            return raw.decode("utf-8")
+        raise urllib.error.HTTPError(url, resp.status, resp.reason, resp.headers, io.BytesIO(raw))
+
     def _chat_json(self, system: str, user_payload: dict[str, object], *, stage: str = "chat") -> object:
-        compact = _compact_shared_context(user_payload)
-        if compact is not user_payload:
+        raw_user_chars = len(json.dumps(user_payload, ensure_ascii=False))
+        compact, used_shared, used_fragments = _prepare_wire_payload(user_payload)
+        compact_user_json = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+        if hasattr(self.runtime, "note_wire_compression"):
+            self.runtime.note_wire_compression(raw_user_chars, len(compact_user_json))
+        if used_shared:
             system += (
                 ' Input uses shared_contexts: recursively resolve each {"$context_ref":"id"} '
                 'to that complete table value before reviewing its row. References replace only '
                 'repeated context/evidence, never omit it. Existing scene translations are still '
                 'unverified evidence, not speaker configuration. Return original row keys and '
                 'the requested response schema, never context references.'
+            )
+        if used_fragments:
+            system += (
+                ' Context strings may contain [fN] placeholders defined in shared_context_fragments; '
+                'expand each [fN] verbatim before reading and never output [fN].'
             )
         payload = {
             "model": self.model,
@@ -249,23 +472,18 @@ class OpenAICompatibleClient:
                 {"role": "system", "content": system},
                 {
                     "role": "user",
-                    "content": json.dumps(compact, ensure_ascii=False),
+                    "content": compact_user_json,
                 },
             ],
         }
         def send():
-            request = urllib.request.Request(
-                self._endpoint(),
-                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}),
-                },
-                method="POST",
-            )
+            body_bytes = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}),
+            }
             from utils.structured_text_template import _strict_json_loads
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = _strict_json_loads(response.read().decode("utf-8"))
+            body = _strict_json_loads(self._post_json_bytes(self._endpoint(), body_bytes, headers))
             choices = body.get("choices") if isinstance(body, dict) else None
             if not isinstance(choices, list) or not choices:
                 # Some gateways report exhausted quota inside an HTTP 200 body.
@@ -348,11 +566,13 @@ class OpenAICompatibleClient:
                 "For dialogue, distinguish the speaker, addressee, and grammatical antecedent. "
                 "A gender or address change must cite concrete supplied context in reason; never "
                 "guess from an isolated line or assume alternating speakers. If context is insufficient, "
-                "KEEP the current form and state the uncertainty in reason. Preserve idiomatic meaning "
-                "and explicit quantities, units, hit counts, and per-hit effects. Report any unresolved "
-                "omission or semantic defect in unresolved_issues (an array; empty only when none remain). "
+                "KEEP the current form and state the uncertainty in reason. Preserve idiomatic meaning, "
+                "emotional intent (instead of copying the surface metaphor), and explicit quantities, "
+                "units, hit counts, and per-hit effects. Report any unresolved omission or semantic "
+                "defect in unresolved_issues (an array; empty only when none remain). "
                 "Do not call a known unresolved defect KEEP or hide it in a QA handoff note. "
-                "and emotional intent instead of copying the surface metaphor. "
+                "Keep reason concise: use 'ok' for KEEP (unless briefly noting context uncertainty), "
+                "and <=20 words naming the concrete defect for FIX. "
                 "Return strict JSON with one item per row and language: "
                 "{\"rows\":[{\"review_key\":...,\"lang\":...,\"status\":\"KEEP|FIX\","
                 "\"suggested\":...,\"reason\":...}]}."
@@ -370,14 +590,30 @@ class OpenAICompatibleClient:
         requested = {(str(row['review_key']), str(row['lang']).upper()): row for row in blind_rows}
         readings = {}
         runtime = getattr(self, 'runtime', None)
-        blind_keys = {key: runtime.keys(self.checkpoint_identity, 'blind', {'rows': [row]})[0]
-                      for key, row in requested.items()} if runtime else {}
+        legacy_keys = {key: runtime.keys(self.checkpoint_identity, 'blind', {'rows': [row]})[0]
+                       for key, row in requested.items()} if runtime else {}
+        text_keys = {
+            key: runtime.keys(self.checkpoint_identity, 'blind-text',
+                              {'lang': key[1], 'text': str(row.get('text') or '')})[0]
+            for key, row in requested.items()
+        } if runtime else {}
         if runtime:
-            for key, cache_key in blind_keys.items():
-                if cache_key in runtime.blind_readings:
-                    readings[key] = {**runtime.blind_readings[cache_key], 'text': requested[key]['text']}
-            blind_rows = [row for key, row in requested.items() if key not in readings]
-        if blind_rows:
+            for key in requested:
+                cached = runtime.blind_readings.get(text_keys[key]) or runtime.blind_readings.get(legacy_keys[key])
+                if cached is not None:
+                    readings[key] = {**cached, 'review_key': key[0], 'lang': key[1], 'text': requested[key]['text']}
+        # Deduplicate identical (lang, text) pairs within the same batch so blind reading is never duplicated.
+        pending_groups: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        dedup_blind_rows: list[dict[str, object]] = []
+        for key, row in requested.items():
+            if key in readings:
+                continue
+            signature = (key[1], str(row.get('text') or ''))
+            if signature not in pending_groups:
+                pending_groups[signature] = []
+                dedup_blind_rows.append(row)
+            pending_groups[signature].append(key)
+        if dedup_blind_rows:
             blind = self._chat_json(
                 "Read these target-language sentences independently, without assuming an intended source. "
                 "Describe what the actual grammar says in plain English. Identify who acts, the predicate, "
@@ -388,22 +624,40 @@ class OpenAICompatibleClient:
                 "whether it reads naturally as a target-language name, without inventing a source meaning. "
                 "Return JSON {\"rows\":[{\"review_key\":...,"
                 "\"lang\":...,\"meaning\":...,\"predicate_object\":...,\"tone\":...}]}.",
-                {"rows": blind_rows},
+                {"rows": dedup_blind_rows},
                 stage="blind",
             )
             blind = blind.get("rows") if isinstance(blind, dict) else blind
-            if not isinstance(blind, list) or len(blind) != len(blind_rows) or any(not isinstance(row, dict) for row in blind):
+            if not isinstance(blind, list) or len(blind) != len(dedup_blind_rows) or any(not isinstance(row, dict) for row in blind):
                 raise ValueError("blind semantic reading coverage mismatch")
+            dedup_requested = {(str(row['review_key']), str(row['lang']).upper()): row for row in dedup_blind_rows}
+            rep_readings: dict[tuple[str, str], dict] = {}
             for reading in blind:
                 key = (str(reading.get("review_key")), str(reading.get("lang")).upper())
-                if key not in requested or key in readings or any(not isinstance(reading.get(field), str) or not reading[field].strip()
-                                          for field in ("meaning", "predicate_object", "tone")):
+                if key not in dedup_requested or key in rep_readings or any(
+                    not isinstance(reading.get(field), str) or not reading[field].strip()
+                    for field in ("meaning", "predicate_object", "tone")
+                ):
                     raise ValueError("invalid blind semantic reading")
-                readings[key] = {**reading, 'text': requested[key]['text']}
-            if not {(str(row["review_key"]), str(row["lang"]).upper()) for row in blind_rows}.issubset(readings):
+                rep_readings[key] = reading
+            if set(dedup_requested) != set(rep_readings):
                 raise ValueError("blind semantic reading key mismatch")
-            if runtime:
-                runtime.save_blind_readings({blind_keys[key]: value for key, value in readings.items() if key in blind_keys})
+            to_save: dict[str, dict] = {}
+            for rep_key, reading in rep_readings.items():
+                signature = (rep_key[1], str(dedup_requested[rep_key].get('text') or ''))
+                for member_key in pending_groups[signature]:
+                    member_value = {
+                        **reading,
+                        'review_key': member_key[0],
+                        'lang': member_key[1],
+                        'text': requested[member_key]['text'],
+                    }
+                    readings[member_key] = member_value
+                    if runtime:
+                        to_save[text_keys[member_key]] = member_value
+                        to_save[legacy_keys[member_key]] = member_value
+            if runtime and to_save:
+                runtime.save_blind_readings(to_save)
         return readings
 
     def _audit_with_readings(self, suggestions: list[dict[str, object]], readings: dict) -> list[dict[str, object]]:
@@ -462,7 +716,9 @@ class OpenAICompatibleClient:
                 "\"lang\":...,\"decision\":\"ACCEPT|REVERT|REVISE\",\"final\":...,"
                 "\"reason\":...,\"semantic_check\":{\"target_text\":...,\"source_meaning\":...,\"final_meaning\":...,"
                 "\"meaning_preserved\":true,\"roles_preserved\":true,\"tone_preserved\":true}}]}. "
-                "Always return final explicitly, including for ACCEPT."
+                "Always return final explicitly, including for ACCEPT. "
+                "Keep reason concise: <=15 words naming the concrete audit verdict or defect; "
+                "keep semantic_check paraphrases crisp (<=20 words each)."
                 + localization_quality_policy([row.get('lang', '') for row in suggestions])
             ),
             {"suggestions": audit_input},
@@ -661,7 +917,7 @@ def _partition_requests(
         row_chars = len(json.dumps(row, ensure_ascii=False, separators=(",", ":")))
         over_chars = current_chars + row_chars > max_chars
         if compact_contexts and current and over_chars and len(current) < max_rows:
-            candidate = _compact_shared_context({'rows': [*current, row]})
+            candidate, _, _ = _prepare_wire_payload({'rows': [*current, row]})
             over_chars = len(json.dumps(candidate, ensure_ascii=False, separators=(',', ':'))) > max_chars
         output_chars = (80 + output_languages * (24 + 3 * len(str(row.get('cn', ''))))) if output_languages else 0
         if current and (len(current) >= max_rows or over_chars or current_output + output_chars > max_chars):
@@ -798,7 +1054,7 @@ def translate_manifest(
     relay_config: Path | None,
     client: TranslationClient | None = None,
     batch_size: int = 60,
-    max_batch_chars: int = 24000,
+    max_batch_chars: int = 48000,
     workers: int = 4,
     max_attempts: int = 3,
 ) -> ExecutionSummary:

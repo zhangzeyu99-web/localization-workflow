@@ -40,9 +40,12 @@ class IncompletePhase(ValueError):
     pass
 
 
+MAX_API_CONCURRENCY = 5
+
+
 def concurrency(value: int) -> int:
-    if not 1 <= value <= 5:
-        raise ValueError("API concurrency must be between 1 and 5")
+    if not 1 <= value <= MAX_API_CONCURRENCY:
+        raise ValueError(f"API concurrency must be between 1 and {MAX_API_CONCURRENCY}")
     return value
 
 
@@ -118,6 +121,9 @@ class RelayRuntime:
         self.fatal: FatalRelayError | None = None
         self.attempts: dict[str, int] = {}
         self.requests = self.retries = self.failed_requests = 0
+        self.stage_requests: dict[str, int] = {}
+        self.wire_chars_before = 0
+        self.wire_chars_after = 0
         self.validation_failures = 0
         self.usage: dict[str, int] = {}
         self.usage_unknown = 0
@@ -187,6 +193,13 @@ class RelayRuntime:
             self._append({'event': 'validation', 'stage': stage, 'failed_cells': len(feedback),
                           'reasons': list(dict.fromkeys(str(value)[:500] for value in feedback.values()))[:10]})
 
+    def note_wire_compression(self, before_chars: int, after_chars: int) -> None:
+        if before_chars <= 0 and after_chars <= 0:
+            return
+        with self.condition:
+            self.wire_chars_before += max(0, int(before_chars))
+            self.wire_chars_after += max(0, int(after_chars))
+
     def request(self, identity: str, stage: str, payload: dict, send):
         keys = self.keys(identity, stage, payload)
         while True:
@@ -218,6 +231,7 @@ class RelayRuntime:
                 self.active += 1
                 self.peak_active = max(self.peak_active, self.active)
                 self.requests += 1
+                self.stage_requests[stage] = self.stage_requests.get(stage, 0) + 1
                 self.retries += int(previous > 0)
                 self.progress(force=True)
             started = self.clock()
@@ -281,11 +295,21 @@ class RelayRuntime:
                     self.progress(force=self.fatal is not None or self.active == 0)
 
     def progress(self, *, force: bool = False) -> dict:
+        saved = max(0, self.wire_chars_before - self.wire_chars_after)
+        saved_ratio = round(saved / self.wire_chars_before, 4) if self.wire_chars_before > 0 else 0.0
         result = {"backend": "relay", "concurrency_limit": self.limit,
                   "pid": os.getpid(), "updated_at": datetime.now(timezone.utc).isoformat(timespec='seconds'),
                   "effective_concurrency": self.effective_limit, "active": self.active,
-                  "peak_active": self.peak_active, "requests": self.requests, "retries": self.retries,
+                  "peak_active": self.peak_active, "requests": self.requests,
+                  "stage_requests": dict(sorted(self.stage_requests.items())),
+                  "retries": self.retries,
                   "failed_requests": self.failed_requests, "usage": self.usage,
+                  "context_compression": {
+                      "wire_chars_before": self.wire_chars_before,
+                      "wire_chars_after": self.wire_chars_after,
+                      "wire_chars_saved": saved,
+                      "saved_ratio": saved_ratio,
+                  },
                   "validation_failed_cells": self.validation_failures,
                   "usage_unknown_requests": self.usage_unknown,
                   "stop_reason": self.fatal.category if self.fatal else None}
@@ -297,7 +321,7 @@ class RelayRuntime:
 
 def bounded_results(function, jobs, *, workers: int):
     """At most 2 * workers queued jobs; isolate row failures, stop on global failures."""
-    workers = max(1, min(5, workers))
+    workers = max(1, min(MAX_API_CONCURRENCY, workers))
     iterator = iter(jobs)
     pool = ThreadPoolExecutor(max_workers=workers)
     pending = {}

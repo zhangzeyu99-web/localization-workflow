@@ -293,7 +293,7 @@ def scan_workbook(
                 if not _should_skip_term_checks(source):
                     row_issues.extend(_check_terms(row_id, source, target, strong_term_lookup, lang=lang))
                     row_issues.extend(_check_terms(row_id, source, target, soft_term_lookup, soft=True, lang=lang))
-                    row_issues.extend(_check_person_name_terms(row_id, source, target, person_name_terms))
+                    row_issues.extend(_check_person_name_terms(row_id, source, target, person_name_terms, lang=lang))
                 for issue in row_issues:
                     result.issue_counts[issue.check_type] += 1
                     if issue.check_type in fail_set:
@@ -368,6 +368,43 @@ def scan_workbook(
     return result
 
 
+_CONTINUATION_TAIL_MARKERS = ('，', ',', '、', '：', ':', '——', '--', '—', '……', '...', '…')
+
+
+def _extract_row_text_type(row: dict) -> str:
+    direct = str(row.get('text_type') or '').strip()
+    if direct:
+        return direct
+    context = row.get('context')
+    if isinstance(context, dict):
+        return str(context.get('text_type') or '').strip()
+    return ''
+
+
+def _ends_with_continuation_punctuation(text: str) -> bool:
+    stripped = str(text or '').strip().rstrip('”"』」’\'）)')
+    return any(stripped.endswith(marker) for marker in _CONTINUATION_TAIL_MARKERS)
+
+
+def _is_continuation_leading_lowercase(row: dict, prev_record: dict | None) -> bool:
+    if prev_record is not None:
+        prev_row = prev_record.get('row')
+        curr_row = row.get('row')
+        if (
+            isinstance(prev_row, int)
+            and isinstance(curr_row, int)
+            and curr_row == prev_row + 1
+            and _ends_with_continuation_punctuation(prev_record.get('source', ''))
+        ):
+            return True
+    context = row.get('context')
+    if isinstance(context, dict):
+        for key in ('prev_source', 'previous_source', 'prev_cn'):
+            if _ends_with_continuation_punctuation(context.get(key, '')):
+                return True
+    return False
+
+
 def scan_cache_surface(rows: list[dict], target_langs: list[str]) -> dict:
     """Run existing surface/series rules before XLSX export, never replace final QA."""
     from collections import defaultdict
@@ -385,16 +422,21 @@ def scan_cache_surface(rows: list[dict], target_langs: list[str]) -> dict:
             record = {'file': row.get('source_file', ''), 'sheet': row.get('sheet', ''),
                       'row': row.get('row', index), 'id': row.get('id', row.get('key', index)),
                       'source': source, 'translation': target, 'lang': raw_lang.upper()}
-            groups[(record['file'], record['sheet'])].append(record)
+            sheet_records = groups[(record['file'], record['sheet'])]
+            prev_record = sheet_records[-1] if sheet_records else None
+            sheet_records.append(record)
             result.rows_scanned += 1
             issues = check_readability(record['id'], source, target, lang=lang,
-                                       text_type=str(row.get('text_type') or ''))
+                                       text_type=_extract_row_text_type(row))
             issues += _check_ui_length(record['id'], source, target, lang)
             issues += _check_surface_regressions(record['id'], source, target, lang)
             if any(issue.check_type == 'internal_token_leak' for issue in issues):
                 issues = [issue for issue in issues if issue.check_type != 'opaque_abbreviation']
+            continuation = _is_continuation_leading_lowercase(row, prev_record)
             for issue in issues:
                 result.issue_counts[issue.check_type] += 1
+                if issue.check_type == 'leading_lowercase' and continuation:
+                    continue
                 if issue.check_type in fail_set:
                     result.passed = False
                     result.issues.append({**record, 'check_type': issue.check_type,
