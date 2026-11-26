@@ -34,9 +34,11 @@ from utils.large_text_multilingual_runner import load_manifest
 from utils.language_config import SUPPORTED_TRANSLATION_LANGUAGES
 from utils.localization_quality_policy import requires_name_semantic_check
 from utils.quality_harness_terms import is_fixed_glossary_seed
+from utils.relay_wire_integrity import wire_markers_changed
 from utils.structured_text_template import (
     ParsedTemplate,
     ReviewSlot,
+    _strict_json_loads,
     aligned_review_slots,
     parse_template,
     render_reviewed_target,
@@ -158,7 +160,7 @@ def _language_context(value: Any, lang: str, *, english_reference: bool = False)
 
     if isinstance(value, str):
         try:
-            parsed = json.loads(value)
+            parsed = _strict_json_loads(value)
         except (ValueError, TypeError):
             return value
         if not isinstance(parsed, (dict, list)):
@@ -451,7 +453,11 @@ def _validate_suggestions(
         if storage := cell_text_issues(suggested):
             raise ValueError(f'review suggestion storage integrity failed: {storage}')
         trusted = trusted_by_key[str(row['review_key'])]
-        integrity = json_structure_issues(str(trusted.get('cn') or ''), suggested)
+        source = str(trusted.get('cn') or '')
+        # Checkpoint indexing has no source; cached results are revalidated against the real row.
+        if "cn" in trusted and wire_markers_changed(source, suggested):
+            raise ValueError('review suggestion changed relay context markers')
+        integrity = json_structure_issues(source, suggested)
         if integrity:
             raise ValueError(f"review suggestion JSON integrity failed: {integrity}")
         validated.append(
@@ -501,7 +507,10 @@ def _validate_audit(
         from utils.xlsx_translation_writeback import cell_text_issues
         if storage := cell_text_issues(selected):
             raise ValueError(f'audit final storage integrity failed: {storage}')
-        integrity = json_structure_issues(str(fix.get('cn') or ''), selected)
+        source = str(fix.get('cn') or '')
+        if wire_markers_changed(source, selected):
+            raise ValueError('audit final changed relay context markers')
+        integrity = json_structure_issues(source, selected)
         if integrity:
             raise ValueError(f"audit {decision} JSON integrity failed: {integrity}")
         if fix.get('status') == 'KEEP' and decision == 'REVERT':
@@ -632,6 +641,30 @@ def _retry_validated_cells(
 
 VALID_AUDIT_POLICIES = ("all", "risk_tiered")
 _NUMERIC_OR_SYMBOL_RISK_RE = re.compile(r"(?:\d|%|％|\{[^{}]*\}|<[^>]+>)")
+_ACTION_RISK_RE = re.compile(
+    r"收起|展开|打开|关闭|开启|禁用|启用|隐藏|显示|取消|删除|领取|丢弃|卸下|解除|购买|出售|"
+    r"消耗|撤回|请勿|不要|禁止|无法|不能|不可|不允许|仅限|除外"
+)
+_NARRATIVE_CONTEXT_RE = re.compile(
+    r"(?<![a-z])(?:dialogue|story|narration|narrative|cutscene|scene|announcement)(?![a-z])"
+    r"|对白|台词|剧情|旁白|心声|公告", re.I
+)
+
+
+def _has_narrative_context(context: object) -> bool:
+    if isinstance(context, str):
+        if context.lstrip().startswith("{"):
+            try:
+                return _has_narrative_context(json.loads(context))
+            except json.JSONDecodeError:
+                pass
+        return bool(_NARRATIVE_CONTEXT_RE.search(context))
+    if not isinstance(context, dict):
+        return False
+    return (
+        any(context.get(key) for key in ("scene", "speaker", "addressee", "dialogue_type"))
+        or any(_NARRATIVE_CONTEXT_RE.search(str(context.get(key) or "")) for key in ("type", "text_type"))
+    )
 
 
 def _requires_independent_audit(
@@ -661,12 +694,20 @@ def _requires_independent_audit(
     if ":segment:" in review_key or (isinstance(context, dict) and "whole_cell_proposed" in context):
         return True, "structured_segment"
     evidence = fix.get("dialogue_evidence")
-    if isinstance(evidence, dict) and evidence.get("turns"):
+    if isinstance(evidence, dict) and any(evidence.values()):
         return True, "dialogue_evidence"
     source = str(fix.get("cn") or "")
     current = str(fix.get("current") or "")
     if _NUMERIC_OR_SYMBOL_RISK_RE.search(source) or _NUMERIC_OR_SYMBOL_RISK_RE.search(current):
         return True, "numeric_or_markup"
+    if _has_narrative_context(context):
+        return True, "narrative_or_announcement"
+    if _ACTION_RISK_RE.search(source):
+        return True, "action_or_negation"
+    if len(source) > 80 or len(current) > 180 or any(
+        separator in text for separator in ("\n", "\r", r"\n") for text in (source, current)
+    ):
+        return True, "long_or_multiline"
     rate = max(0.0, min(1.0, float(low_risk_sample_rate)))
     if rate > 0.0:
         bucket = hashlib.sha256(f"{review_key}:{fix.get('lang', '')}".encode("utf-8")).digest()[0] / 256.0
@@ -1007,7 +1048,7 @@ def run_deep_proofread(
                 streamed_audit_state["fixes"].extend(lang_fixes)
                 streamed_audit_state["api_audit_fixes"].extend(lang_api_fixes)
                 streamed_audit_state["decisions"].extend(lang_decisions)
-                streamed_audit_state["reused_audit_cells"] += len(lang_decisions)
+                streamed_audit_state["reused_audit_cells"] += len(lang_decisions) - lang_auto_low
                 streamed_audit_state["audit_jobs"].extend(lang_audit_jobs)
                 streamed_audit_state["audit_tier_breakdown"].update(lang_tiers)
                 streamed_audit_state["auto_accepted_low_risk_cells"] += lang_auto_low
@@ -1182,7 +1223,7 @@ def run_deep_proofread(
                     checkpoint, audit_cache_keys, phase='audit', runtime=getattr(auditor, 'runtime', None),
                 )
 
-            reused_audit_cells = len(decisions)
+            reused_audit_cells = len(decisions) - auto_accepted_low_risk_cells
             def audit_progress():
                 record_progress(manifest, 'controller_merge', total=len(fixes),
                                 accepted=len(decisions), reused=reused_audit_cells, started=merge_started)
@@ -1199,6 +1240,9 @@ def run_deep_proofread(
                 if failures:
                     raise IncompletePhase(f"{len(failures)} audit batches unresolved; healthy cells saved; {failures[0]['error']}")
         audit = _validate_audit(fixes, decisions)
+        independent_keys = {(row["review_key"], row["lang"]) for row in api_audit_fixes}
+        for key, decision in audit.items():
+            decision["audit_tier"] = "independent" if key in independent_keys else "auto_keep_low_risk"
         _write_jsonl(audit_path, list(audit.values()))
         suggestions_by_cell = {
             (row["review_key"], row["lang"]): row for row in validated
@@ -1281,13 +1325,14 @@ def run_deep_proofread(
             "audit_jsonl": str(audit_path),
             "summary_json": str(summary_path),
             "audit_policy": audit_policy,
-            "audited_cells": len(audit),
+            "audited_cells": len(api_audit_fixes),
+            "controller_decided_cells": len(audit),
             "audit_api_cells": len(api_audit_fixes),
             "audit_auto_accepted_low_risk_cells": auto_accepted_low_risk_cells,
             "audit_sampled_low_risk_cells": sampled_low_risk_cells,
             "audit_tier_breakdown": dict(sorted(audit_tier_breakdown.items())),
             "audit_reused_cells": len(api_audit_fixes) - sum(len(batch) for batch, _ in audit_jobs),
-            "audited_keep_cells": sum(row["status"] == "KEEP" for row in fixes),
+            "audited_keep_cells": sum(row["status"] == "KEEP" for row in api_audit_fixes),
             "changed_by_language": dict(sorted(changed_by_lang.items())),
             "issues": issues,
         }
@@ -1303,6 +1348,8 @@ def run_deep_proofread(
                 "suggested_changes": summary.suggested_changes,
                 "reverted_changes": summary.reverted_changes,
                 "changed_cells": summary.changed_cells,
+                "audited_cells": len(api_audit_fixes),
+                "controller_decided_cells": len(audit),
                 "audit_api_batches": len(audit_jobs),
                 "audit_api_cells": len(api_audit_fixes),
                 "audit_auto_accepted_low_risk_cells": auto_accepted_low_risk_cells,

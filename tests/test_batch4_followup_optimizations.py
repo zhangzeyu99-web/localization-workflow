@@ -277,11 +277,15 @@ def test_retranslate_marked_routes_only_source_changed_rows_to_clean_translation
     wb = Workbook()
     ws = wb.active
     ws.title = "Story"
-    ws.append(["ID", "CN", "EN", "FR", "文本类型", "修改状态"])
+    ws.append(["ID", "CN", "EN", "FR", "文本类型", "修改状态", "校对状态", "备注"])
     ws.append(["row_1", "欢迎回家。", "Welcome home.", "Bienvenue à la maison.", "剧情正文", ""])
     ws.append(["row_2", "今天天气真好。", "Stale unrelated sentence.", "Ancienne réplique.", "剧情正文", "中文大改"])
     ws.append(["row_3", "我们出发吧。", "", "", "剧情正文；【中文修改】以最新中文为准", ""])
     ws.append(["row_4", "再次见面。", "Meet again.", "On se retrouve.", "剧情正文", "不重译"])
+    ws.append(["row_5", "欢迎回来。", "Stale text.", "Ancienne traduction.", "", "", "11.25中文修改", ""])
+    ws.append(["row_6", "一切就绪。", "Stale text.", "Ancienne traduction.", "", "", "", "修改"])
+    ws.append(["row_7", "稍等。", "Wait a moment.", "Un instant.", "【中文修改】", "", "中文修改", "无需重译"])
+    ws.append(["row_8", "再见。", "See you.", "Au revoir.", "", "", "", "仅修改备注的措辞"])
     wb.save(source_xlsx)
     wb.close()
 
@@ -294,7 +298,10 @@ def test_retranslate_marked_routes_only_source_changed_rows_to_clean_translation
             assert all(row["source_mode"] == "cn" and not row.get("reference_en")
                        and row["translation_source"] == row["cn"] for row in rows)
             translated_cns.extend(row["cn"] for row in rows)
-            mapping = {"今天天气真好。": "Il fait très beau aujourd'hui.", "我们出发吧。": "En route !"}
+            mapping = {
+                "今天天气真好。": "Il fait très beau aujourd'hui.", "我们出发吧。": "En route !",
+                "欢迎回来。": "Bon retour.", "一切就绪。": "Tout est prêt.",
+            }
             return [
                 {"request_key": row["request_key"], "translations": {"FR": mapping[row["cn"]]}}
                 for row in rows
@@ -363,7 +370,7 @@ def test_retranslate_marked_routes_only_source_changed_rows_to_clean_translation
         auditor=FakeAuditor(),
         retranslate_marked=True,
     )
-    assert set(translated_cns) == {"今天天气真好。", "我们出发吧。"}
+    assert set(translated_cns) == {"今天天气真好。", "我们出发吧。", "欢迎回来。", "一切就绪。"}
     delivered = result.delivery_dir / "revision.xlsx"
     from openpyxl import load_workbook
     out_wb = load_workbook(delivered, data_only=True)
@@ -376,4 +383,9 @@ def test_retranslate_marked_routes_only_source_changed_rows_to_clean_translation
     assert by_id["row_2"] == "Il fait très beau aujourd'hui."
     assert by_id["row_3"] == "En route !"
     assert by_id["row_4"] == "On se retrouve."
+    assert by_id["row_5"] == "Bon retour."
+    assert by_id["row_6"] == "Tout est prêt."
+    assert by_id["row_7"] == "Un instant."
+    assert by_id["row_8"] == "Au revoir."
     assert out_rows[1][2] == "Stale unrelated sentence."
+    assert out_rows[4][2:] == ("Stale text.", "Bon retour.", None, None, "11.25中文修改", None)

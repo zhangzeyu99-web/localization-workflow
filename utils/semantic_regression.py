@@ -3,6 +3,13 @@ import re
 
 
 def known_semantic_regressions(row: dict, lang: str, target: str) -> list[str]:
+    if lang.lower() == 'en' and row.get('source_mode') != 'en':
+        source = str(row.get('cn') or row.get('source_cn') or row.get('source') or '').strip()
+        action = re.fullmatch(r'(收起|展开)(?:该|此)?面板[。！!]?', source)
+        if action:
+            opposite = 'open|expand|show' if action[1] == '收起' else 'close|collapse|hide'
+            if re.fullmatch(rf'(?:please\s+)?(?:{opposite})\s+(?:(?:the|this)\s+)?panel[.!]?', target.strip(), re.I):
+                return ['en_panel_action_reversed']
     if lang.upper() != "FR" or row.get("source_mode") != "en":
         return []
     source = str(row.get("translation_source") or row.get("reference_en") or "")

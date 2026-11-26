@@ -6,6 +6,8 @@
 
 V2 默认 `--audit-policy all`，只有允许抽检的任务才使用 `risk_tiered`；自动接受格不计作独立二审。只有明确授权才启用 `--retranslate-marked`，标记行按新版中文重译，其余行沿用原译审校。
 
+分层二审仍强制覆盖动作、否定、长文、剧情/公告及明确重译的 KEEP。翻译、审校和读回不得引入内部上下文引用；标记识别和统计口径见 `docs/LARGE_TEXT_MULTILINGUAL_WORKFLOW_V2.md`。
+
 ## 大批量效率与到点回报
 
 已报完成区间时用 `record-report --promised-by` 登记上界；在 `status` 报预估超时或新阻断时，当轮更新原因、条件 ETA 与下一次汇报时刻。

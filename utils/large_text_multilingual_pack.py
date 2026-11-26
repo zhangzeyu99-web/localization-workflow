@@ -235,25 +235,29 @@ def _term_hits(text: str, terms: list[dict[str, Any]], limit: int = 12, *, sourc
 
 
 _RETRANSLATE_HEADER_CANDIDATES = {
-    "修改状态", "变更类型", "修订类型", "修改类型",
-    "revision_type", "change_type", "retranslate",
+    "修改状态", "校对状态", "变更状态", "更新状态", "变更类型", "修订类型", "修改类型",
+    "revision_status", "change_status", "revision_type", "change_type", "retranslate",
 }
+_RETRANSLATE_NOTE_HEADERS = {"备注", "remark", "remarks"}
 _RETRANSLATE_VALUE_MARKERS = (
-    "中文修改", "中文大改", "中文重译", "重译", "新增", "新增配置", "retranslate", "source_changed",
+    "修改", "中文修改", "中文大改", "中文重译", "重译", "新增", "新增配置", "retranslate", "source_changed",
 )
 _RETRANSLATE_TEXT_TYPE_MARKERS = (
     "【中文修改】", "【中文大改】", "【新增】", "[retranslate]",
 )
+_NO_RETRANSLATE_RE = re.compile(r"(?:无需|无须|不需|不需要|不必|不要|不)\s*(?:重新翻译|重译)")
+RETRANSLATE_MARKER_POLICY = 2
 
 
-def _is_retranslate_marked(change_value: object, text_type: str) -> bool:
-    raw = str(change_value or "").strip().lower()
-    raw = re.sub(r"^\d{1,2}[./-]\d{1,2}\s*", "", raw)
-    if raw in _RETRANSLATE_VALUE_MARKERS:
-        return True
-    tt = str(text_type or "")
-    tt_lower = tt.lower()
-    return any(marker.lower() in tt_lower for marker in _RETRANSLATE_TEXT_TYPE_MARKERS)
+def _is_retranslate_marked(status_values: list[object], text_type: str) -> bool:
+    values = [str(value or "").strip().lower() for value in status_values]
+    text_type = text_type.lower()
+    if any(_NO_RETRANSLATE_RE.search(value) for value in [*values, text_type]):
+        return False
+    return any(
+        re.sub(r"^\d{1,2}[./-]\d{1,2}\s*", "", value) in _RETRANSLATE_VALUE_MARKERS
+        for value in values
+    ) or any(marker in text_type for marker in _RETRANSLATE_TEXT_TYPE_MARKERS)
 
 
 def load_style_hint(path: Path | None) -> str:
@@ -300,7 +304,10 @@ def prepare_pack(
                 id_col = _find_header(headers, {"id", "key", "索引id"})
                 source_col = _find_header(headers, {header.lower() for header in SOURCE_HEADERS})
                 text_type_col = _find_header(headers, {"文本类型", "文案类型", "text_type", "texttype"})
-                change_col = _find_header(headers, _RETRANSLATE_HEADER_CANDIDATES)
+                marker_cols = [
+                    i for i, header in enumerate(headers)
+                    if header in _RETRANSLATE_HEADER_CANDIDATES or header in _RETRANSLATE_NOTE_HEADERS
+                ]
                 if source_col is None:
                     continue
                 english_col = _find_header(headers, target_header_candidates("en"))
@@ -335,8 +342,9 @@ def prepare_pack(
                             )
                     source_text = str(source)
                     text_type = str(values[text_type_col] or "").strip() if text_type_col is not None and text_type_col < len(values) else ""
-                    change_value = values[change_col] if change_col is not None and change_col < len(values) else None
-                    row_marked = _is_retranslate_marked(change_value, text_type)
+                    row_marked = retranslate_marked and task_mode == "review" and _is_retranslate_marked(
+                        [values[col] for col in marker_cols if col < len(values)], text_type
+                    )
                     use_current_cn = task_mode == "review" and retranslate_marked and row_marked
                     row_context = context
                     if style_hint or text_type:
@@ -446,6 +454,7 @@ def prepare_pack(
                 "source_rows_jsonl": str(source_rows_path),
                 "prepare_stats": str(stats_path),
                 "source_mode": source_mode,
+                "retranslate_marker_policy": RETRANSLATE_MARKER_POLICY,
                 "style_hint": style_hint,
                 "english_reference_status": (
                     EnglishReferenceStatus(

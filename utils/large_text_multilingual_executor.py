@@ -25,9 +25,11 @@ from typing import Any, Protocol
 from utils.ai_checker import SHORT_TRANSLATION_REVIEW_POLICY
 from utils.localization_quality_policy import QUALITY_POLICY_VERSION, localization_quality_policy
 from utils.quality_harness_terms import is_fixed_glossary_seed
+from utils.relay_wire_integrity import has_literal_fragment, wire_markers_changed
 from utils.large_text_multilingual_runner import load_manifest, save_manifest
 from utils.workflow_progress import update_progress
 from utils.structured_text_template import (
+    _strict_json_loads,
     ParsedTemplate,
     TranslationSlot,
     parse_template,
@@ -149,27 +151,13 @@ def _flatten_config(data: dict[str, Any]) -> dict[str, Any]:
 
 _ORIG_URLOPEN = urllib.request.urlopen
 _CONTEXT_FRAGMENT_SPLIT = re.compile(r'(?<=[；。：！？\n])|(?=[｜|])|(?<=[｜|])')
-_FRAGMENT_TOKEN_RE = re.compile(r'\[f\d+\]')
 _MAX_CONTEXT_FRAGMENTS = 40
 
 
 def _prune_term_hit_for_wire(hit: Any) -> Any:
     if not isinstance(hit, dict):
         return hit
-    translations = hit.get('translations')
-    single_target = None
-    if isinstance(translations, dict) and len(translations) == 1:
-        single_target = next(iter(translations.values()))
-    pruned: dict[str, Any] = {}
-    for key, value in hit.items():
-        if key in {'enforcement', 'required'}:
-            continue
-        if value in (None, '', [], {}):
-            continue
-        if key == 'reference_en' and single_target and str(value).strip() == str(single_target).strip():
-            continue
-        pruned[key] = value
-    return pruned
+    return {key: value for key, value in hit.items() if value not in (None, '', [], {})}
 
 
 def _prune_row_for_wire(row: Any) -> Any:
@@ -191,7 +179,7 @@ def _prune_row_for_wire(row: Any) -> Any:
         if key in {'risk_flags', 'protected_tokens', 'term_hits', 'unresolved_issues'} and not value:
             continue
         if key == 'dialogue_evidence':
-            if not value or (isinstance(value, dict) and not value.get('turns') and len(value) == 1):
+            if not value or value == {'turns': []}:
                 continue
         if key == 'seed_origin' and not value:
             continue
@@ -229,15 +217,11 @@ def _prune_wire_payload(payload: dict[str, object]) -> dict[str, object]:
 
 def _compact_context_fragments(payload: dict[str, object]) -> dict[str, object]:
     """Deduplicate long repeated sentence fragments inside context strings losslessly."""
-    if not isinstance(payload, dict) or 'shared_context_fragments' in payload:
+    if (not isinstance(payload, dict) or 'shared_context_fragments' in payload
+            or has_literal_fragment(payload)):
         return payload
     counts: Counter[str] = Counter()
-    has_conflict = False
-
     def walk_count(value: Any, in_context: bool = False) -> None:
-        nonlocal has_conflict
-        if has_conflict:
-            return
         if isinstance(value, dict):
             for key, item in value.items():
                 if key in {'shared_contexts', 'shared_context_fragments'}:
@@ -247,17 +231,12 @@ def _compact_context_fragments(payload: dict[str, object]) -> dict[str, object]:
             for item in value:
                 walk_count(item, in_context)
         elif in_context and isinstance(value, str):
-            if _FRAGMENT_TOKEN_RE.search(value):
-                has_conflict = True
-                return
             if len(value) >= 80:
                 for segment in _CONTEXT_FRAGMENT_SPLIT.split(value):
                     if len(segment) >= 12:
                         counts[segment] += 1
 
     walk_count(payload)
-    if has_conflict:
-        return payload
     scored = [
         ((len(segment) - 5) * count - (len(segment) + 12), segment)
         for segment, count in counts.items()
@@ -307,15 +286,15 @@ def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
 
     def normalize(value: Any, field: str = '') -> Any:
         nonlocal reserved
-        if field == 'context' and isinstance(value, str):
+        if field == 'context' and isinstance(value, str) and value.lstrip().startswith(('{', '[')):
             try:
-                parsed = json.loads(value)
+                parsed = _strict_json_loads(value)
                 if isinstance(parsed, (dict, list)):
                     value = parsed
-            except (ValueError, TypeError):
+            except ValueError:
                 pass
         if isinstance(value, dict):
-            reserved |= '$context_ref' in value or 'shared_contexts' in value
+            reserved |= any(key in value for key in ('$context_ref', 'shared_contexts', 'shared_context_fragments'))
             return {key: normalize(item, key) for key, item in value.items()}
         if isinstance(value, list):
             return [normalize(item) for item in value]
@@ -326,18 +305,18 @@ def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
         return payload
     counts: Counter[str] = Counter()
 
-    def signature(value: Any, field: str = '') -> str:
+    def signature(value: Any) -> str:
         if not isinstance(value, (dict, list, str)):
             return ''
         encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
         return encoded if len(encoded) >= 64 else ''
 
-    def count(value: Any, eligible: bool = False, field: str = '') -> None:
-        if eligible and (key := signature(value, field)):
+    def count(value: Any, eligible: bool = False) -> None:
+        if eligible and (key := signature(value)):
             counts[key] += 1
         if isinstance(value, dict):
             for child_field, item in value.items():
-                count(item, eligible or child_field in fields, child_field)
+                count(item, eligible or child_field in fields)
         elif isinstance(value, list):
             for item in value:
                 count(item, eligible)
@@ -348,14 +327,14 @@ def _compact_shared_context(payload: dict[str, object]) -> dict[str, object]:
 
     def children(value: Any, eligible: bool) -> Any:
         if isinstance(value, dict):
-            return {child_field: compact(item, eligible or child_field in fields, child_field)
+            return {child_field: compact(item, eligible or child_field in fields)
                     for child_field, item in value.items()}
         if isinstance(value, list):
             return [compact(item, eligible) for item in value]
         return value
 
-    def compact(value: Any, eligible: bool = False, field: str = '') -> Any:
-        key = signature(value, field) if eligible else ''
+    def compact(value: Any, eligible: bool = False) -> Any:
+        key = signature(value) if eligible else ''
         if key and counts[key] > 1:
             if key not in references:
                 ref = references[key] = f'context-{len(references) + 1}'
@@ -482,7 +461,6 @@ class OpenAICompatibleClient:
                 "Content-Type": "application/json",
                 **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}),
             }
-            from utils.structured_text_template import _strict_json_loads
             body = _strict_json_loads(self._post_json_bytes(self._endpoint(), body_bytes, headers))
             choices = body.get("choices") if isinstance(body, dict) else None
             if not isinstance(choices, list) or not choices:
@@ -889,6 +867,8 @@ def _validate_response(
             from utils.xlsx_translation_writeback import cell_text_issues
             if storage := cell_text_issues(normalized[lang]):
                 raise ValueError(f'translation storage integrity failed for {request_key}/{lang}: {storage}')
+            if wire_markers_changed(source, normalized[lang]):
+                raise ValueError(f'translation changed relay context markers for {request_key}/{lang}')
             integrity = json_structure_issues(source, normalized[lang])
             if integrity:
                 raise ValueError(f"translation JSON integrity failed for {request_key}/{lang}: {integrity}")

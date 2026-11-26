@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from utils.large_text_multilingual_executor import OpenAICompatibleClient, translate_manifest
-from utils.large_text_multilingual_proofread import _requires_independent_audit, run_deep_proofread
+from utils.large_text_multilingual_proofread import _requires_independent_audit, _validate_audit, run_deep_proofread
 from utils.large_text_multilingual_runner import build_manifest, main as runner_main
 from utils.relay_runtime import RelayRuntime
 
@@ -58,11 +59,28 @@ def test_requires_independent_audit_never_skips_any_risk_category():
         ({**base_keep, "dialogue_evidence": {"turns": [{"cn": "上一句"}]}}, "dialogue_evidence"),
         ({**base_keep, "cn": "冷却时间3秒"}, "numeric_or_markup"),
         ({**base_keep, "current": "Cooldown {0}s"}, "numeric_or_markup"),
+        ({**base_keep, "cn": "收起面板", "current": "Open panel."}, "action_or_negation"),
+        ({**base_keep, "context": {"type": "ui", "text_type": "剧情正文"}}, "narrative_or_announcement"),
+        ({**base_keep, "context": '{"text_type":"event_announcement"}'}, "narrative_or_announcement"),
+        ({**base_keep, "cn": "此处为活动详情。" * 18}, "long_or_multiline"),
+        ({**base_keep, "current": "Welcome.\nEnjoy your visit."}, "long_or_multiline"),
     ]
     for variant, expected_tier in high_risk_variants:
         needs_api, tier = _requires_independent_audit(variant, low_risk_sample_rate=0.0)
         assert needs_api is True
         assert tier == expected_tier
+    assert _requires_independent_audit(
+        {**base_keep, "context": {"type": "ui", "project_style": "Review dialogue and scene terms."}},
+        low_risk_sample_rate=0.0,
+    ) == (False, "auto_keep_low_risk")
+
+
+def test_audit_cannot_accept_known_panel_action_reversal():
+    fix = {"review_key": "panel", "lang": "EN", "status": "KEEP", "cn": "收起面板", "current": "Open panel."}
+    decision = {"review_key": "panel", "lang": "EN", "decision": "ACCEPT", "final": "Open panel."}
+    with pytest.raises(ValueError, match="known semantic regression"):
+        _validate_audit([fix], [decision])
+    assert _validate_audit([fix], [{**decision, "decision": "REVISE", "final": "Collapse the panel."}])
 
 
 def test_deep_proofread_risk_tiered_policy_skips_only_unsampled_low_risk_keep(tmp_path):
@@ -76,13 +94,19 @@ def test_deep_proofread_risk_tiered_policy_skips_only_unsampled_low_risk_keep(tm
         }
         for i in range(10)
     ]
-    # Add 2 high-risk rows: one numeric, one that reviewer turns into FIX.
+    # Numeric, reviewer FIX, and an incorrect KEEP on a high-risk action.
     draft_rows.append({
         "key": "num_1",
         "id": "num_1",
         "cn": "每次升级提升15%攻击力。",
         "translations": {"EN": "Increases Attack by 15% per level."},
         "term_hits": [],
+    })
+    draft_rows.append({
+        "key": "panel",
+        "id": "panel",
+        "cn": "收起面板",
+        "translations": {"EN": "Open panel."},
     })
     draft_rows.append({
         "key": "fix_1",
@@ -129,8 +153,9 @@ def test_deep_proofread_risk_tiered_policy_skips_only_unsampled_low_risk_keep(tm
                 {
                     "review_key": row["review_key"],
                     "lang": row["lang"],
-                    "decision": "ACCEPT",
-                    "final": row["suggested"],
+                    "decision": "REVISE" if row["cn"] == "收起面板" else "ACCEPT",
+                    "final": "Collapse the panel." if row["cn"] == "收起面板" else row["suggested"],
+                    "audit_tier": "untrusted_model_tier",
                     "reason": "verified",
                 }
                 for row in rows
@@ -158,14 +183,18 @@ def test_deep_proofread_risk_tiered_policy_skips_only_unsampled_low_risk_keep(tm
         audit_policy="risk_tiered",
         low_risk_audit_sample_rate=0.0,
     )
-    # Only the numeric row and the FIX row should hit the auditor API (2 of 12).
-    assert set(audited_cns) == {"每次升级提升15%攻击力。", "打开宝箱"}
+    assert set(audited_cns) == {"每次升级提升15%攻击力。", "打开宝箱", "收起面板"}
     summary_data = json.loads(summary.summary_json.read_text(encoding="utf-8"))
     assert summary_data["audit_policy"] == "risk_tiered"
-    assert summary_data["audit_api_cells"] == 2
+    assert summary_data["audit_api_cells"] == summary_data["audited_cells"] == 3
+    assert summary_data["audited_keep_cells"] == 2
+    assert summary_data["audit_reused_cells"] == 0
     assert summary_data["audit_auto_accepted_low_risk_cells"] == 10
-    assert summary_data["audited_cells"] == 12
-    assert summary.changed_cells == 1
+    assert summary_data["controller_decided_cells"] == 13
+    audit_rows = [json.loads(line) for line in summary.audit_jsonl.read_text(encoding="utf-8").splitlines()]
+    assert sum(row["audit_tier"] == "auto_keep_low_risk" for row in audit_rows) == 10
+    assert sum(row["audit_tier"] == "independent" for row in audit_rows) == 3
+    assert summary.changed_cells == 2
 
 
 def test_runner_cli_passes_audit_policy(monkeypatch, tmp_path):

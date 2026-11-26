@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 from utils.punctuation_policy import punctuation_issues
 from utils.quantity_guard import quantity_issues, visible_text, WORDS
 from utils.review_findings import unresolved_review_detail
+from utils.relay_wire_integrity import wire_markers_changed
 from utils.semantic_constraints import semantic_constraint_issues
 from utils.language_config import target_header_candidates
 from utils.structured_text_template import json_structure_issues
@@ -523,6 +524,8 @@ def pair_integrity_issues(row: dict[str, Any], lang: str, target: str, punctuati
     """Shared source/target checks for cache validation and actual file readback."""
     source = source_text(row)
     issues = json_structure_issues(source, target)
+    if wire_markers_changed(source, target):
+        issues.append(('relay_context_marker_mismatch', 'target adds, removes, or reorders relay context markers'))
     from utils.xlsx_translation_writeback import cell_text_issues
     issues.extend(cell_text_issues(target))
     from utils.structured_text_template import json_punctuation_surface

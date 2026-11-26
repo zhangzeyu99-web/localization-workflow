@@ -24,7 +24,9 @@ from utils.large_text_multilingual_executor import (
     translate_manifest,
 )
 from utils.large_text_multilingual_gate import apply_dry_run, cache_lint, readback_gate
-from utils.large_text_multilingual_pack import PackArtifacts, _load_terms, _term_hits, load_style_hint, prepare_pack
+from utils.large_text_multilingual_pack import (
+    RETRANSLATE_MARKER_POLICY, PackArtifacts, _load_terms, _term_hits, load_style_hint, prepare_pack,
+)
 from utils.relay_runtime import MAX_API_CONCURRENCY, RelayRuntime, atomic_json, concurrency, task_lock
 from utils.large_text_multilingual_proofread import AuditClient, ReviewClient, run_deep_proofread
 from utils.large_text_residue_repair import repair_cache_residue
@@ -216,8 +218,12 @@ def _run_pipeline(
     work_dir = task_dir / "_work" / "large_text_multilingual"
     existing_manifest = work_dir / 'large_text_multilingual_manifest.json'
     stats_path = work_dir / 'prepare_stats.json'
-    if reuse_prepared and existing_manifest.exists() and stats_path.exists():
+    reuse_prepared = reuse_prepared and existing_manifest.exists() and stats_path.exists()
+    if reuse_prepared:
         stats = json.loads(stats_path.read_text(encoding='utf-8'))
+        if retranslate_marked and task_mode == 'review':
+            reuse_prepared = stats.get('retranslate_marker_policy') == RETRANSLATE_MARKER_POLICY
+    if reuse_prepared:
         values = {field: stats[field] for field in PackArtifacts.__dataclass_fields__}
         for field in ('items_jsonl', 'source_rows_jsonl', 'prepare_stats'):
             values[field] = Path(values[field])
@@ -234,7 +240,7 @@ def _run_pipeline(
             style_hint=style_hint,
             retranslate_marked=retranslate_marked,
         )
-    manifest = load_manifest(existing_manifest) if reuse_prepared and existing_manifest.exists() else build_manifest(
+    manifest = load_manifest(existing_manifest) if reuse_prepared else build_manifest(
         work_dir=work_dir,
         items_jsonl=pack.items_jsonl,
         source_rows_jsonl=pack.source_rows_jsonl,
@@ -311,7 +317,9 @@ def _run_pipeline(
             )
             retranslated_by_key = {row['key']: row for row in _read_jsonl(retrans_summary.cache_jsonl)}
             merged_rows = [
-                retranslated_by_key[row['key']] if row['key'] in marked_keys else row
+                {**retranslated_by_key[row['key']],
+                 'risk_flags': list(dict.fromkeys([*(row.get('risk_flags') or []), 'retranslated_marked']))}
+                if row['key'] in marked_keys else row
                 for row in existing_rows
             ]
             _write_jsonl(cache, merged_rows)

@@ -4,6 +4,8 @@
 > **目标仓库**：`D:\project\localization-workflow-project`，发布基线 `bbc6a26`
 > **记录范围**：下方参数已按 2026-11-26 发布审查修正。2026-11-25 的工作区和 API 数据是开发实验记录，不作为当前生产并发授权。
 > **质量底线**：默认仍为全量独立二审。分层策略会减少低风险独立审计覆盖，只能显式选用，不能用于要求全量二审的批次。
+>
+> **分线程审查修正（2026-11-26）**：下表为历史实验记录。传输保留术语的 `required`、`enforcement` 和与目标同值的 `reference_en`；含字面 `[fN]` 的请求不生成片段引用，译文新增内部引用会被拦截。动作、否定、长文、公告、对白及重译行的 `KEEP` 也进入独立二审；自动接受不计入 `audited_cells`，逐格结果分别记为 `independent` 或 `auto_keep_low_risk`。
 
 ---
 
@@ -54,8 +56,9 @@
 ### 新增/调整的 `large_text_multilingual_runner.py run` 参数
 - `--api-concurrency`：范围保持 `1..5`（默认 `4`，遇 429 自动 AIMD 减半退避）
 - `--proofread-batch-size`：默认值由 `30` 提升至 `50`
-- `--audit-policy`：新增参数，可选 `all`（默认，全量独立二审）或 `risk_tiered`（全部 11 类高风险 + 低风险 `KEEP` 10% 抽检进二审）
-- `--retranslate-marked`：新增开关（默认关闭）；仅在 `--task-mode review` 下生效，将源表中显式标记为“中文修改/中文大改/新增”的行清空旧译并送入干净初译，再合并进深校；未标记行仍严格保持原译文与空单元格硬拦截。
+- `--audit-policy`：`all`（默认，全量独立二审）或 `risk_tiered`（高风险格强制二审，低风险 `KEEP` 默认抽检 10%）。
+- `--retranslate-marked`：默认关闭，仅在 `--task-mode review` 下生效。识别明确的修改状态、校对状态和备注（如单独的“修改”）及显式文本类型标记；“无需重译”等否定优先，普通备注不触发。重译行只用新版 CN，保留源表旧 EN，合并后继续深校。未标记空译仍硬拦截。
+- 葡语表头为 `PT` 时传 `PT`。如项目要求欧洲葡语，在 UTF-8 风格文件中明确 `欧洲葡语（pt-PT）` 并传 `--style-hint-file`；不要用地区标签代替原表列名。
 
 > **质量底线**：默认仍为全量独立二审。分层策略会减少低风险独立审计覆盖，只能显式选用，不能用于要求全量二审的批次。
 ```powershell
@@ -63,7 +66,8 @@
 py -3 -X utf8 -m utils.large_text_multilingual_runner run `
   --input "<源表.xlsx>" `
   --term-base "<术语表.xlsx>" `
-  --target-langs "EN,DE,FR,ES,PT-PT" `
+  --target-langs "EN,DE,FR,ES,PT" `
+  --style-hint-file "<项目风格-欧洲葡语.txt>" `
   --task-dir "<任务目录>" `
   --relay-config "<relay.json>" `
   --proofread-mode full `
@@ -76,7 +80,8 @@ py -3 -X utf8 -m utils.large_text_multilingual_runner run `
 py -3 -X utf8 -m utils.large_text_multilingual_runner run `
   --input "<源表.xlsx>" `
   --term-base "<术语表.xlsx>" `
-  --target-langs "EN,DE,FR,ES,PT-PT" `
+  --target-langs "EN,DE,FR,ES,PT" `
+  --style-hint-file "<项目风格-欧洲葡语.txt>" `
   --task-dir "<任务目录>" `
   --relay-config "<relay.json>" `
   --task-mode review `
